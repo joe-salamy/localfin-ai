@@ -139,6 +139,7 @@ function checkDuplicatesInDb(
 export async function parseStatement(
   text: string,
   accountId: string,
+  conversationId?: string,
 ): Promise<{
   transactions: EnrichedTransaction[];
   summary: {
@@ -250,6 +251,7 @@ export async function parseStatement(
 
   // Categorize using the AI service pipeline (corrections > lookup > AI batch)
   const catResults = await categorizeTransactions({
+    conversationId,
     transactions: parsed.map((t) => ({
       name: t.name,
       account_id: accountId,

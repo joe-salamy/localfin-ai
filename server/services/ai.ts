@@ -4,6 +4,7 @@ import { getAICorrection, getAICorrections } from './ai-corrections.js';
 
 interface CategorizeRequest {
   transactions: { name: string; account_id: string; account_name: string; amount: number }[];
+  conversationId?: string;
 }
 
 interface CategorizeResult {
@@ -154,7 +155,13 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
       const batch = unknowns.slice(i, i + AI_BATCH_SIZE);
 
       try {
-        const aiResults = await callOpenRouterForCategorization(batch, subcategories, pastExamples, corrections);
+        const aiResults = await callOpenRouterForCategorization(
+          batch,
+          subcategories,
+          pastExamples,
+          corrections,
+          request.conversationId,
+        );
 
         for (let j = 0; j < batch.length; j++) {
           const aiResult = aiResults[j];
@@ -184,6 +191,7 @@ async function callOpenRouterForCategorization(
   subcategories: SubcategoryRow[],
   pastExamples: PastExampleRow[],
   corrections: CorrectionRow[],
+  conversationId?: string,
 ): Promise<AIResultItem[]> {
   const db = getDb();
 
@@ -248,17 +256,25 @@ ${transactionLines.join('\n')}
 
 Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_name": "...", "category_name": "...", "confidence": 0.8 }] }`;
 
-  const responseText = await callOpenRouter([
-    { role: 'system', content: systemMessage },
-    { role: 'user', content: userMessage },
-  ]);
+  const response = await callOpenRouter(
+    [
+      { role: 'system', content: systemMessage },
+      { role: 'user', content: userMessage },
+    ],
+    {
+      conversationId,
+      operation: 'transaction.categorize',
+      metadata: {
+        batchSize: batch.length,
+        unknownIndexes: batch.map((tx) => tx.index),
+      },
+    },
+  );
 
   // Parse response
-  let parsed: { results: AIResultItem[] };
-  try {
-    parsed = JSON.parse(responseText) as { results: AIResultItem[] };
-  } catch {
-    console.error('Failed to parse AI response:', responseText);
+  const parsed = response.parsedContent as { results: AIResultItem[] } | null;
+  if (!parsed) {
+    console.error('Failed to parse AI response:', response.content);
     return [];
   }
 

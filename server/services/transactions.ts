@@ -154,7 +154,7 @@ export function createTransaction(data: CreateTransactionData): Transaction {
 
   const stmt = db.prepare(`
     INSERT INTO transactions (id, account_id, date, name, amount, subcategory_id, comment, is_initial_balance, ai_suggested, user_corrected, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
   `);
 
   stmt.run(
@@ -165,6 +165,8 @@ export function createTransaction(data: CreateTransactionData): Transaction {
     data.amount,
     data.subcategory_id ?? null,
     data.comment ?? null,
+    fromBool(data.ai_suggested ?? false),
+    fromBool(data.user_corrected ?? false),
     now,
     now,
   );
@@ -429,7 +431,7 @@ export function bulkCreateTransactions(transactions: CreateTransactionData[]): T
 
   const stmt = db.prepare(`
     INSERT INTO transactions (id, account_id, date, name, amount, subcategory_id, comment, is_initial_balance, ai_suggested, user_corrected, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
   `);
 
   const ids: string[] = [];
@@ -451,6 +453,8 @@ export function bulkCreateTransactions(transactions: CreateTransactionData[]): T
         data.amount,
         data.subcategory_id ?? null,
         data.comment ?? null,
+        fromBool(data.ai_suggested ?? false),
+        fromBool(data.user_corrected ?? false),
         now,
         now,
       );

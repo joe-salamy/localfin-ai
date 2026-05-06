@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { categorizeTransactions } from '../services/ai.js';
+import { chatWithAssistant } from '../services/ai-chat.js';
 import { saveAICorrection, getAICorrections } from '../services/ai-corrections.js';
 import { finiteNumber, nonEmptyString, parseRequest } from './validation.js';
 
@@ -13,12 +14,18 @@ const categorizeSchema = z.object({
     account_name: nonEmptyString,
     amount: finiteNumber,
   })).min(1).max(500),
+  conversationId: nonEmptyString.optional(),
 });
 const correctionSchema = z.object({
   transaction_name: nonEmptyString,
   account_id: nonEmptyString,
   ai_suggested_subcategory_id: nonEmptyString.nullable().optional(),
   user_corrected_subcategory_id: nonEmptyString,
+});
+const chatSchema = z.object({
+  conversationId: nonEmptyString,
+  message: nonEmptyString.max(10_000),
+  currentPage: z.string().optional(),
 });
 
 router.post('/categorize', async (req: Request, res: Response) => {
@@ -38,6 +45,18 @@ router.post('/corrections', (req: Request, res: Response) => {
     const body = parseRequest(correctionSchema, req.body, res);
     if (!body) return;
     const data = saveAICorrection(body);
+    res.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.post('/chat', async (req: Request, res: Response) => {
+  try {
+    const body = parseRequest(chatSchema, req.body, res);
+    if (!body) return;
+    const data = await chatWithAssistant(body);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
