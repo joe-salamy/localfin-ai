@@ -11,7 +11,7 @@ function buildQueryString(filters?: TransactionFilters): string {
   if (!filters) return '';
   const params = new URLSearchParams(
     Object.entries(filters)
-      .filter(([_, v]) => v != null)
+      .filter(([, v]) => v != null)
       .map(([k, v]) => [k, String(v)]),
   ).toString();
   return params ? `?${params}` : '';

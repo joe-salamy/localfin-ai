@@ -118,12 +118,39 @@ function buildWhereClause(filters: TransactionFilters, prefix = ''): {
   return { clauses, params };
 }
 
+function assertActiveAccount(accountId: string): void {
+  const db = getDb();
+  const account = db.prepare('SELECT 1 FROM accounts WHERE id = ? AND deleted_at IS NULL').get(accountId);
+  if (!account) {
+    throw new Error(`Account with id "${accountId}" not found`);
+  }
+}
+
+function assertActiveSubcategory(subcategoryId: string): void {
+  const db = getDb();
+  const subcategory = db.prepare(`
+    SELECT 1
+    FROM subcategories s
+    JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
+    WHERE s.id = ? AND s.deleted_at IS NULL
+  `).get(subcategoryId);
+
+  if (!subcategory) {
+    throw new Error(`Subcategory with id "${subcategoryId}" not found`);
+  }
+}
+
 // ---------- CRUD ----------
 
 export function createTransaction(data: CreateTransactionData): Transaction {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+
+  assertActiveAccount(data.account_id);
+  if (data.subcategory_id) {
+    assertActiveSubcategory(data.subcategory_id);
+  }
 
   const stmt = db.prepare(`
     INSERT INTO transactions (id, account_id, date, name, amount, subcategory_id, comment, is_initial_balance, ai_suggested, user_corrected, created_at, updated_at)
@@ -150,7 +177,16 @@ export function getTransactions(filters: TransactionFilters = {}): Transaction[]
   const db = getDb();
   const { clauses, params } = buildWhereClause(filters);
 
-  let sql = `SELECT * FROM transactions WHERE ${clauses.join(' AND ')} ORDER BY date DESC, created_at DESC`;
+  let sql = `
+    SELECT *
+    FROM transactions
+    WHERE ${clauses.join(' AND ')}
+      AND EXISTS (
+        SELECT 1 FROM accounts a
+        WHERE a.id = transactions.account_id AND a.deleted_at IS NULL
+      )
+    ORDER BY date DESC, created_at DESC
+  `;
 
   if (filters.limit != null) {
     sql += ' LIMIT ?';
@@ -174,9 +210,9 @@ export function getTransactionsWithDetails(filters: TransactionFilters = {}): Tr
            s.name AS subcategory_name, s.category_id,
            c.name AS category_name, c.type AS category_type
     FROM transactions t
-    LEFT JOIN accounts a ON t.account_id = a.id
-    LEFT JOIN subcategories s ON t.subcategory_id = s.id
-    LEFT JOIN categories c ON s.category_id = c.id
+    JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
+    LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
+    LEFT JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
     WHERE ${clauses.join(' AND ')}
     ORDER BY t.date DESC, t.created_at DESC
   `;
@@ -202,10 +238,10 @@ export function getTransactionById(id: string): TransactionWithDetails | null {
            s.name AS subcategory_name, s.category_id,
            c.name AS category_name, c.type AS category_type
     FROM transactions t
-    LEFT JOIN accounts a ON t.account_id = a.id
-    LEFT JOIN subcategories s ON t.subcategory_id = s.id
-    LEFT JOIN categories c ON s.category_id = c.id
-    WHERE t.id = ?
+    JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
+    LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
+    LEFT JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
+    WHERE t.id = ? AND t.deleted_at IS NULL
   `).get(id) as TransactionWithDetailsRow | undefined;
 
   return row ? rowToTransactionWithDetails(row) : null;
@@ -267,6 +303,17 @@ export function getRecentActivityByAccount(): RecentActivityRow[] {
 export function updateTransaction(id: string, updates: UpdateTransactionData): Transaction | null {
   const db = getDb();
 
+  const existing = db.prepare(`
+    SELECT t.id
+    FROM transactions t
+    JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
+    WHERE t.id = ? AND t.deleted_at IS NULL
+  `).get(id);
+
+  if (!existing) {
+    throw new Error(`Transaction with id "${id}" not found`);
+  }
+
   const setClauses: string[] = [];
   const params: unknown[] = [];
 
@@ -283,6 +330,9 @@ export function updateTransaction(id: string, updates: UpdateTransactionData): T
     params.push(updates.amount);
   }
   if (updates.subcategory_id !== undefined) {
+    if (updates.subcategory_id) {
+      assertActiveSubcategory(updates.subcategory_id);
+    }
     setClauses.push('subcategory_id = ?');
     params.push(updates.subcategory_id);
   }
@@ -307,11 +357,10 @@ export function updateTransaction(id: string, updates: UpdateTransactionData): T
 
   db.prepare(`UPDATE transactions SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
-  const row = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as TransactionRow | undefined;
-  return row ? rowToTransaction(row) : null;
+  return getTransactionById(id);
 }
 
-export function bulkUpdateTransactions(ids: string[], updates: { subcategory_id?: string }): void {
+export function bulkUpdateTransactions(ids: string[], updates: { subcategory_id?: string | null }): void {
   if (ids.length === 0) return;
 
   const db = getDb();
@@ -323,6 +372,9 @@ export function bulkUpdateTransactions(ids: string[], updates: { subcategory_id?
   const setClauses: string[] = [];
 
   if (updates.subcategory_id !== undefined) {
+    if (updates.subcategory_id) {
+      assertActiveSubcategory(updates.subcategory_id);
+    }
     setClauses.push('subcategory_id = ?');
     params.push(updates.subcategory_id);
   }
@@ -334,7 +386,13 @@ export function bulkUpdateTransactions(ids: string[], updates: { subcategory_id?
   params.push(...ids);
 
   db.prepare(
-    `UPDATE transactions SET ${setClauses.join(', ')} WHERE id IN (${placeholders})`,
+    `UPDATE transactions SET ${setClauses.join(', ')}
+     WHERE deleted_at IS NULL
+       AND id IN (${placeholders})
+       AND EXISTS (
+         SELECT 1 FROM accounts a
+         WHERE a.id = transactions.account_id AND a.deleted_at IS NULL
+       )`,
   ).run(...params);
 }
 
@@ -342,7 +400,13 @@ export function deleteTransaction(id: string): void {
   const db = getDb();
   const now = new Date().toISOString();
 
-  db.prepare('UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE id = ?').run(now, now, id);
+  const result = db.prepare(
+    'UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL',
+  ).run(now, now, id);
+
+  if (result.changes === 0) {
+    throw new Error(`Transaction with id "${id}" not found`);
+  }
 }
 
 export function bulkDeleteTransactions(ids: string[]): void {
@@ -353,7 +417,7 @@ export function bulkDeleteTransactions(ids: string[]): void {
   const placeholders = ids.map(() => '?').join(', ');
 
   db.prepare(
-    `UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE id IN (${placeholders})`,
+    `UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE deleted_at IS NULL AND id IN (${placeholders})`,
   ).run(now, now, ...ids);
 }
 
@@ -372,6 +436,11 @@ export function bulkCreateTransactions(transactions: CreateTransactionData[]): T
 
   const insertAll = db.transaction(() => {
     for (const data of transactions) {
+      assertActiveAccount(data.account_id);
+      if (data.subcategory_id) {
+        assertActiveSubcategory(data.subcategory_id);
+      }
+
       const id = crypto.randomUUID();
       ids.push(id);
       stmt.run(

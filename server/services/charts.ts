@@ -125,8 +125,8 @@ export function prepareSankeyData(
     `SELECT c.name AS category_name, s.name AS subcategory_name,
             COALESCE(SUM(t.amount), 0) AS total
      FROM transactions t
-     JOIN subcategories s ON t.subcategory_id = s.id
-     JOIN categories c ON s.category_id = c.id
+     JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
+     JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
      WHERE c.type = 'income'
        AND t.date >= ? AND t.date <= ?
@@ -141,8 +141,8 @@ export function prepareSankeyData(
     `SELECT c.name AS category_name, s.name AS subcategory_name,
             COALESCE(SUM(ABS(t.amount)), 0) AS total
      FROM transactions t
-     JOIN subcategories s ON t.subcategory_id = s.id
-     JOIN categories c ON s.category_id = c.id
+     JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
+     JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
      WHERE c.type = 'expense'
        AND t.date >= ? AND t.date <= ?

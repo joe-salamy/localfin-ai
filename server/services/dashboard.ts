@@ -80,8 +80,8 @@ export function getAccountSummary(
               s.name AS subcategory_name,
               c.name AS category_name
        FROM transactions t
-       LEFT JOIN subcategories s ON t.subcategory_id = s.id
-       LEFT JOIN categories c ON s.category_id = c.id
+       LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
+       LEFT JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
        WHERE t.account_id = ? AND t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
        ORDER BY t.date, t.created_at`,
     ).all(account.id, startDate, endDate) as TransactionRow[];

@@ -28,7 +28,7 @@ const FORMATS: FormatMatch[] = [
   },
 ];
 
-const LENIENT_PATTERN = /^(\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?|\d{4}-\d{2}-\d{2})\s*[,\t]?\s*(.+?)\s+([($\-]?\$?[\d,]+\.?\d*[)CR|DR]*)\s*$/i;
+const LENIENT_PATTERN = /^(\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{4}-\d{2}-\d{2})\s*[,\t]?\s*(.+?)\s+(\(?-?\$?[\d,]+\.?\d*\)?\s*(?:CR|DR)?)\s*$/i;
 
 // ---------- Date parsing ----------
 
@@ -41,7 +41,7 @@ function parseDate(raw: string): string {
   }
 
   // MM/DD/YYYY or MM/DD/YY or MM/DD
-  const slashMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?$/);
+  const slashMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/);
   if (slashMatch) {
     const month = slashMatch[1].padStart(2, '0');
     const day = slashMatch[2].padStart(2, '0');

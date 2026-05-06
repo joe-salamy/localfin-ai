@@ -33,5 +33,8 @@ export async function callOpenRouter(messages: OpenRouterMessage[]): Promise<str
   }
 
   const data = await response.json() as OpenRouterResponse;
+  if (!data.choices[0]?.message.content) {
+    throw new Error('OpenRouter API returned an empty response');
+  }
   return data.choices[0].message.content;
 }

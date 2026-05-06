@@ -1,24 +1,21 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { parseStatement } from '../services/parser.js';
+import { nonEmptyString, parseRequest } from './validation.js';
 
 const router = Router();
+const parseStatementSchema = z.object({
+  text: nonEmptyString.max(500_000),
+  accountId: nonEmptyString,
+});
 
 router.post('/parse-statement', async (req: Request, res: Response) => {
   try {
-    const { text, accountId } = req.body as { text?: string; accountId?: string };
+    const body = parseRequest(parseStatementSchema, req.body, res);
+    if (!body) return;
 
-    if (!text || typeof text !== 'string') {
-      res.status(400).json({ success: false, error: 'Missing or invalid "text" field' });
-      return;
-    }
-
-    if (!accountId || typeof accountId !== 'string') {
-      res.status(400).json({ success: false, error: 'Missing or invalid "accountId" field' });
-      return;
-    }
-
-    const data = await parseStatement(text, accountId);
+    const data = await parseStatement(body.text, body.accountId);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

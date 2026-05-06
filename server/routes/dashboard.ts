@@ -9,13 +9,20 @@ import {
   prepareNetWorthData,
   prepareSankeyData,
 } from '../services/charts.js';
+import { isoDateString, parseRequest } from './validation.js';
+import { z } from 'zod';
 
 const router = Router();
+const dateRangeQuerySchema = z.object({
+  startDate: isoDateString,
+  endDate: isoDateString,
+}).refine((value) => value.startDate <= value.endDate, 'startDate must be on or before endDate');
 
 router.get('/account-summary', (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
-    const data = getAccountSummary(startDate as string, endDate as string);
+    const query = parseRequest(dateRangeQuerySchema, req.query, res);
+    if (!query) return;
+    const data = getAccountSummary(query.startDate, query.endDate);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -25,8 +32,9 @@ router.get('/account-summary', (req: Request, res: Response) => {
 
 router.get('/category-summary', (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
-    const data = getCategorySummary(startDate as string, endDate as string);
+    const query = parseRequest(dateRangeQuerySchema, req.query, res);
+    if (!query) return;
+    const data = getCategorySummary(query.startDate, query.endDate);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -36,8 +44,9 @@ router.get('/category-summary', (req: Request, res: Response) => {
 
 router.get('/metrics', (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
-    const data = getDashboardMetrics(startDate as string, endDate as string);
+    const query = parseRequest(dateRangeQuerySchema, req.query, res);
+    if (!query) return;
+    const data = getDashboardMetrics(query.startDate, query.endDate);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -47,8 +56,9 @@ router.get('/metrics', (req: Request, res: Response) => {
 
 router.get('/charts/net-worth', (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
-    const data = prepareNetWorthData(startDate as string, endDate as string);
+    const query = parseRequest(dateRangeQuerySchema, req.query, res);
+    if (!query) return;
+    const data = prepareNetWorthData(query.startDate, query.endDate);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -58,8 +68,9 @@ router.get('/charts/net-worth', (req: Request, res: Response) => {
 
 router.get('/charts/sankey', (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
-    const data = prepareSankeyData(startDate as string, endDate as string);
+    const query = parseRequest(dateRangeQuerySchema, req.query, res);
+    if (!query) return;
+    const data = prepareSankeyData(query.startDate, query.endDate);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

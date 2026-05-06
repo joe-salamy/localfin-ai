@@ -96,8 +96,9 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
     const pastTx = db.prepare(`
       SELECT t.subcategory_id, s.name as subcategory_name, c.name as category_name
       FROM transactions t
-      LEFT JOIN subcategories s ON t.subcategory_id = s.id
-      LEFT JOIN categories c ON s.category_id = c.id
+      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
+      JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
+      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
       WHERE t.account_id = ? AND LOWER(TRIM(t.name)) = ? AND t.subcategory_id IS NOT NULL AND t.deleted_at IS NULL
       ORDER BY t.date DESC LIMIT 1
     `).get(tx.account_id, normalizedName) as PastTxRow | undefined;
@@ -139,9 +140,9 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
     const pastExamples = db.prepare(`
       SELECT t.name, t.amount, a.name as account_name, s.name as subcategory_name, c.name as category_name
       FROM transactions t
-      JOIN accounts a ON t.account_id = a.id
-      JOIN subcategories s ON t.subcategory_id = s.id
-      JOIN categories c ON s.category_id = c.id
+      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
+      JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
+      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
       WHERE t.deleted_at IS NULL AND t.subcategory_id IS NOT NULL
       ORDER BY t.date DESC LIMIT ?
     `).all(AI_CONTEXT_SIZE) as PastExampleRow[];
@@ -200,7 +201,10 @@ async function callOpenRouterForCategorization(
   // Build corrections context
   const correctionLines = corrections.map((c) => {
     const sub = db.prepare(
-      'SELECT s.name as subcategory_name, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?'
+      `SELECT s.name as subcategory_name, c.name as category_name
+       FROM subcategories s
+       JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
+       WHERE s.id = ? AND s.deleted_at IS NULL`
     ).get(c.user_corrected_subcategory_id) as { subcategory_name: string; category_name: string } | undefined;
 
     const account = db.prepare('SELECT name FROM accounts WHERE id = ?').get(c.account_id) as { name: string } | undefined;
