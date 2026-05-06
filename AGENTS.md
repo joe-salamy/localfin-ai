@@ -8,15 +8,6 @@ LocalFin AI is a local-first personal finance tracker that uses LLM-powered pars
 - Run `npm run typecheck` (or `npx tsc --noEmit`) to verify the project compiles cleanly.
 - Prefer early returns over deeply nested conditionals.
 
-## Git & Commits
-
-- Read `.gitignore` before running any git commit to know what files to exclude.
-
-## Off-Limits Files
-
-- Never read from, write to, or git diff `scratchpad.md`.
-- When running `/code-reviewer` or `/typescript-code-review`, exclude diffs of files in `.claude/` and `docs/` — these are settings/prose, not reviewable code.
-
 ## Plan Mode
 
 - When asking clarifying questions in plan mode, be liberal; when in doubt, ask more rather than fewer.
@@ -27,4 +18,13 @@ This project uses the design system in `design.md`. Always reference it for colo
 
 ## Documentation
 
+- Keep READMEs concise.
+- rg isn’t installed in this environment; use PowerShell search.
+
+## Misc
+
+- Never read from, write to, or git diff `scratchpad.md`.
+- When asking clarifying questions in plan mode, be liberal; when in doubt, ask more rather than fewer.
+- In plan mode, include a feature branch name (branched from main) as the first step of every implementation plan.
+- In plan mode, write every implementation plan to `docs/plans/<feature-name>.md` so the plan can be passed to audit skills such as `plan-audit`.
 - Keep READMEs concise.
