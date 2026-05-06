@@ -156,6 +156,23 @@ function createBatches<T>(items: T[], batchSize: number): T[][] {
   return batches;
 }
 
+export function normalizeAIResultIndex(
+  resultIndex: unknown,
+  batchLength: number,
+  usesOneBasedIndexes: boolean,
+): number | null {
+  if (typeof resultIndex !== "number" || !Number.isInteger(resultIndex)) {
+    return null;
+  }
+
+  const batchIndex = usesOneBasedIndexes ? resultIndex - 1 : resultIndex;
+  if (batchIndex < 0 || batchIndex >= batchLength) {
+    return null;
+  }
+
+  return batchIndex;
+}
+
 async function processWithConcurrency<T>(
   items: T[],
   concurrency: number,
@@ -275,12 +292,13 @@ ${exampleLines.join("\n")}
 
   const transactionLines = batch.map(
     (tx, i) =>
-      `${i + 1}. "${tx.name}" ($${tx.amount}) on account "${tx.account_name}"`,
+      `- index ${i}: "${tx.name}" ($${tx.amount}) on account "${tx.account_name}"`,
   );
 
   const userMessage = `Categorize these transactions:
 ${transactionLines.join("\n")}
 
+Return exactly one result per transaction using the same zero-based index values shown above.
 Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_name": "...", "category_name": "...", "confidence": 0.8 }] }`;
 
   const response = await callOpenRouter(
@@ -315,10 +333,21 @@ Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_n
   // Validate subcategory IDs and build indexed results
   const validSubcategoryIds = new Set(subcategories.map((s) => s.id));
   const indexedResults: AIResultItem[] = [];
+  const resultIndexes = parsed.results
+    .map((result) => result.index)
+    .filter((index): index is number => Number.isInteger(index));
+  const usesOneBasedIndexes =
+    resultIndexes.length > 0 &&
+    !resultIndexes.includes(0) &&
+    resultIndexes.every((index) => index >= 1 && index <= batch.length);
 
   for (const result of parsed.results) {
-    const batchIndex = result.index;
-    if (batchIndex < 0 || batchIndex >= batch.length) continue;
+    const batchIndex = normalizeAIResultIndex(
+      result.index,
+      batch.length,
+      usesOneBasedIndexes,
+    );
+    if (batchIndex === null) continue;
 
     if (
       result.subcategory_id &&
@@ -341,6 +370,25 @@ Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_n
           confidence: 0.1,
         };
       }
+    }
+  }
+
+  for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
+    if (indexedResults[batchIndex]) continue;
+
+    const tx = batch[batchIndex];
+    const type = tx.amount >= 0 ? "income" : "expense";
+    const unassigned = subcategories.find(
+      (s) => s.name === "Unassigned" && s.category_type === type,
+    );
+    if (unassigned) {
+      indexedResults[batchIndex] = {
+        index: batchIndex,
+        subcategory_id: unassigned.id,
+        subcategory_name: unassigned.name,
+        category_name: unassigned.category_name,
+        confidence: 0.1,
+      };
     }
   }
 
