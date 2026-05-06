@@ -370,7 +370,7 @@ export function MultiTransactionTable() {
 
         const dupResult = await checkDuplicates.mutateAsync(dupPayload);
         const dupData = dupResult.data ?? [];
-        const hasDuplicates = dupData.some((d) => d.isDuplicate);
+        const hasDuplicates = dupData.some(Boolean);
 
         if (hasDuplicates) {
           // Mark duplicate rows
@@ -379,7 +379,7 @@ export function MultiTransactionTable() {
             let filledIdx = 0;
             return prev.map((r) => {
               if (filledIds.includes(r.id)) {
-                const isDup = dupData[filledIdx]?.isDuplicate ?? false;
+                const isDup = dupData[filledIdx] ?? false;
                 filledIdx++;
                 return { ...r, isDuplicate: isDup };
               }

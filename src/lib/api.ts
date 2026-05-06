@@ -80,7 +80,18 @@ export async function apiStream<TEvent>(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `Request failed with status ${res.status}`);
+    let message = text || `Request failed with status ${res.status}`;
+    if (text) {
+      try {
+        const json = JSON.parse(text) as { error?: unknown };
+        if (typeof json.error === 'string') {
+          message = json.error;
+        }
+      } catch {
+        // Keep the raw response text when the server did not return JSON.
+      }
+    }
+    throw new Error(message);
   }
 
   if (!res.body) {
