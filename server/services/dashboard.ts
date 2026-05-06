@@ -1,5 +1,5 @@
-import { differenceInDays, parseISO } from 'date-fns';
-import { getDb } from '../db/index.js';
+import { differenceInDays, parseISO } from "date-fns";
+import { getDb } from "../db/index.js";
 import type {
   AccountSummary,
   AccountTransaction,
@@ -9,7 +9,7 @@ import type {
   DashboardMetrics,
   NetWorthSummary,
   SubcategorySummary,
-} from '../../src/types/index.js';
+} from "../../src/types/index.js";
 
 // === Row types for query results ===
 
@@ -60,23 +60,28 @@ export function getAccountSummary(
 ): { accounts: AccountSummary[]; netWorth: NetWorthSummary } {
   const db = getDb();
 
-  const accounts = db.prepare(
-    `SELECT id, name, type FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
-  ).all() as AccountRow[];
+  const accounts = db
+    .prepare(
+      `SELECT id, name, type FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
+    )
+    .all() as AccountRow[];
 
   const summaries: AccountSummary[] = accounts.map((account) => {
     // Starting balance: sum of all transactions before startDate
-    const balanceRow = db.prepare(
-      `SELECT COALESCE(SUM(amount), 0) AS starting_balance
+    const balanceRow = db
+      .prepare(
+        `SELECT COALESCE(SUM(amount), 0) AS starting_balance
        FROM transactions
        WHERE account_id = ? AND date < ? AND deleted_at IS NULL`,
-    ).get(account.id, startDate) as BalanceRow;
+      )
+      .get(account.id, startDate) as BalanceRow;
 
     const startingBalance = balanceRow.starting_balance;
 
     // Transactions within range
-    const transactions = db.prepare(
-      `SELECT t.id, t.date, t.name, t.amount,
+    const transactions = db
+      .prepare(
+        `SELECT t.id, t.date, t.name, t.amount,
               s.name AS subcategory_name,
               c.name AS category_name
        FROM transactions t
@@ -84,22 +89,25 @@ export function getAccountSummary(
        LEFT JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
        WHERE t.account_id = ? AND t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
        ORDER BY t.date, t.created_at`,
-    ).all(account.id, startDate, endDate) as TransactionRow[];
+      )
+      .all(account.id, startDate, endDate) as TransactionRow[];
 
     // Build transactions with running balance
     let runningBalance = startingBalance;
-    const accountTransactions: AccountTransaction[] = transactions.map((txn) => {
-      runningBalance += txn.amount;
-      return {
-        id: txn.id,
-        date: txn.date,
-        name: txn.name,
-        amount: txn.amount,
-        running_balance: runningBalance,
-        subcategory_name: txn.subcategory_name,
-        category_name: txn.category_name,
-      };
-    });
+    const accountTransactions: AccountTransaction[] = transactions.map(
+      (txn) => {
+        runningBalance += txn.amount;
+        return {
+          id: txn.id,
+          date: txn.date,
+          name: txn.name,
+          amount: txn.amount,
+          running_balance: runningBalance,
+          subcategory_name: txn.subcategory_name,
+          category_name: txn.category_name,
+        };
+      },
+    );
 
     const totalChange = transactions.reduce((sum, t) => sum + t.amount, 0);
 
@@ -124,10 +132,12 @@ export function getCategorySummary(
   endDate: string,
 ): CategorySummary[] {
   const db = getDb();
-  const rangeDays = differenceInDays(parseISO(endDate), parseISO(startDate)) + 1;
+  const rangeDays =
+    differenceInDays(parseISO(endDate), parseISO(startDate)) + 1;
 
-  const rows = db.prepare(
-    `SELECT
+  const rows = db
+    .prepare(
+      `SELECT
        c.id AS category_id,
        c.name AS category_name,
        c.type AS category_type,
@@ -144,7 +154,8 @@ export function getCategorySummary(
      WHERE c.deleted_at IS NULL
      GROUP BY c.id, s.id
      ORDER BY c.type, c.name, s.name`,
-  ).all(startDate, endDate) as CategoryGroupRow[];
+    )
+    .all(startDate, endDate) as CategoryGroupRow[];
 
   // Group by category
   const categoryMap = new Map<string, CategorySummary>();
@@ -164,9 +175,8 @@ export function getCategorySummary(
       categoryMap.set(row.category_id, category);
     }
 
-    const scaledGoal = row.monthly_goal != null
-      ? (row.monthly_goal / 30.42) * rangeDays
-      : null;
+    const scaledGoal =
+      row.monthly_goal != null ? (row.monthly_goal / 30.42) * rangeDays : null;
 
     const subcategory: SubcategorySummary = {
       subcategory_id: row.subcategory_id,
@@ -200,14 +210,16 @@ export function getDashboardMetrics(
 ): DashboardMetrics {
   const db = getDb();
 
-  const row = db.prepare(
-    `SELECT
+  const row = db
+    .prepare(
+      `SELECT
        COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) AS totalIncome,
        COALESCE(SUM(CASE WHEN t.amount < 0 THEN t.amount ELSE 0 END), 0) AS totalExpenses
      FROM transactions t
      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
      WHERE t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL`,
-  ).get(startDate, endDate) as MetricsRow;
+    )
+    .get(startDate, endDate) as MetricsRow;
 
   return {
     totalIncome: row.totalIncome,
@@ -219,8 +231,9 @@ export function getDashboardMetrics(
 export function calculateNetWorth(atDate: string): NetWorthSummary {
   const db = getDb();
 
-  const rows = db.prepare(
-    `SELECT a.type AS account_type, COALESCE(SUM(t.amount), 0) AS total
+  const rows = db
+    .prepare(
+      `SELECT a.type AS account_type, COALESCE(SUM(t.amount), 0) AS total
      FROM accounts a
      LEFT JOIN transactions t
        ON t.account_id = a.id
@@ -228,15 +241,16 @@ export function calculateNetWorth(atDate: string): NetWorthSummary {
        AND t.deleted_at IS NULL
      WHERE a.deleted_at IS NULL
      GROUP BY a.type`,
-  ).all(atDate) as NetWorthRow[];
+    )
+    .all(atDate) as NetWorthRow[];
 
   let totalAssets = 0;
   let totalLiabilities = 0;
 
   for (const row of rows) {
-    if (row.account_type === 'asset') {
+    if (row.account_type === "asset") {
       totalAssets = row.total;
-    } else if (row.account_type === 'liability') {
+    } else if (row.account_type === "liability") {
       totalLiabilities = row.total;
     }
   }

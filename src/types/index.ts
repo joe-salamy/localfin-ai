@@ -255,6 +255,8 @@ export interface CreateTransactionData {
   amount: number;
   subcategory_id?: string | null;
   comment?: string | null;
+  ai_suggested?: boolean;
+  user_corrected?: boolean;
 }
 
 export interface CreateSpendingGoalData {

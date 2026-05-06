@@ -6,14 +6,14 @@ import {
   format,
   isBefore,
   parseISO,
-} from 'date-fns';
-import { getDb } from '../db/index.js';
+} from "date-fns";
+import { getDb } from "../db/index.js";
 import type {
   NetWorthDataPoint,
   SankeyData,
   SankeyLink,
   SankeyNode,
-} from '../../src/types/index.js';
+} from "../../src/types/index.js";
 
 // === Row types for query results ===
 
@@ -46,19 +46,21 @@ export function prepareNetWorthData(
 
   if (totalDays < 28) {
     advanceFn = addDays;
-    dateFormat = 'MMM d';
+    dateFormat = "MMM d";
   } else if (totalDays < 180) {
     advanceFn = addWeeks;
-    dateFormat = 'MMM d';
+    dateFormat = "MMM d";
   } else {
     advanceFn = addMonths;
-    dateFormat = 'MMM yyyy';
+    dateFormat = "MMM yyyy";
   }
 
   // Get all non-deleted accounts
-  const accounts = db.prepare(
-    `SELECT id, name, type FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
-  ).all() as AccountRow[];
+  const accounts = db
+    .prepare(
+      `SELECT id, name, type FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
+    )
+    .all() as AccountRow[];
 
   // Prepare statement for cumulative balance per account up to a given date
   const balanceStmt = db.prepare(
@@ -71,8 +73,11 @@ export function prepareNetWorthData(
   const dataPoints: NetWorthDataPoint[] = [];
   let current = start;
 
-  while (isBefore(current, end) || format(current, 'yyyy-MM-dd') === format(end, 'yyyy-MM-dd')) {
-    const dateStr = format(current, 'yyyy-MM-dd');
+  while (
+    isBefore(current, end) ||
+    format(current, "yyyy-MM-dd") === format(end, "yyyy-MM-dd")
+  ) {
+    const dateStr = format(current, "yyyy-MM-dd");
     const formattedDate = format(current, dateFormat);
 
     const point: NetWorthDataPoint = {
@@ -88,7 +93,7 @@ export function prepareNetWorthData(
       const balance = row.balance;
       point[account.name] = balance;
 
-      if (account.type === 'asset') {
+      if (account.type === "asset") {
         netWorth += balance;
       } else {
         netWorth -= balance;
@@ -106,7 +111,10 @@ export function prepareNetWorthData(
     }
 
     // Ensure we don't go past the end date
-    if (isBefore(end, current) && format(current, 'yyyy-MM-dd') !== format(end, 'yyyy-MM-dd')) {
+    if (
+      isBefore(end, current) &&
+      format(current, "yyyy-MM-dd") !== format(end, "yyyy-MM-dd")
+    ) {
       break;
     }
   }
@@ -121,8 +129,9 @@ export function prepareSankeyData(
   const db = getDb();
 
   // Get income flows (positive amounts in income categories)
-  const incomeRows = db.prepare(
-    `SELECT c.name AS category_name, s.name AS subcategory_name,
+  const incomeRows = db
+    .prepare(
+      `SELECT c.name AS category_name, s.name AS subcategory_name,
             COALESCE(SUM(t.amount), 0) AS total
      FROM transactions t
      JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
@@ -134,11 +143,13 @@ export function prepareSankeyData(
      GROUP BY c.id, s.id
      HAVING total > 0
      ORDER BY total DESC`,
-  ).all(startDate, endDate) as CategoryFlowRow[];
+    )
+    .all(startDate, endDate) as CategoryFlowRow[];
 
   // Get expense flows (negative amounts in expense categories)
-  const expenseRows = db.prepare(
-    `SELECT c.name AS category_name, s.name AS subcategory_name,
+  const expenseRows = db
+    .prepare(
+      `SELECT c.name AS category_name, s.name AS subcategory_name,
             COALESCE(SUM(ABS(t.amount)), 0) AS total
      FROM transactions t
      JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
@@ -150,7 +161,8 @@ export function prepareSankeyData(
      GROUP BY c.id, s.id
      HAVING total > 0
      ORDER BY total DESC`,
-  ).all(startDate, endDate) as CategoryFlowRow[];
+    )
+    .all(startDate, endDate) as CategoryFlowRow[];
 
   const nodes: SankeyNode[] = [];
   const links: SankeyLink[] = [];
@@ -186,43 +198,51 @@ export function prepareSankeyData(
   }
 
   // Add center nodes
-  addNode('Total Income', '#676767');
-  addNode('Total Expenses', '#676767');
+  addNode("Total Income", "#676767");
+  addNode("Total Expenses", "#676767");
 
   // Income subcategories -> Income categories -> Total Income
   for (const row of incomeRows) {
     const subId = `${row.subcategory_name} (income)`;
-    addNode(subId, '#003804');
-    addNode(row.category_name, '#334f35');
+    addNode(subId, "#003804");
+    addNode(row.category_name, "#334f35");
     links.push({ source: subId, target: row.category_name, value: row.total });
   }
 
   for (const [categoryName, total] of incomeCategoryTotals) {
-    links.push({ source: categoryName, target: 'Total Income', value: total });
+    links.push({ source: categoryName, target: "Total Income", value: total });
   }
 
   // Total Income -> Total Expenses
   const flowToExpenses = Math.min(totalIncome, totalExpenses);
   if (flowToExpenses > 0) {
-    links.push({ source: 'Total Income', target: 'Total Expenses', value: flowToExpenses });
+    links.push({
+      source: "Total Income",
+      target: "Total Expenses",
+      value: flowToExpenses,
+    });
   }
 
   // Savings node if income > expenses
   if (totalIncome > totalExpenses) {
     const savings = totalIncome - totalExpenses;
-    addNode('Savings', '#090088');
-    links.push({ source: 'Total Income', target: 'Savings', value: savings });
+    addNode("Savings", "#090088");
+    links.push({ source: "Total Income", target: "Savings", value: savings });
   }
 
   // Total Expenses -> Expense categories -> Expense subcategories
   for (const [categoryName, total] of expenseCategoryTotals) {
-    addNode(categoryName, '#6b3434');
-    links.push({ source: 'Total Expenses', target: categoryName, value: total });
+    addNode(categoryName, "#6b3434");
+    links.push({
+      source: "Total Expenses",
+      target: categoryName,
+      value: total,
+    });
   }
 
   for (const row of expenseRows) {
     const subId = `${row.subcategory_name} (expense)`;
-    addNode(subId, '#6f0000');
+    addNode(subId, "#6f0000");
     links.push({ source: row.category_name, target: subId, value: row.total });
   }
 

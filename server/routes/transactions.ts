@@ -33,6 +33,8 @@ const createTransactionSchema = z.object({
   amount: finiteNumber,
   subcategory_id: nonEmptyString.nullable().optional(),
   comment: z.string().nullable().optional(),
+  ai_suggested: z.boolean().optional(),
+  user_corrected: z.boolean().optional(),
 });
 const updateTransactionSchema = z.object({
   date: isoDateString.optional(),

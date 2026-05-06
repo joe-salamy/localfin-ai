@@ -1,10 +1,12 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { ClipboardEvent, ChangeEvent } from 'react';
 import { format, parse } from 'date-fns';
-import { X, AlertTriangle, Plus, Trash2, Save } from 'lucide-react';
+import { X, AlertTriangle, Plus, Trash2, Save, Sparkles, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useAccounts } from '@/hooks/useAccounts';
+import { useAI } from '@/hooks/useAI';
 import { useCategories } from '@/hooks/useCategories';
 import { useTransactions } from '@/hooks/useTransactions';
 import { formatDateInput, cn } from '@/lib/utils';
@@ -22,6 +24,9 @@ interface TransactionRow {
   comment: string;
   isDuplicate: boolean;
   transferMatch: unknown | null;
+  categorizationSource: 'lookup' | 'correction' | 'ai' | 'none' | 'manual';
+  aiConfidence: number | null;
+  aiSuggestedSubcategoryId: string | null;
 }
 
 function emptyRow(): TransactionRow {
@@ -35,6 +40,9 @@ function emptyRow(): TransactionRow {
     comment: '',
     isDuplicate: false,
     transferMatch: null,
+    categorizationSource: 'manual',
+    aiConfidence: null,
+    aiSuggestedSubcategoryId: null,
   };
 }
 
@@ -133,10 +141,15 @@ export function MultiTransactionTable() {
   const { accounts } = useAccounts();
   const { categories, subcategories } = useCategories();
   const { bulkCreateTransactions, checkDuplicates } = useTransactions();
+  const { categorize, parseStatement, saveCorrection } = useAI();
 
   const [rows, setRows] = useState<TransactionRow[]>(initialRows);
   const [saving, setSaving] = useState(false);
   const [duplicatesChecked, setDuplicatesChecked] = useState(false);
+  const [statementText, setStatementText] = useState('');
+  const [statementAccountId, setStatementAccountId] = useState('');
+  const [lastRunId, setLastRunId] = useState<string | null>(null);
+  const [parseSummary, setParseSummary] = useState<string | null>(null);
 
   // ── Row manipulation ──────────────────────────────────────────────
 
@@ -155,6 +168,38 @@ export function MultiTransactionTable() {
   const addRow = useCallback(() => {
     setRows((prev) => [...prev, emptyRow()]);
   }, []);
+
+  const handleSubcategoryChange = useCallback(
+    async (row: TransactionRow, value: string) => {
+      updateRow(row.id, 'subcategory_id', value);
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === row.id
+            ? {
+              ...r,
+              subcategory_id: value,
+              categorizationSource: row.categorizationSource === 'ai' ? 'manual' : r.categorizationSource,
+            }
+            : r,
+        ),
+      );
+
+      if (!value || row.categorizationSource !== 'ai' || !row.account_id) return;
+
+      try {
+        await saveCorrection.mutateAsync({
+          transaction_name: row.name,
+          account_id: row.account_id,
+          ai_suggested_subcategory_id: row.aiSuggestedSubcategoryId,
+          user_corrected_subcategory_id: value,
+        });
+        toast.success('AI correction saved for future matches.');
+      } catch {
+        toast.error('Category changed, but AI correction was not saved.');
+      }
+    },
+    [saveCorrection, updateRow],
+  );
 
   const removeRow = useCallback((id: string) => {
     setRows((prev) => {
@@ -213,6 +258,89 @@ export function MultiTransactionTable() {
   // ── Submit ────────────────────────────────────────────────────────
 
   const filledRows = useMemo(() => rows.filter(isRowFilled), [rows]);
+
+  const handleAICategorize = useCallback(async () => {
+    const eligibleRows = filledRows.filter((r) => r.name && r.amount && r.account_id);
+    if (eligibleRows.length === 0) {
+      toast.error('Rows need a name, amount, and account before AI categorization.');
+      return;
+    }
+
+    const conversationId = crypto.randomUUID();
+    setLastRunId(conversationId);
+
+    try {
+      const result = await categorize.mutateAsync({
+        conversationId,
+        transactions: eligibleRows.map((row) => ({
+          name: row.name,
+          account_id: row.account_id,
+          account_name: accounts.find((account) => account.id === row.account_id)?.name ?? 'Unknown',
+          amount: displayAmountToNumber(row.amount),
+        })),
+      });
+      const data = result.data ?? [];
+      setRows((prev) => {
+        const byId = new Map(eligibleRows.map((row, index) => [row.id, data[index]]));
+        return prev.map((row) => {
+          const cat = byId.get(row.id);
+          if (!cat) return row;
+          return {
+            ...row,
+            subcategory_id: cat.subcategory_id ?? row.subcategory_id,
+            categorizationSource: cat.source,
+            aiConfidence: cat.confidence,
+            aiSuggestedSubcategoryId: cat.source === 'ai' ? cat.subcategory_id : null,
+          };
+        });
+      });
+      toast.success(`Categorized ${data.length} row(s).`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'AI categorization failed.');
+    }
+  }, [accounts, categorize, filledRows]);
+
+  const handleParseStatement = useCallback(async () => {
+    if (!statementText.trim() || !statementAccountId) {
+      toast.error('Choose an account and paste statement text first.');
+      return;
+    }
+
+    const conversationId = crypto.randomUUID();
+    setLastRunId(conversationId);
+
+    try {
+      const result = await parseStatement.mutateAsync({
+        text: statementText,
+        accountId: statementAccountId,
+        conversationId,
+      });
+      const data = result.data;
+      if (!data) return;
+
+      setRows(data.transactions.map((tx) => ({
+        id: crypto.randomUUID(),
+        date: formatDateInput(tx.date),
+        name: tx.name,
+        amount: String(tx.amount.toFixed(2)),
+        account_id: statementAccountId,
+        subcategory_id: tx.subcategory_id ?? '',
+        comment: tx.needsReview ? 'Needs review' : '',
+        isDuplicate: tx.isDuplicate,
+        transferMatch: null,
+        categorizationSource: tx.categorizationSource,
+        aiConfidence: tx.aiConfidence,
+        aiSuggestedSubcategoryId: tx.categorizationSource === 'ai' ? tx.subcategory_id : null,
+      })));
+      setDuplicatesChecked(data.summary.duplicates > 0);
+      setParseSummary(
+        `${data.summary.total} parsed, ${data.summary.fromAI} from AI, ${data.summary.duplicates} duplicate(s), ${Math.round(data.parseSuccessRate * 100)}% success`,
+      );
+      toast.success(`Parsed ${data.summary.total} transaction(s).`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Statement parsing failed.');
+    }
+  }, [parseStatement, statementAccountId, statementText]);
 
   const handleSave = useCallback(async () => {
     // Validate
@@ -275,6 +403,8 @@ export function MultiTransactionTable() {
         amount: displayAmountToNumber(r.amount),
         subcategory_id: r.subcategory_id || null,
         comment: r.comment || null,
+        ai_suggested: r.categorizationSource === 'ai',
+        user_corrected: r.categorizationSource === 'manual' && Boolean(r.aiSuggestedSubcategoryId),
       }));
 
       await bulkCreateTransactions.mutateAsync(payload);
@@ -316,6 +446,10 @@ export function MultiTransactionTable() {
           <Plus className="mr-1 h-3.5 w-3.5" />
           Add Row
         </Button>
+        <Button size="sm" variant="secondary" onClick={handleAICategorize} loading={categorize.isPending}>
+          <Sparkles className="mr-1 h-3.5 w-3.5" />
+          AI Categorize
+        </Button>
         <Button size="sm" variant="ghost" onClick={clearAll}>
           <Trash2 className="mr-1 h-3.5 w-3.5" />
           Clear All
@@ -329,6 +463,46 @@ export function MultiTransactionTable() {
           Save All
         </Button>
       </div>
+
+      <Card className="p-3">
+        <CardHeader className="mb-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <FileText className="h-4 w-4" />
+            Statement Import
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={statementAccountId}
+              onChange={(e) => setStatementAccountId(e.target.value)}
+              className="h-8 rounded border border-border bg-input px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">Select account</option>
+              {accountOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <Button size="sm" variant="secondary" onClick={handleParseStatement} loading={parseStatement.isPending}>
+              Parse Statement
+            </Button>
+            {lastRunId && (
+              <span className="self-center text-xs text-muted-foreground">
+                log: logs/{lastRunId}.jsonl
+              </span>
+            )}
+          </div>
+          <textarea
+            value={statementText}
+            onChange={(e) => setStatementText(e.target.value)}
+            placeholder="Paste statement lines here"
+            className="min-h-20 w-full rounded border border-border bg-input px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          {parseSummary && <p className="text-xs text-muted-foreground">{parseSummary}</p>}
+        </CardContent>
+      </Card>
 
       {/* Table */}
       <div className="overflow-x-auto rounded-md border border-border">
@@ -432,14 +606,18 @@ export function MultiTransactionTable() {
                 <td className="px-1 py-0.5">
                   <GroupedSubcategorySelect
                     value={row.subcategory_id}
-                    onChange={(val) =>
-                      updateRow(row.id, 'subcategory_id', val)
-                    }
+                    onChange={(val) => void handleSubcategoryChange(row, val)}
                     categories={categories}
                     subcategories={subcategories}
                     filterType={getSubcategoryFilter(row.amount)}
                     className="w-36"
                   />
+                  {row.categorizationSource !== 'manual' && (
+                    <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {row.categorizationSource}
+                      {row.aiConfidence != null ? ` ${Math.round(row.aiConfidence * 100)}%` : ''}
+                    </div>
+                  )}
                 </td>
 
                 {/* Comment */}

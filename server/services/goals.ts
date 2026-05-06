@@ -1,4 +1,4 @@
-import crypto from 'node:crypto';
+import crypto from "node:crypto";
 import {
   endOfMonth,
   endOfQuarter,
@@ -10,14 +10,14 @@ import {
   startOfQuarter,
   startOfWeek,
   startOfYear,
-} from 'date-fns';
-import { getDb } from '../db/index.js';
+} from "date-fns";
+import { getDb } from "../db/index.js";
 import type {
   CreateSpendingGoalData,
   GoalPeriod,
   SpendingGoal,
   SpendingGoalWithDetails,
-} from '../../src/types/index.js';
+} from "../../src/types/index.js";
 
 // === Row types for query results ===
 
@@ -57,12 +57,14 @@ function rowToGoal(row: SpendingGoalRow): SpendingGoal {
   };
 }
 
-function rowToGoalWithDetails(row: SpendingGoalWithDetailsRow): SpendingGoalWithDetails {
+function rowToGoalWithDetails(
+  row: SpendingGoalWithDetailsRow,
+): SpendingGoalWithDetails {
   return {
     ...rowToGoal(row),
     subcategory_name: row.subcategory_name,
     category_name: row.category_name,
-    category_type: row.category_type as 'income' | 'expense',
+    category_type: row.category_type as "income" | "expense",
   };
 }
 
@@ -74,38 +76,42 @@ function getPeriodBoundaries(
   let end: Date;
 
   switch (period) {
-    case 'weekly':
+    case "weekly":
       start = startOfWeek(referenceDate, { weekStartsOn: 0 });
       end = endOfWeek(referenceDate, { weekStartsOn: 0 });
       break;
-    case 'monthly':
+    case "monthly":
       start = startOfMonth(referenceDate);
       end = endOfMonth(referenceDate);
       break;
-    case 'quarterly':
+    case "quarterly":
       start = startOfQuarter(referenceDate);
       end = endOfQuarter(referenceDate);
       break;
-    case 'annual':
+    case "annual":
       start = startOfYear(referenceDate);
       end = endOfYear(referenceDate);
       break;
   }
 
   return {
-    periodStart: format(start, 'yyyy-MM-dd'),
-    periodEnd: format(end, 'yyyy-MM-dd'),
+    periodStart: format(start, "yyyy-MM-dd"),
+    periodEnd: format(end, "yyyy-MM-dd"),
   };
 }
 
 function assertActiveSubcategory(subcategoryId: string): void {
   const db = getDb();
-  const subcategory = db.prepare(`
+  const subcategory = db
+    .prepare(
+      `
     SELECT 1
     FROM subcategories s
     JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
     WHERE s.id = ? AND s.deleted_at IS NULL
-  `).get(subcategoryId);
+  `,
+    )
+    .get(subcategoryId);
 
   if (!subcategory) {
     throw new Error(`Subcategory with id "${subcategoryId}" not found`);
@@ -122,76 +128,102 @@ export function createSpendingGoal(data: CreateSpendingGoalData): SpendingGoal {
   assertActiveSubcategory(data.subcategory_id);
 
   // Enforce one goal per subcategory
-  const existing = db.prepare(
-    `SELECT 1 FROM spending_goals
+  const existing = db
+    .prepare(
+      `SELECT 1 FROM spending_goals
      WHERE subcategory_id = ? AND deleted_at IS NULL`,
-  ).get(data.subcategory_id);
+    )
+    .get(data.subcategory_id);
 
   if (existing) {
-    throw new Error('A spending goal already exists for this subcategory');
+    throw new Error("A spending goal already exists for this subcategory");
   }
 
   db.prepare(
     `INSERT INTO spending_goals (id, subcategory_id, amount, period, start_date, end_date, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, data.subcategory_id, data.amount, data.period, data.start_date, data.end_date ?? null, now, now);
+  ).run(
+    id,
+    data.subcategory_id,
+    data.amount,
+    data.period,
+    data.start_date,
+    data.end_date ?? null,
+    now,
+    now,
+  );
 
-  const row = db.prepare('SELECT * FROM spending_goals WHERE id = ?').get(id) as SpendingGoalRow;
+  const row = db
+    .prepare("SELECT * FROM spending_goals WHERE id = ?")
+    .get(id) as SpendingGoalRow;
   return rowToGoal(row);
 }
 
 export function getSpendingGoals(): SpendingGoal[] {
   const db = getDb();
-  const rows = db.prepare(
-    `SELECT g.*
+  const rows = db
+    .prepare(
+      `SELECT g.*
      FROM spending_goals g
      JOIN subcategories s ON g.subcategory_id = s.id AND s.deleted_at IS NULL
      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
      WHERE g.deleted_at IS NULL
      ORDER BY g.created_at DESC`,
-  ).all() as SpendingGoalRow[];
+    )
+    .all() as SpendingGoalRow[];
   return rows.map(rowToGoal);
 }
 
 export function getSpendingGoalsWithDetails(): SpendingGoalWithDetails[] {
   const db = getDb();
-  const rows = db.prepare(
-    `SELECT g.*, s.name AS subcategory_name, c.name AS category_name, c.type AS category_type
+  const rows = db
+    .prepare(
+      `SELECT g.*, s.name AS subcategory_name, c.name AS category_name, c.type AS category_type
      FROM spending_goals g
      JOIN subcategories s ON g.subcategory_id = s.id AND s.deleted_at IS NULL
      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
      WHERE g.deleted_at IS NULL
      ORDER BY g.created_at DESC`,
-  ).all() as SpendingGoalWithDetailsRow[];
+    )
+    .all() as SpendingGoalWithDetailsRow[];
   return rows.map(rowToGoalWithDetails);
 }
 
 export function getSpendingGoalById(id: string): SpendingGoal | undefined {
   const db = getDb();
-  const row = db.prepare(
-    `SELECT g.*
+  const row = db
+    .prepare(
+      `SELECT g.*
      FROM spending_goals g
      JOIN subcategories s ON g.subcategory_id = s.id AND s.deleted_at IS NULL
      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
      WHERE g.id = ? AND g.deleted_at IS NULL`,
-  ).get(id) as SpendingGoalRow | undefined;
+    )
+    .get(id) as SpendingGoalRow | undefined;
   return row ? rowToGoal(row) : undefined;
 }
 
 export function updateSpendingGoal(
   id: string,
-  updates: { amount?: number; period?: GoalPeriod; start_date?: string; end_date?: string | null },
+  updates: {
+    amount?: number;
+    period?: GoalPeriod;
+    start_date?: string;
+    end_date?: string | null;
+  },
 ): SpendingGoal {
   const db = getDb();
   const now = new Date().toISOString();
 
-  const existing = db.prepare(
-    `SELECT g.*
+  const existing = db
+    .prepare(
+      `SELECT g.*
      FROM spending_goals g
      JOIN subcategories s ON g.subcategory_id = s.id AND s.deleted_at IS NULL
      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
      WHERE g.id = ? AND g.deleted_at IS NULL`,
-  ).get(id) as SpendingGoalRow | undefined;
+    )
+    .get(id) as SpendingGoalRow | undefined;
 
   if (!existing) {
     throw new Error(`Spending goal with id "${id}" not found`);
@@ -200,13 +232,16 @@ export function updateSpendingGoal(
   const amount = updates.amount ?? existing.amount;
   const period = updates.period ?? existing.period;
   const startDate = updates.start_date ?? existing.start_date;
-  const endDate = updates.end_date !== undefined ? updates.end_date : existing.end_date;
+  const endDate =
+    updates.end_date !== undefined ? updates.end_date : existing.end_date;
 
   db.prepare(
     `UPDATE spending_goals SET amount = ?, period = ?, start_date = ?, end_date = ?, updated_at = ? WHERE id = ?`,
   ).run(amount, period, startDate, endDate, now, id);
 
-  const row = db.prepare('SELECT * FROM spending_goals WHERE id = ?').get(id) as SpendingGoalRow;
+  const row = db
+    .prepare("SELECT * FROM spending_goals WHERE id = ?")
+    .get(id) as SpendingGoalRow;
   return rowToGoal(row);
 }
 
@@ -214,15 +249,18 @@ export function deleteSpendingGoal(id: string): void {
   const db = getDb();
   const now = new Date().toISOString();
 
-  const existing = db.prepare(
-    `SELECT * FROM spending_goals WHERE id = ? AND deleted_at IS NULL`,
-  ).get(id) as SpendingGoalRow | undefined;
+  const existing = db
+    .prepare(`SELECT * FROM spending_goals WHERE id = ? AND deleted_at IS NULL`)
+    .get(id) as SpendingGoalRow | undefined;
 
   if (!existing) {
     throw new Error(`Spending goal with id "${id}" not found`);
   }
 
-  db.prepare('UPDATE spending_goals SET deleted_at = ? WHERE id = ?').run(now, id);
+  db.prepare("UPDATE spending_goals SET deleted_at = ? WHERE id = ?").run(
+    now,
+    id,
+  );
 }
 
 export function getSpendingProgress(
@@ -231,29 +269,36 @@ export function getSpendingProgress(
 ): { spent: number; remaining: number; percentUsed: number } {
   const db = getDb();
 
-  const goal = db.prepare(
-    `SELECT g.*
+  const goal = db
+    .prepare(
+      `SELECT g.*
      FROM spending_goals g
      JOIN subcategories s ON g.subcategory_id = s.id AND s.deleted_at IS NULL
      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
      WHERE g.id = ? AND g.deleted_at IS NULL`,
-  ).get(goalId) as SpendingGoalRow | undefined;
+    )
+    .get(goalId) as SpendingGoalRow | undefined;
 
   if (!goal) {
     throw new Error(`Spending goal with id "${goalId}" not found`);
   }
 
   const refDate = referenceDate ? parseISO(referenceDate) : new Date();
-  const { periodStart, periodEnd } = getPeriodBoundaries(goal.period as GoalPeriod, refDate);
+  const { periodStart, periodEnd } = getPeriodBoundaries(
+    goal.period as GoalPeriod,
+    refDate,
+  );
 
   // Sum absolute value of spending for the subcategory in the period
-  const row = db.prepare(
-    `SELECT COALESCE(SUM(ABS(t.amount)), 0) AS spent
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(ABS(t.amount)), 0) AS spent
      FROM transactions t
      WHERE t.subcategory_id = ?
        AND t.date >= ? AND t.date <= ?
        AND t.deleted_at IS NULL`,
-  ).get(goal.subcategory_id, periodStart, periodEnd) as SpentRow;
+    )
+    .get(goal.subcategory_id, periodStart, periodEnd) as SpentRow;
 
   const spent = row.spent;
   const remaining = Math.max(0, goal.amount - spent);

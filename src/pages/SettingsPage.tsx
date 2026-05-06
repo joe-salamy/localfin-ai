@@ -1,44 +1,9 @@
-import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 
 export function SettingsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">Settings</h1>
-
-      <Card>
-        <CardHeader className="mb-2">
-          <CardTitle>Manage Accounts</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-2">
-            Add, edit, or delete accounts and set initial balances.
-          </p>
-          <Link
-            to="/setup"
-            className="text-sm font-medium text-blue-400 hover:text-blue-300 underline"
-          >
-            Go to Setup page
-          </Link>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="mb-2">
-          <CardTitle>Manage Categories</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-2">
-            Add, edit, or delete categories and subcategories. Set spending goals.
-          </p>
-          <Link
-            to="/setup"
-            className="text-sm font-medium text-blue-400 hover:text-blue-300 underline"
-          >
-            Go to Setup page
-          </Link>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader className="mb-2">
