@@ -1,10 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Plus, History, Settings } from 'lucide-react';
+import { LayoutDashboard, Plus, History, Settings, SlidersHorizontal } from 'lucide-react';
 
 const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/transactions/input', label: 'Add', icon: Plus },
   { to: '/transactions/history', label: 'History', icon: History },
+  { to: '/setup', label: 'Setup', icon: SlidersHorizontal },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
