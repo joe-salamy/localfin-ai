@@ -1,4 +1,4 @@
-import { appendFile, mkdir } from 'node:fs/promises';
+import { appendFile, mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { AI_MODELS, ENV_KEYS, OPENROUTER_CONFIG, type AIModel } from '../config/app.js';
@@ -38,12 +38,33 @@ function safeLogId(value: string): string {
   return value.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, OPENROUTER_CONFIG.maxLogIdLength) || crypto.randomUUID();
 }
 
+const conversationLogFiles = new Map<string, string>();
+
+function sortableTimestamp(date = new Date()): string {
+  return date.toISOString().replace('T', '_').replace(/[:.]/g, '-');
+}
+
+async function resolveConversationLogFile(conversationId: string): Promise<string> {
+  const safeConversationId = safeLogId(conversationId);
+  const cachedFileName = conversationLogFiles.get(safeConversationId);
+  if (cachedFileName) return cachedFileName;
+
+  const fileSuffix = `-${safeConversationId}.jsonl`;
+  const existingFileName = (await readdir(OPENROUTER_CONFIG.logDirectory))
+    .filter((name) => name.endsWith(fileSuffix))
+    .sort()[0];
+  const fileName = existingFileName ?? `${sortableTimestamp()}-${safeConversationId}.jsonl`;
+
+  conversationLogFiles.set(safeConversationId, fileName);
+  return fileName;
+}
+
 export async function appendConversationLog(
   conversationId: string,
   event: Record<string, unknown>,
 ): Promise<string> {
   await mkdir(OPENROUTER_CONFIG.logDirectory, { recursive: true });
-  const fileName = `${safeLogId(conversationId)}.jsonl`;
+  const fileName = await resolveConversationLogFile(conversationId);
   const logFile = path.join(OPENROUTER_CONFIG.logDirectory, fileName);
   await appendFile(logFile, `${JSON.stringify(event)}\n`, 'utf8');
   return logFile;

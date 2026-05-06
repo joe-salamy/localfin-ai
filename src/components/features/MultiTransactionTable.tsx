@@ -454,7 +454,7 @@ export function MultiTransactionTable() {
             </Button>
             {lastRunId && (
               <span className="self-center text-xs text-muted-foreground">
-                log: logs/{lastRunId}.jsonl
+                log: logs/*-{lastRunId}.jsonl
               </span>
             )}
           </div>

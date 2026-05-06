@@ -48,7 +48,7 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
   const { pathname } = useLocation();
   const { streamChat } = useAI();
 
-  const logHint = useMemo(() => `logs/${conversationId}.jsonl`, [conversationId]);
+  const logHint = useMemo(() => `logs/*-${conversationId}.jsonl`, [conversationId]);
   const isStreaming = streamState !== null;
 
   useEffect(() => {
