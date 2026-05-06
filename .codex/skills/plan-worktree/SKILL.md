@@ -20,14 +20,14 @@ Use this skill before implementing a plan when the work should happen in a new w
 
 3. Create unique names from the slug:
    - Branch: `feature/<slug>`
-   - Worktree path: `..\law-essay-gen-<slug>`
+   - Worktree path: `..\<repo>-<slug>`
    - If either already exists, append `-2`, `-3`, etc. until both are unused.
 
 4. Create the worktree from `main`:
 
 ```powershell
 git fetch --all --prune
-git worktree add ..\law-essay-gen-<slug> -b feature/<slug> main
+git worktree add ..\<repo>-<slug> -b feature/<slug> main
 ```
 
 If `main` is not available locally, inspect branches and use the repository's default branch. Do not merge or rebase as part of setup unless the user explicitly asked.
@@ -35,7 +35,7 @@ If `main` is not available locally, inspect branches and use the repository's de
 5. Move into the new worktree and do all implementation there:
 
 ```powershell
-Set-Location ..\law-essay-gen-<slug>
+Set-Location ..\<repo>-<slug>
 ```
 
 Do not edit the original checkout after the worktree has been created, except to report status.
@@ -68,7 +68,7 @@ Before creating the worktree, check both branch and directory collisions:
 
 ```powershell
 git branch --list feature/<slug>
-Test-Path ..\law-essay-gen-<slug>
+Test-Path ..\<repo>-<slug>
 ```
 
 If either command shows a collision, choose the next numeric suffix and check again.

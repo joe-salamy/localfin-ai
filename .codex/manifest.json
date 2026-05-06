@@ -3,7 +3,7 @@
     "name": "generalize-claude-setup",
     "version": "0.1.0"
   },
-  "repo_root": "C:\\Users\\joesa\\Documents\\law-school-python\\law-essay-gen",
+  "repo_root": "C:\\Users\\joesa\\Documents\\law-school-python\\<repo>",
   "owned_files": [
     ".agent-harness/update-managed-files.py",
     ".claude/skills/ai-sdk/SKILL.md",
