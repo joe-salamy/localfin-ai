@@ -66,18 +66,20 @@ interface CorrectionRow {
   created_at: string;
 }
 
+interface UnknownTransaction {
+  index: number;
+  name: string;
+  account_id: string;
+  account_name: string;
+  amount: number;
+}
+
 export async function categorizeTransactions(
   request: CategorizeRequest,
 ): Promise<CategorizeResult[]> {
   const db = getDb();
   const results: CategorizeResult[] = [];
-  const unknowns: {
-    index: number;
-    name: string;
-    account_id: string;
-    account_name: string;
-    amount: number;
-  }[] = [];
+  const unknowns: UnknownTransaction[] = [];
 
   // Step 1: For each transaction, try corrections then lookup
   for (let i = 0; i < request.transactions.length; i++) {
@@ -177,54 +179,109 @@ export async function categorizeTransactions(
 
     const corrections = getAICorrections();
 
-    // Process in batches
-    for (let i = 0; i < unknowns.length; i += AI_CONFIG.batchSize) {
-      const batch = unknowns.slice(i, i + AI_CONFIG.batchSize);
-
-      try {
-        const aiResults = await callOpenRouterForCategorization(
-          batch,
-          subcategories,
-          pastExamples,
-          corrections,
-          request.conversationId,
-        );
-
-        for (let j = 0; j < batch.length; j++) {
-          const aiResult = aiResults[j];
-          if (aiResult && aiResult.subcategory_id) {
-            results[batch[j].index] = {
-              transaction_name: batch[j].name,
-              subcategory_id: aiResult.subcategory_id,
-              subcategory_name: aiResult.subcategory_name,
-              category_name: aiResult.category_name,
-              confidence: aiResult.confidence || 0.7,
-              source: "ai",
-            };
-          }
-        }
-      } catch (error) {
-        console.error("AI categorization batch failed:", error);
-        // Leave unknowns as 'none' source
-      }
-    }
+    await processCategorizationBatches({
+      unknowns,
+      results,
+      subcategories,
+      pastExamples,
+      corrections,
+      conversationId: request.conversationId,
+    });
   }
 
   return results;
 }
 
+function createBatches<T>(items: T[], batchSize: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    batches.push(items.slice(i, i + batchSize));
+  }
+  return batches;
+}
+
+async function processWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  processItem: (item: T, itemIndex: number) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(concurrency, 1), items.length);
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const itemIndex = nextIndex;
+      nextIndex += 1;
+      await processItem(items[itemIndex], itemIndex);
+    }
+  });
+
+  await Promise.all(workers);
+}
+
+async function processCategorizationBatches({
+  unknowns,
+  results,
+  subcategories,
+  pastExamples,
+  corrections,
+  conversationId,
+}: {
+  unknowns: UnknownTransaction[];
+  results: CategorizeResult[];
+  subcategories: SubcategoryRow[];
+  pastExamples: PastExampleRow[];
+  corrections: CorrectionRow[];
+  conversationId?: string;
+}): Promise<void> {
+  const batches = createBatches(unknowns, AI_CONFIG.batchSize);
+  const concurrency =
+    unknowns.length > AI_CONFIG.batchSize ? AI_CONFIG.maxConcurrentLLMRequests : 1;
+
+  await processWithConcurrency(batches, concurrency, async (batch, batchIndex) => {
+    try {
+      const aiResults = await callOpenRouterForCategorization(
+        batch,
+        subcategories,
+        pastExamples,
+        corrections,
+        conversationId,
+        {
+          batchNumber: batchIndex + 1,
+          batchCount: batches.length,
+        },
+      );
+
+      for (let j = 0; j < batch.length; j++) {
+        const aiResult = aiResults[j];
+        if (aiResult && aiResult.subcategory_id) {
+          results[batch[j].index] = {
+            transaction_name: batch[j].name,
+            subcategory_id: aiResult.subcategory_id,
+            subcategory_name: aiResult.subcategory_name,
+            category_name: aiResult.category_name,
+            confidence: aiResult.confidence || 0.7,
+            source: "ai",
+          };
+        }
+      }
+    } catch (error) {
+      console.error("AI categorization batch failed:", error);
+      // Leave unknowns in this batch as 'none' source.
+    }
+  });
+}
+
 async function callOpenRouterForCategorization(
-  batch: {
-    index: number;
-    name: string;
-    account_id: string;
-    account_name: string;
-    amount: number;
-  }[],
+  batch: UnknownTransaction[],
   subcategories: SubcategoryRow[],
   pastExamples: PastExampleRow[],
   corrections: CorrectionRow[],
   conversationId?: string,
+  batchMetadata?: {
+    batchNumber: number;
+    batchCount: number;
+  },
 ): Promise<AIResultItem[]> {
   const db = getDb();
 
@@ -319,6 +376,7 @@ Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_n
       metadata: {
         batchSize: batch.length,
         unknownIndexes: batch.map((tx) => tx.index),
+        ...batchMetadata,
       },
     },
   );
