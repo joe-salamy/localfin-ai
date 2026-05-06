@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
 import type {
+  Transaction,
   TransactionFilters,
   TransactionWithDetails,
   CreateTransactionData,
@@ -76,7 +77,7 @@ export function useTransactions(filters?: TransactionFilters) {
   const checkDuplicates = useMutation({
     mutationFn: (
       transactions: Array<{ date: string; name: string; amount: number; account_id: string }>,
-    ) => apiPost<Array<{ isDuplicate: boolean }>>('/transactions/check-duplicates', { transactions }),
+    ) => apiPost<boolean[]>('/transactions/check-duplicates', { transactions }),
   });
 
   const checkTransferMatch = useMutation({
@@ -84,7 +85,7 @@ export function useTransactions(filters?: TransactionFilters) {
       date: string;
       amount: number;
       account_id: string;
-    }) => apiPost<TransactionWithDetails[]>('/transactions/check-transfer', data),
+    }) => apiPost<Transaction | null>('/transactions/check-transfer', data),
   });
 
   return {
