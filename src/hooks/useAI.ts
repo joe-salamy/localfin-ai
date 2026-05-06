@@ -1,8 +1,9 @@
-import { useMutation } from '@tanstack/react-query';
-import { useQueryClient } from '@tanstack/react-query';
-import { apiPost } from '@/lib/api';
-import { queryKeys } from '@/lib/queryKeys';
-import type { EnrichedTransaction } from '@/types';
+import { useCallback } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiPost, apiStream } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
+import type { EnrichedTransaction } from "@/types";
 
 interface CategorizeTransaction {
   name: string;
@@ -17,7 +18,7 @@ interface CategorizeResult {
   subcategory_name: string | null;
   category_name: string | null;
   confidence: number;
-  source: 'correction' | 'lookup' | 'ai' | 'none';
+  source: "correction" | "lookup" | "ai" | "none";
 }
 
 interface ParseStatementRequest {
@@ -49,7 +50,7 @@ interface SaveCorrectionData {
   user_corrected_subcategory_id: string;
 }
 
-interface ChatRequest {
+export interface ChatRequest {
   conversationId: string;
   message: string;
   currentPage?: string;
@@ -58,7 +59,7 @@ interface ChatRequest {
 export interface ChatActionResult {
   type: string;
   input: Record<string, unknown>;
-  status: 'success' | 'error';
+  status: "success" | "error";
   result?: unknown;
   error?: string;
 }
@@ -71,43 +72,82 @@ export interface ChatResult {
   logFile: string;
 }
 
+export type PlannedChatAction = Omit<ChatActionResult, "status" | "result" | "error">;
+
+export type ChatStreamEvent =
+  | { type: "started"; conversationId: string; requestId: string }
+  | { type: "thinking"; message: string }
+  | { type: "actions_planned"; actions: PlannedChatAction[] }
+  | { type: "action_started"; index: number; action: PlannedChatAction }
+  | { type: "action_finished"; index: number; action: ChatActionResult }
+  | { type: "final"; data: ChatResult }
+  | { type: "error"; message: string };
+
 export function useAI() {
   const queryClient = useQueryClient();
 
-  const invalidateFinanceData = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.subcategories.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
-    ]);
+  const invalidateFinanceData = useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.subcategories.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
+      ]),
+    [queryClient],
+  );
 
   const categorize = useMutation({
-    mutationFn: (data: { transactions: CategorizeTransaction[]; conversationId: string }) =>
-      apiPost<CategorizeResult[]>('/ai/categorize', data),
+    mutationFn: (data: {
+      transactions: CategorizeTransaction[];
+      conversationId: string;
+    }) => apiPost<CategorizeResult[]>("/ai/categorize", data),
   });
 
   const parseStatement = useMutation({
     mutationFn: (data: ParseStatementRequest) =>
-      apiPost<ParseStatementResult>('/parser/parse-statement', data),
+      apiPost<ParseStatementResult>("/parser/parse-statement", data),
   });
 
   const saveCorrection = useMutation({
-    mutationFn: (data: SaveCorrectionData) =>
-      apiPost('/ai/corrections', data),
+    mutationFn: (data: SaveCorrectionData) => apiPost("/ai/corrections", data),
   });
 
   const chat = useMutation({
-    mutationFn: (data: ChatRequest) =>
-      apiPost<ChatResult>('/ai/chat', data),
+    mutationFn: (data: ChatRequest) => apiPost<ChatResult>("/ai/chat", data),
     onSuccess: () => invalidateFinanceData(),
   });
+
+  const streamChat = useCallback(
+    async (
+      data: ChatRequest,
+      onEvent: (event: ChatStreamEvent) => void,
+      signal?: AbortSignal,
+    ) => {
+      await apiStream<ChatStreamEvent>(
+        "/ai/chat/stream",
+        data,
+        (event) => {
+          onEvent(event);
+          if (
+            event.type === "final" &&
+            event.data.actions.some((action) => action.status === "success")
+          ) {
+            void invalidateFinanceData();
+          }
+        },
+        signal,
+      );
+    },
+    [invalidateFinanceData],
+  );
 
   return {
     categorize,
     parseStatement,
     saveCorrection,
     chat,
+    streamChat,
   };
 }

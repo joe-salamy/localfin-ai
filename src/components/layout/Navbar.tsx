@@ -1,12 +1,18 @@
-import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Plus, History, Settings, SlidersHorizontal } from 'lucide-react';
+import { Link, useLocation } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Plus,
+  History,
+  Settings,
+  SlidersHorizontal,
+} from "lucide-react";
 
 const links = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/transactions/input', label: 'Add', icon: Plus },
-  { to: '/transactions/history', label: 'History', icon: History },
-  { to: '/setup', label: 'Setup', icon: SlidersHorizontal },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/setup", label: "Setup", icon: SlidersHorizontal },
+  { to: "/transactions/input", label: "Add", icon: Plus },
+  { to: "/transactions/history", label: "History", icon: History },
+  { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Navbar() {
@@ -25,8 +31,8 @@ export function Navbar() {
               to={to}
               className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
                 pathname === to
-                  ? 'bg-secondary text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Icon size={16} />

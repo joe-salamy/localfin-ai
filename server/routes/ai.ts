@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { categorizeTransactions } from '../services/ai.js';
-import { chatWithAssistant } from '../services/ai-chat.js';
+import { chatWithAssistant, streamChatWithAssistant } from '../services/ai-chat.js';
 import { saveAICorrection, getAICorrections } from '../services/ai-corrections.js';
 import { finiteNumber, nonEmptyString, parseRequest } from './validation.js';
 
@@ -61,6 +61,33 @@ router.post('/chat', async (req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.post('/chat/stream', async (req: Request, res: Response) => {
+  try {
+    const body = parseRequest(chatSchema, req.body, res);
+    if (!body) return;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    await streamChatWithAssistant(body, (event) => {
+      res.write(`event: ${event.type}\n`);
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    });
+    res.end();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    if (!res.headersSent) {
+      res.status(400).json({ success: false, error: message });
+      return;
+    }
+    res.write('event: error\n');
+    res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
+    res.end();
   }
 });
 

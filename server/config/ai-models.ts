@@ -1,6 +1,6 @@
 export const AI_MODELS = {
-  transactionCategorization: 'google/gemma-3n-e4b-it',
-  assistantChat: 'google/gemini-flash-latest',
+  transactionCategorization: "google/gemini-3.1-flash-lite-preview",
+  assistantChat: "google/gemini-3.1-flash-lite-preview",
 } as const;
 
-export type AIModel = typeof AI_MODELS[keyof typeof AI_MODELS];
+export type AIModel = (typeof AI_MODELS)[keyof typeof AI_MODELS];
