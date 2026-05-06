@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { AI_MODELS, type AIModel } from '../config/ai-models.js';
 
 interface OpenRouterMessage {
   role: 'system' | 'user' | 'assistant';
@@ -20,6 +21,7 @@ interface OpenRouterLogOptions {
   conversationId?: string;
   requestId?: string;
   operation?: string;
+  model?: AIModel;
   metadata?: Record<string, unknown>;
 }
 
@@ -32,7 +34,6 @@ export interface OpenRouterCallResult {
   usage?: OpenRouterResponse['usage'];
 }
 
-const MODEL = 'google/gemma-3n-e4b-it';
 const LOG_DIR = path.resolve(process.cwd(), 'logs');
 
 function safeLogId(value: string): string {
@@ -70,9 +71,10 @@ export async function callOpenRouter(
   const conversationId = safeLogId(options.conversationId ?? crypto.randomUUID());
   const requestId = options.requestId ?? crypto.randomUUID();
   const operation = options.operation ?? 'openrouter.chat_completion';
+  const model = options.model ?? AI_MODELS.transactionCategorization;
   const startedAt = new Date();
   const body = {
-    model: MODEL,
+    model,
     messages,
     temperature: 0,
     response_format: { type: 'json_object' },
@@ -98,7 +100,7 @@ export async function callOpenRouter(
         status: 'error',
         provider: 'openrouter',
         operation,
-        model: MODEL,
+        model,
         conversationId,
         requestId,
         request: body,
@@ -124,7 +126,7 @@ export async function callOpenRouter(
       status: 'success',
       provider: 'openrouter',
       operation,
-      model: MODEL,
+      model,
       conversationId,
       requestId,
       request: body,
@@ -152,7 +154,7 @@ export async function callOpenRouter(
         status: 'error',
         provider: 'openrouter',
         operation,
-        model: MODEL,
+        model,
         conversationId,
         requestId,
         request: body,

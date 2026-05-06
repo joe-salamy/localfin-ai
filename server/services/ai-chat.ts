@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { callOpenRouter, appendConversationLog } from '../ai/openrouter.js';
+import { AI_MODELS } from '../config/ai-models.js';
 import { createAccount, getAccounts, updateAccount } from './accounts.js';
 import {
   createCategory,
@@ -482,6 +483,7 @@ Use today's date ${new Date().toISOString().slice(0, 10)} when the user says tod
       conversationId: request.conversationId,
       requestId,
       operation: 'assistant.chat',
+      model: AI_MODELS.assistantChat,
       metadata: { currentPage: request.currentPage ?? null },
     },
   );

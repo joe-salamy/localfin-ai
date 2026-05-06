@@ -1,6 +1,9 @@
-import type { EnrichedTransaction, ParsedTransaction } from '../../src/types/index.js';
-import { getDb } from '../db/index.js';
-import { categorizeTransactions } from './ai.js';
+import type {
+  EnrichedTransaction,
+  ParsedTransaction,
+} from "../../src/types/index.js";
+import { getDb } from "../db/index.js";
+import { categorizeTransactions } from "./ai.js";
 
 // ---------- Format detection ----------
 
@@ -11,24 +14,28 @@ interface FormatMatch {
 
 const FORMATS: FormatMatch[] = [
   {
-    name: 'credit-card',
-    pattern: /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(.+?)\s+([-]?\$?[\d,]+\.?\d*)\s*$/,
+    name: "credit-card",
+    pattern:
+      /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(.+?)\s+([-]?\$?[\d,]+\.?\d*)\s*$/,
   },
   {
-    name: 'csv',
-    pattern: /^"?(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)"?\s*,\s*"?([^",]+)"?\s*,\s*"?([-]?\$?[\d,]+\.?\d*)"?\s*$/,
+    name: "csv",
+    pattern:
+      /^"?(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)"?\s*,\s*"?([^",]+)"?\s*,\s*"?([-]?\$?[\d,]+\.?\d*)"?\s*$/,
   },
   {
-    name: 'tab-separated',
-    pattern: /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\t+(.+?)\t+([-]?\$?[\d,]+\.?\d*)/,
+    name: "tab-separated",
+    pattern:
+      /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\t+(.+?)\t+([-]?\$?[\d,]+\.?\d*)/,
   },
   {
-    name: 'iso-date',
+    name: "iso-date",
     pattern: /^(\d{4}-\d{2}-\d{2})\s+(.+?)\s+([-]?\$?[\d,]+\.?\d*)\s*$/,
   },
 ];
 
-const LENIENT_PATTERN = /^(\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{4}-\d{2}-\d{2})\s*[,\t]?\s*(.+?)\s+(\(?-?\$?[\d,]+\.?\d*\)?\s*(?:CR|DR)?)\s*$/i;
+const LENIENT_PATTERN =
+  /^(\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{4}-\d{2}-\d{2})\s*[,\t]?\s*(.+?)\s+(\(?-?\$?[\d,]+\.?\d*\)?\s*(?:CR|DR)?)\s*$/i;
 
 // ---------- Date parsing ----------
 
@@ -41,17 +48,22 @@ function parseDate(raw: string): string {
   }
 
   // MM/DD/YYYY or MM/DD/YY or MM/DD
-  const slashMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/);
+  const slashMatch = trimmed.match(
+    /^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/,
+  );
   if (slashMatch) {
-    const month = slashMatch[1].padStart(2, '0');
-    const day = slashMatch[2].padStart(2, '0');
+    const month = slashMatch[1].padStart(2, "0");
+    const day = slashMatch[2].padStart(2, "0");
     let year: string;
 
     if (!slashMatch[3]) {
       year = String(new Date().getFullYear());
     } else if (slashMatch[3].length === 2) {
       const twoDigit = parseInt(slashMatch[3], 10);
-      year = twoDigit >= 70 ? `19${slashMatch[3]}` : `20${slashMatch[3].padStart(2, '0')}`;
+      year =
+        twoDigit >= 70
+          ? `19${slashMatch[3]}`
+          : `20${slashMatch[3].padStart(2, "0")}`;
     } else {
       year = slashMatch[3];
     }
@@ -70,7 +82,7 @@ function parseAmount(raw: string): number {
   // Handle DR/CR suffix
   const isDebit = /DR$/i.test(str);
   const isCredit = /CR$/i.test(str);
-  str = str.replace(/\s*(DR|CR)\s*$/i, '');
+  str = str.replace(/\s*(DR|CR)\s*$/i, "");
 
   // Handle parentheses for negative: (123.45)
   const parenMatch = str.match(/^\((.+)\)$/);
@@ -81,13 +93,13 @@ function parseAmount(raw: string): number {
   }
 
   // Handle leading minus
-  if (str.startsWith('-')) {
+  if (str.startsWith("-")) {
     negative = true;
     str = str.slice(1);
   }
 
   // Remove $ and commas
-  str = str.replace(/[$,]/g, '');
+  str = str.replace(/[$,]/g, "");
 
   let value = parseFloat(str);
   if (isNaN(value)) return 0;
@@ -107,11 +119,11 @@ const TRAILING_REF_PATTERN = /\s+\d{6,}$/;
 function cleanName(raw: string): string {
   let name = raw.trim();
   // Collapse whitespace
-  name = name.replace(/\s+/g, ' ');
+  name = name.replace(/\s+/g, " ");
   // Remove common prefixes
-  name = name.replace(PREFIX_PATTERN, '');
+  name = name.replace(PREFIX_PATTERN, "");
   // Remove trailing reference numbers
-  name = name.replace(TRAILING_REF_PATTERN, '');
+  name = name.replace(TRAILING_REF_PATTERN, "");
   return name.trim();
 }
 
@@ -129,7 +141,9 @@ function checkDuplicatesInDb(
   `);
 
   return transactions.map((t) => {
-    const row = stmt.get(t.date, t.name, t.amount, accountId) as { cnt: number };
+    const row = stmt.get(t.date, t.name, t.amount, accountId) as {
+      cnt: number;
+    };
     return row.cnt > 0;
   });
 }
@@ -164,10 +178,18 @@ export async function parseStatement(
   if (lines.length === 0) {
     return {
       transactions: [],
-      summary: { total: 0, duplicates: 0, fromLookup: 0, fromCorrection: 0, fromAI: 0, uncategorized: 0, needsReview: 0 },
+      summary: {
+        total: 0,
+        duplicates: 0,
+        fromLookup: 0,
+        fromCorrection: 0,
+        fromAI: 0,
+        uncategorized: 0,
+        needsReview: 0,
+      },
       format: null,
       parseSuccessRate: 0,
-      errors: ['No lines found in input text'],
+      errors: ["No lines found in input text"],
     };
   }
 
@@ -246,8 +268,10 @@ export async function parseStatement(
 
   // Resolve account name for AI categorization
   const db = getDb();
-  const accountRow = db.prepare('SELECT name FROM accounts WHERE id = ?').get(accountId) as { name: string } | undefined;
-  const accountName = accountRow?.name ?? 'Unknown';
+  const accountRow = db
+    .prepare("SELECT name FROM accounts WHERE id = ?")
+    .get(accountId) as { name: string } | undefined;
+  const accountName = accountRow?.name ?? "Unknown";
 
   // Categorize using the AI service pipeline (corrections > lookup > AI batch)
   const catResults = await categorizeTransactions({
@@ -276,19 +300,19 @@ export async function parseStatement(
     if (isDuplicate) summary.duplicates++;
 
     const cat = catResults[i];
-    const source = cat?.source ?? 'none';
+    const source = cat?.source ?? "none";
 
     switch (source) {
-      case 'lookup':
+      case "lookup":
         summary.fromLookup++;
         break;
-      case 'correction':
+      case "correction":
         summary.fromCorrection++;
         break;
-      case 'ai':
+      case "ai":
         summary.fromAI++;
         break;
-      case 'none':
+      case "none":
         summary.uncategorized++;
         break;
     }
@@ -312,7 +336,7 @@ export async function parseStatement(
   return {
     transactions: enriched,
     summary,
-    format: detectedFormat?.name ?? (parsed.length > 0 ? 'lenient' : null),
+    format: detectedFormat?.name ?? (parsed.length > 0 ? "lenient" : null),
     parseSuccessRate: Math.round(parseSuccessRate * 1000) / 1000,
     errors,
   };

@@ -1,9 +1,15 @@
-import { getDb } from '../db/index.js';
-import { callOpenRouter } from '../ai/openrouter.js';
-import { getAICorrection, getAICorrections } from './ai-corrections.js';
+import { getDb } from "../db/index.js";
+import { callOpenRouter } from "../ai/openrouter.js";
+import { AI_MODELS } from "../config/ai-models.js";
+import { getAICorrection, getAICorrections } from "./ai-corrections.js";
 
 interface CategorizeRequest {
-  transactions: { name: string; account_id: string; account_name: string; amount: number }[];
+  transactions: {
+    name: string;
+    account_id: string;
+    account_name: string;
+    amount: number;
+  }[];
   conversationId?: string;
 }
 
@@ -13,7 +19,7 @@ interface CategorizeResult {
   subcategory_name: string | null;
   category_name: string | null;
   confidence: number;
-  source: 'correction' | 'lookup' | 'ai' | 'none';
+  source: "correction" | "lookup" | "ai" | "none";
 }
 
 interface SubcategoryRow {
@@ -63,10 +69,18 @@ interface CorrectionRow {
 const AI_BATCH_SIZE = 25;
 const AI_CONTEXT_SIZE = 100;
 
-export async function categorizeTransactions(request: CategorizeRequest): Promise<CategorizeResult[]> {
+export async function categorizeTransactions(
+  request: CategorizeRequest,
+): Promise<CategorizeResult[]> {
   const db = getDb();
   const results: CategorizeResult[] = [];
-  const unknowns: { index: number; name: string; account_id: string; account_name: string; amount: number }[] = [];
+  const unknowns: {
+    index: number;
+    name: string;
+    account_id: string;
+    account_name: string;
+    amount: number;
+  }[] = [];
 
   // Step 1: For each transaction, try corrections then lookup
   for (let i = 0; i < request.transactions.length; i++) {
@@ -76,9 +90,13 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
     // Check corrections first (highest priority)
     const correction = getAICorrection(normalizedName, tx.account_id);
     if (correction) {
-      const sub = db.prepare(
-        'SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?'
-      ).get(correction.user_corrected_subcategory_id) as SubcategoryLookupRow | undefined;
+      const sub = db
+        .prepare(
+          "SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?",
+        )
+        .get(correction.user_corrected_subcategory_id) as
+        | SubcategoryLookupRow
+        | undefined;
 
       if (sub) {
         results[i] = {
@@ -87,14 +105,16 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
           subcategory_name: sub.name,
           category_name: sub.category_name,
           confidence: 1.0,
-          source: 'correction',
+          source: "correction",
         };
         continue;
       }
     }
 
     // Check past transactions with same name + account
-    const pastTx = db.prepare(`
+    const pastTx = db
+      .prepare(
+        `
       SELECT t.subcategory_id, s.name as subcategory_name, c.name as category_name
       FROM transactions t
       JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
@@ -102,7 +122,9 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
       JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
       WHERE t.account_id = ? AND LOWER(TRIM(t.name)) = ? AND t.subcategory_id IS NOT NULL AND t.deleted_at IS NULL
       ORDER BY t.date DESC LIMIT 1
-    `).get(tx.account_id, normalizedName) as PastTxRow | undefined;
+    `,
+      )
+      .get(tx.account_id, normalizedName) as PastTxRow | undefined;
 
     if (pastTx) {
       results[i] = {
@@ -111,7 +133,7 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
         subcategory_name: pastTx.subcategory_name,
         category_name: pastTx.category_name,
         confidence: 0.95,
-        source: 'lookup',
+        source: "lookup",
       };
       continue;
     }
@@ -124,21 +146,27 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
       subcategory_name: null,
       category_name: null,
       confidence: 0,
-      source: 'none',
+      source: "none",
     };
   }
 
   // Step 2: Batch unknowns to LLM
   if (unknowns.length > 0) {
-    const subcategories = db.prepare(`
+    const subcategories = db
+      .prepare(
+        `
       SELECT s.id, s.name, c.name as category_name, c.type as category_type
       FROM subcategories s
       JOIN categories c ON s.category_id = c.id
       WHERE s.deleted_at IS NULL AND c.deleted_at IS NULL
       ORDER BY c.type, c.name, s.name
-    `).all() as SubcategoryRow[];
+    `,
+      )
+      .all() as SubcategoryRow[];
 
-    const pastExamples = db.prepare(`
+    const pastExamples = db
+      .prepare(
+        `
       SELECT t.name, t.amount, a.name as account_name, s.name as subcategory_name, c.name as category_name
       FROM transactions t
       JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
@@ -146,7 +174,9 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
       JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
       WHERE t.deleted_at IS NULL AND t.subcategory_id IS NOT NULL
       ORDER BY t.date DESC LIMIT ?
-    `).all(AI_CONTEXT_SIZE) as PastExampleRow[];
+    `,
+      )
+      .all(AI_CONTEXT_SIZE) as PastExampleRow[];
 
     const corrections = getAICorrections();
 
@@ -172,12 +202,12 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
               subcategory_name: aiResult.subcategory_name,
               category_name: aiResult.category_name,
               confidence: aiResult.confidence || 0.7,
-              source: 'ai',
+              source: "ai",
             };
           }
         }
       } catch (error) {
-        console.error('AI categorization batch failed:', error);
+        console.error("AI categorization batch failed:", error);
         // Leave unknowns as 'none' source
       }
     }
@@ -187,7 +217,13 @@ export async function categorizeTransactions(request: CategorizeRequest): Promis
 }
 
 async function callOpenRouterForCategorization(
-  batch: { index: number; name: string; account_id: string; account_name: string; amount: number }[],
+  batch: {
+    index: number;
+    name: string;
+    account_id: string;
+    account_name: string;
+    amount: number;
+  }[],
   subcategories: SubcategoryRow[],
   pastExamples: PastExampleRow[],
   corrections: CorrectionRow[],
@@ -197,33 +233,42 @@ async function callOpenRouterForCategorization(
 
   // Build subcategory list grouped by type
   const incomeSubcategories = subcategories
-    .filter((s) => s.category_type === 'income')
+    .filter((s) => s.category_type === "income")
     .map((s) => `  - ${s.category_name} > ${s.name} (id: ${s.id})`)
-    .join('\n');
+    .join("\n");
 
   const expenseSubcategories = subcategories
-    .filter((s) => s.category_type === 'expense')
+    .filter((s) => s.category_type === "expense")
     .map((s) => `  - ${s.category_name} > ${s.name} (id: ${s.id})`)
-    .join('\n');
+    .join("\n");
 
   // Build corrections context
-  const correctionLines = corrections.map((c) => {
-    const sub = db.prepare(
-      `SELECT s.name as subcategory_name, c.name as category_name
+  const correctionLines = corrections
+    .map((c) => {
+      const sub = db
+        .prepare(
+          `SELECT s.name as subcategory_name, c.name as category_name
        FROM subcategories s
        JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
-       WHERE s.id = ? AND s.deleted_at IS NULL`
-    ).get(c.user_corrected_subcategory_id) as { subcategory_name: string; category_name: string } | undefined;
+       WHERE s.id = ? AND s.deleted_at IS NULL`,
+        )
+        .get(c.user_corrected_subcategory_id) as
+        | { subcategory_name: string; category_name: string }
+        | undefined;
 
-    const account = db.prepare('SELECT name FROM accounts WHERE id = ?').get(c.account_id) as { name: string } | undefined;
+      const account = db
+        .prepare("SELECT name FROM accounts WHERE id = ?")
+        .get(c.account_id) as { name: string } | undefined;
 
-    if (!sub || !account) return null;
-    return `"${c.transaction_name}" on account "${account.name}" -> subcategory "${sub.category_name} > ${sub.subcategory_name}"`;
-  }).filter(Boolean);
+      if (!sub || !account) return null;
+      return `"${c.transaction_name}" on account "${account.name}" -> subcategory "${sub.category_name} > ${sub.subcategory_name}"`;
+    })
+    .filter(Boolean);
 
   // Build past examples context
   const exampleLines = pastExamples.map(
-    (e) => `"${e.name}" ($${e.amount}) on "${e.account_name}" -> "${e.category_name} > ${e.subcategory_name}"`
+    (e) =>
+      `"${e.name}" ($${e.amount}) on "${e.account_name}" -> "${e.category_name} > ${e.subcategory_name}"`,
   );
 
   const systemMessage = `You are a transaction categorizer for a personal budget app. Categorize each transaction into the most appropriate subcategory.
@@ -233,37 +278,47 @@ RULES:
 - Match the subcategory type to the transaction direction (income subcategories for positive, expense for negative)
 - If unsure, use "Unassigned" for the appropriate type
 - Return ONLY the JSON, no explanation
-${correctionLines.length > 0 ? `
+${
+  correctionLines.length > 0
+    ? `
 USER CORRECTIONS (MUST follow these exactly):
-${correctionLines.join('\n')}
-` : ''}
+${correctionLines.join("\n")}
+`
+    : ""
+}
 AVAILABLE SUBCATEGORIES:
 Income:
 ${incomeSubcategories}
 Expense:
 ${expenseSubcategories}
-${exampleLines.length > 0 ? `
+${
+  exampleLines.length > 0
+    ? `
 PAST EXAMPLES:
-${exampleLines.join('\n')}
-` : ''}`;
+${exampleLines.join("\n")}
+`
+    : ""
+}`;
 
   const transactionLines = batch.map(
-    (tx, i) => `${i + 1}. "${tx.name}" ($${tx.amount}) on account "${tx.account_name}"`
+    (tx, i) =>
+      `${i + 1}. "${tx.name}" ($${tx.amount}) on account "${tx.account_name}"`,
   );
 
   const userMessage = `Categorize these transactions:
-${transactionLines.join('\n')}
+${transactionLines.join("\n")}
 
 Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_name": "...", "category_name": "...", "confidence": 0.8 }] }`;
 
   const response = await callOpenRouter(
     [
-      { role: 'system', content: systemMessage },
-      { role: 'user', content: userMessage },
+      { role: "system", content: systemMessage },
+      { role: "user", content: userMessage },
     ],
     {
       conversationId,
-      operation: 'transaction.categorize',
+      operation: "transaction.categorize",
+      model: AI_MODELS.transactionCategorization,
       metadata: {
         batchSize: batch.length,
         unknownIndexes: batch.map((tx) => tx.index),
@@ -274,12 +329,12 @@ Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_n
   // Parse response
   const parsed = response.parsedContent as { results: AIResultItem[] } | null;
   if (!parsed) {
-    console.error('Failed to parse AI response:', response.content);
+    console.error("Failed to parse AI response:", response.content);
     return [];
   }
 
   if (!parsed.results || !Array.isArray(parsed.results)) {
-    console.error('AI response missing results array:', parsed);
+    console.error("AI response missing results array:", parsed);
     return [];
   }
 
@@ -291,14 +346,17 @@ Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_n
     const batchIndex = result.index;
     if (batchIndex < 0 || batchIndex >= batch.length) continue;
 
-    if (result.subcategory_id && validSubcategoryIds.has(result.subcategory_id)) {
+    if (
+      result.subcategory_id &&
+      validSubcategoryIds.has(result.subcategory_id)
+    ) {
       indexedResults[batchIndex] = result;
     } else {
       // Fall back to Unassigned
       const tx = batch[batchIndex];
-      const type = tx.amount >= 0 ? 'income' : 'expense';
+      const type = tx.amount >= 0 ? "income" : "expense";
       const unassigned = subcategories.find(
-        (s) => s.name === 'Unassigned' && s.category_type === type
+        (s) => s.name === "Unassigned" && s.category_type === type,
       );
       if (unassigned) {
         indexedResults[batchIndex] = {
