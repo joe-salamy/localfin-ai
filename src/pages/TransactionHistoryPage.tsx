@@ -41,7 +41,7 @@ export function TransactionHistoryPage() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   // Data hooks
-  const { transactions, isLoading, updateTransaction, deleteTransaction, bulkUpdateTransactions, bulkDeleteTransactions } = useTransactions(appliedFilters);
+  const { transactions, isLoading, error, updateTransaction, deleteTransaction, bulkUpdateTransactions, bulkDeleteTransactions } = useTransactions(appliedFilters);
   const { accounts } = useAccounts();
   const { subcategories } = useCategories();
 
@@ -129,6 +129,9 @@ export function TransactionHistoryPage() {
   }, [bulkDeleteTransactions, selectedIds]);
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
+  const searchError = error instanceof Error && appliedFilters.searchQuery
+    ? error.message
+    : null;
 
   return (
     <div className="space-y-3">
@@ -166,7 +169,7 @@ export function TransactionHistoryPage() {
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search..."
+            placeholder="Search: coffee AND amount>5"
             className="h-8 text-xs"
             onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
           />
@@ -175,6 +178,9 @@ export function TransactionHistoryPage() {
           Apply
         </Button>
       </div>
+      {searchError && (
+        <div className="text-xs text-destructive">{searchError}</div>
+      )}
 
       {/* Action bar */}
       {selectedIds.size > 0 && (

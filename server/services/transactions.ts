@@ -6,6 +6,7 @@ import type {
   CreateTransactionData,
 } from "../../src/types/index.js";
 import { getDb, toBool, fromBool } from "../db/index.js";
+import { compileTransactionSearch } from "./transaction-search.js";
 
 // ---------- Raw DB row types ----------
 
@@ -91,6 +92,7 @@ function rowToTransactionWithDetails(
 function buildWhereClause(
   filters: TransactionFilters,
   prefix = "",
+  searchAliases?: Parameters<typeof compileTransactionSearch>[1],
 ): {
   clauses: string[];
   params: unknown[];
@@ -116,8 +118,12 @@ function buildWhereClause(
     params.push(filters.endDate);
   }
   if (filters.searchQuery) {
-    clauses.push(`${p}name LIKE ?`);
-    params.push(`%${filters.searchQuery}%`);
+    const compiledSearch = compileTransactionSearch(
+      filters.searchQuery,
+      searchAliases ?? { transaction: prefix || "transactions" },
+    );
+    clauses.push(compiledSearch.clause);
+    params.push(...compiledSearch.params);
   }
 
   return { clauses, params };
@@ -222,7 +228,12 @@ export function getTransactionsWithDetails(
   filters: TransactionFilters = {},
 ): TransactionWithDetails[] {
   const db = getDb();
-  const { clauses, params } = buildWhereClause(filters, "t");
+  const { clauses, params } = buildWhereClause(filters, "t", {
+    transaction: "t",
+    account: "a",
+    subcategory: "s",
+    category: "c",
+  });
 
   let sql = `
     SELECT t.*, a.name AS account_name, a.type AS account_type,

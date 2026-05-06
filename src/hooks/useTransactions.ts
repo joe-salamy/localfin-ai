@@ -91,6 +91,7 @@ export function useTransactions(filters?: TransactionFilters) {
   return {
     transactions: transactionsQuery.data ?? [],
     isLoading: transactionsQuery.isLoading,
+    error: transactionsQuery.error,
     createTransaction,
     updateTransaction,
     deleteTransaction,

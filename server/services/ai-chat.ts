@@ -253,6 +253,18 @@ function resolveAccount(
   );
 }
 
+function resolveRequestedAccount(
+  input: Record<string, unknown>,
+  accounts: Account[],
+  actionType: string,
+): string | undefined {
+  const accountId = resolveAccount(input, accounts);
+  if (!accountId && hasAnyField(input, ["account_id", "account_name"])) {
+    throw new Error(`${actionType} references an unknown account`);
+  }
+  return accountId;
+}
+
 function resolveCategory(
   input: Record<string, unknown>,
   categories: Category[],
@@ -545,6 +557,46 @@ function executeAction(action: AIAction): ExecutedAction {
           result: createTransaction(data),
         };
       }
+      case "search_transactions": {
+        const searchQuery = asString(input.searchQuery);
+        if (!searchQuery) {
+          throw new Error("search_transactions requires searchQuery");
+        }
+        const requestedLimit = asNumber(input.limit);
+        const limit = Math.min(Math.max(requestedLimit ?? 25, 1), 100);
+        const transactions = getTransactionsWithDetails({
+          searchQuery,
+          accountId: resolveRequestedAccount(input, accounts, action.type),
+          subcategoryId: resolveRequestedSubcategory(
+            input,
+            subcategories,
+            action.type,
+          ),
+          startDate:
+            optionalIsoDate(input.startDate, "startDate", action.type) ??
+            optionalIsoDate(input.start_date, "start_date", action.type),
+          endDate:
+            optionalIsoDate(input.endDate, "endDate", action.type) ??
+            optionalIsoDate(input.end_date, "end_date", action.type),
+          limit,
+        });
+
+        return {
+          ...action,
+          status: "success",
+          result: transactions.map((transaction) => ({
+            id: transaction.id,
+            date: transaction.date,
+            name: transaction.name,
+            amount: transaction.amount,
+            account_id: transaction.account_id,
+            account_name: transaction.account_name,
+            category_name: transaction.category_name,
+            subcategory_name: transaction.subcategory_name,
+            comment: transaction.comment,
+          })),
+        };
+      }
       case "update_transaction": {
         const id = asString(input.id);
         if (!id) throw new Error("update_transaction requires id");
@@ -674,9 +726,12 @@ Allowed action types:
 - create_subcategory: { name, category_id? or category_name, monthly_goal? }
 - update_subcategory: { id? or current_name, name?, category_id? or category_name, monthly_goal? }
 - create_transaction: { account_id? or account_name, date: "YYYY-MM-DD", name, amount, subcategory_id? or subcategory_name?, comment? }
+- search_transactions: { searchQuery, account_id? or account_name?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit? }
 - update_transaction: { id, date?, name?, amount?, subcategory_id? or subcategory_name?, comment? }
 - create_goal: { subcategory_id? or subcategory_name, amount, period: "weekly"|"monthly"|"quarterly"|"annual", start_date: "YYYY-MM-DD", end_date? }
 - update_goal: { id? or subcategory_id? or subcategory_name, amount?, period?, start_date?, end_date? }
+
+Transaction search supports grep-like logic in searchQuery: quoted phrases, parentheses, AND, OR, NOT, |, -term, and fields name:, comment:, account:, category:, subcategory:, amount/date comparisons such as amount>20 and date>=2026-01-01. Examples: "coffee AND NOT starbucks", "(uber OR lyft) AND amount>20", "account:checking AND category:food AND date>=2026-01-01". Use search_transactions before update_transaction when the user describes a transaction but does not provide its id.
 
 Use today's date ${new Date().toISOString().slice(0, 10)} when the user says today.`;
 }
