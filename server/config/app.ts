@@ -47,6 +47,7 @@ export const DATABASE_CONFIG = {
 export const AI_CONFIG = {
   batchSize: 25,
   contextSize: 100,
+  maxConcurrentLLMRequests: 5,
 } as const;
 
 export const AI_MODELS = {
