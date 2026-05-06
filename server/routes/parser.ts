@@ -16,7 +16,7 @@ router.post('/parse-statement', async (req: Request, res: Response) => {
     const body = parseRequest(parseStatementSchema, req.body, res);
     if (!body) return;
 
-    const data = await parseStatement(body.text, body.accountId, body.conversationId);
+    const data = await parseStatement(body.text, body.accountId);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

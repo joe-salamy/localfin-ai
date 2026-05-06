@@ -14,7 +14,7 @@ Local-first personal finance tracker with AI-powered transaction parsing. Paste 
 
 - **Frontend:** React 19, React Router, TanStack Query, Tailwind CSS, Recharts, Nivo
 - **Backend:** Express 5, better-sqlite3 (stored in `data/budget.db`)
-- **AI:** OpenRouter API (Gemma 3n) for parsing and corrections
+- **AI:** OpenRouter API (Gemma 3n) for parsing and categorization
 
 ## Setup
 

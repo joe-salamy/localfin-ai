@@ -1,7 +1,6 @@
 import { getDb } from "../db/index.js";
 import { callOpenRouter } from "../ai/openrouter.js";
 import { AI_CONFIG, AI_MODELS } from "../config/app.js";
-import { getAICorrection, getAICorrections } from "./ai-corrections.js";
 
 interface CategorizeRequest {
   transactions: {
@@ -19,7 +18,7 @@ interface CategorizeResult {
   subcategory_name: string | null;
   category_name: string | null;
   confidence: number;
-  source: "correction" | "lookup" | "ai" | "none";
+  source: "lookup" | "ai" | "none";
 }
 
 interface SubcategoryRow {
@@ -37,12 +36,6 @@ interface PastExampleRow {
   category_name: string;
 }
 
-interface SubcategoryLookupRow {
-  id: string;
-  name: string;
-  category_name: string;
-}
-
 interface PastTxRow {
   subcategory_id: string;
   subcategory_name: string;
@@ -55,15 +48,6 @@ interface AIResultItem {
   subcategory_name: string;
   category_name: string;
   confidence: number;
-}
-
-interface CorrectionRow {
-  id: string;
-  transaction_name: string;
-  account_id: string;
-  ai_suggested_subcategory_id: string | null;
-  user_corrected_subcategory_id: string;
-  created_at: string;
 }
 
 interface UnknownTransaction {
@@ -81,36 +65,11 @@ export async function categorizeTransactions(
   const results: CategorizeResult[] = [];
   const unknowns: UnknownTransaction[] = [];
 
-  // Step 1: For each transaction, try corrections then lookup
+  // Step 1: For each transaction, try past transactions with the same name and account.
   for (let i = 0; i < request.transactions.length; i++) {
     const tx = request.transactions[i];
     const normalizedName = tx.name.trim().toLowerCase();
 
-    // Check corrections first (highest priority)
-    const correction = getAICorrection(normalizedName, tx.account_id);
-    if (correction) {
-      const sub = db
-        .prepare(
-          "SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?",
-        )
-        .get(correction.user_corrected_subcategory_id) as
-        | SubcategoryLookupRow
-        | undefined;
-
-      if (sub) {
-        results[i] = {
-          transaction_name: tx.name,
-          subcategory_id: sub.id,
-          subcategory_name: sub.name,
-          category_name: sub.category_name,
-          confidence: 1.0,
-          source: "correction",
-        };
-        continue;
-      }
-    }
-
-    // Check past transactions with same name + account
     const pastTx = db
       .prepare(
         `
@@ -177,14 +136,11 @@ export async function categorizeTransactions(
       )
       .all(AI_CONFIG.contextSize) as PastExampleRow[];
 
-    const corrections = getAICorrections();
-
     await processCategorizationBatches({
       unknowns,
       results,
       subcategories,
       pastExamples,
-      corrections,
       conversationId: request.conversationId,
     });
   }
@@ -224,14 +180,12 @@ async function processCategorizationBatches({
   results,
   subcategories,
   pastExamples,
-  corrections,
   conversationId,
 }: {
   unknowns: UnknownTransaction[];
   results: CategorizeResult[];
   subcategories: SubcategoryRow[];
   pastExamples: PastExampleRow[];
-  corrections: CorrectionRow[];
   conversationId?: string;
 }): Promise<void> {
   const batches = createBatches(unknowns, AI_CONFIG.batchSize);
@@ -244,7 +198,6 @@ async function processCategorizationBatches({
         batch,
         subcategories,
         pastExamples,
-        corrections,
         conversationId,
         {
           batchNumber: batchIndex + 1,
@@ -276,15 +229,12 @@ async function callOpenRouterForCategorization(
   batch: UnknownTransaction[],
   subcategories: SubcategoryRow[],
   pastExamples: PastExampleRow[],
-  corrections: CorrectionRow[],
   conversationId?: string,
   batchMetadata?: {
     batchNumber: number;
     batchCount: number;
   },
 ): Promise<AIResultItem[]> {
-  const db = getDb();
-
   // Build subcategory list grouped by type
   const incomeSubcategories = subcategories
     .filter((s) => s.category_type === "income")
@@ -295,29 +245,6 @@ async function callOpenRouterForCategorization(
     .filter((s) => s.category_type === "expense")
     .map((s) => `  - ${s.category_name} > ${s.name} (id: ${s.id})`)
     .join("\n");
-
-  // Build corrections context
-  const correctionLines = corrections
-    .map((c) => {
-      const sub = db
-        .prepare(
-          `SELECT s.name as subcategory_name, c.name as category_name
-       FROM subcategories s
-       JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
-       WHERE s.id = ? AND s.deleted_at IS NULL`,
-        )
-        .get(c.user_corrected_subcategory_id) as
-        | { subcategory_name: string; category_name: string }
-        | undefined;
-
-      const account = db
-        .prepare("SELECT name FROM accounts WHERE id = ?")
-        .get(c.account_id) as { name: string } | undefined;
-
-      if (!sub || !account) return null;
-      return `"${c.transaction_name}" on account "${account.name}" -> subcategory "${sub.category_name} > ${sub.subcategory_name}"`;
-    })
-    .filter(Boolean);
 
   // Build past examples context
   const exampleLines = pastExamples.map(
@@ -332,14 +259,6 @@ RULES:
 - Match the subcategory type to the transaction direction (income subcategories for positive, expense for negative)
 - If unsure, use "Unassigned" for the appropriate type
 - Return ONLY the JSON, no explanation
-${
-  correctionLines.length > 0
-    ? `
-USER CORRECTIONS (MUST follow these exactly):
-${correctionLines.join("\n")}
-`
-    : ""
-}
 AVAILABLE SUBCATEGORIES:
 Income:
 ${incomeSubcategories}

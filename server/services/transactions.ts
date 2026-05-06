@@ -20,7 +20,6 @@ interface TransactionRow {
   comment: string | null;
   is_initial_balance: number;
   ai_suggested: number;
-  user_corrected: number;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -53,7 +52,6 @@ interface UpdateTransactionData {
   subcategory_id?: string | null;
   comment?: string | null;
   ai_suggested?: boolean;
-  user_corrected?: boolean;
 }
 
 interface DuplicateCheckItem {
@@ -70,7 +68,6 @@ function rowToTransaction(row: TransactionRow): Transaction {
     ...row,
     is_initial_balance: toBool(row.is_initial_balance),
     ai_suggested: toBool(row.ai_suggested),
-    user_corrected: toBool(row.user_corrected),
   };
 }
 
@@ -170,8 +167,8 @@ export function createTransaction(data: CreateTransactionData): Transaction {
   }
 
   const stmt = db.prepare(`
-    INSERT INTO transactions (id, account_id, date, name, amount, subcategory_id, comment, is_initial_balance, ai_suggested, user_corrected, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+    INSERT INTO transactions (id, account_id, date, name, amount, subcategory_id, comment, is_initial_balance, ai_suggested, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
   `);
 
   stmt.run(
@@ -183,7 +180,6 @@ export function createTransaction(data: CreateTransactionData): Transaction {
     data.subcategory_id ?? null,
     data.comment ?? null,
     fromBool(data.ai_suggested ?? false),
-    fromBool(data.user_corrected ?? false),
     now,
     now,
   );
@@ -393,11 +389,6 @@ export function updateTransaction(
     setClauses.push("ai_suggested = ?");
     params.push(fromBool(updates.ai_suggested));
   }
-  if (updates.user_corrected !== undefined) {
-    setClauses.push("user_corrected = ?");
-    params.push(fromBool(updates.user_corrected));
-  }
-
   if (setClauses.length === 0) return getTransactionById(id);
 
   setClauses.push("updated_at = ?");
@@ -486,8 +477,8 @@ export function bulkCreateTransactions(
   const now = new Date().toISOString();
 
   const stmt = db.prepare(`
-    INSERT INTO transactions (id, account_id, date, name, amount, subcategory_id, comment, is_initial_balance, ai_suggested, user_corrected, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+    INSERT INTO transactions (id, account_id, date, name, amount, subcategory_id, comment, is_initial_balance, ai_suggested, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
   `);
 
   const ids: string[] = [];
@@ -510,7 +501,6 @@ export function bulkCreateTransactions(
         data.subcategory_id ?? null,
         data.comment ?? null,
         fromBool(data.ai_suggested ?? false),
-        fromBool(data.user_corrected ?? false),
         now,
         now,
       );

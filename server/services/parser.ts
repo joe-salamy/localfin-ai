@@ -3,7 +3,6 @@ import type {
   ParsedTransaction,
 } from "../../src/types/index.js";
 import { getDb } from "../db/index.js";
-import { categorizeTransactions } from "./ai.js";
 
 // ---------- Format detection ----------
 
@@ -153,14 +152,12 @@ function checkDuplicatesInDb(
 export async function parseStatement(
   text: string,
   accountId: string,
-  conversationId?: string,
 ): Promise<{
   transactions: EnrichedTransaction[];
   summary: {
     total: number;
     duplicates: number;
     fromLookup: number;
-    fromCorrection: number;
     fromAI: number;
     uncategorized: number;
     needsReview: number;
@@ -182,7 +179,6 @@ export async function parseStatement(
         total: 0,
         duplicates: 0,
         fromLookup: 0,
-        fromCorrection: 0,
         fromAI: 0,
         uncategorized: 0,
         needsReview: 0,
@@ -266,30 +262,11 @@ export async function parseStatement(
     accountId,
   );
 
-  // Resolve account name for AI categorization
-  const db = getDb();
-  const accountRow = db
-    .prepare("SELECT name FROM accounts WHERE id = ?")
-    .get(accountId) as { name: string } | undefined;
-  const accountName = accountRow?.name ?? "Unknown";
-
-  // Categorize using the AI service pipeline (corrections > lookup > AI batch)
-  const catResults = await categorizeTransactions({
-    conversationId,
-    transactions: parsed.map((t) => ({
-      name: t.name,
-      account_id: accountId,
-      account_name: accountName,
-      amount: t.amount,
-    })),
-  });
-
-  // Build summary and enriched transactions
+  // Build summary and enriched transactions without running categorization.
   const summary = {
     total: parsed.length,
     duplicates: 0,
     fromLookup: 0,
-    fromCorrection: 0,
     fromAI: 0,
     uncategorized: 0,
     needsReview: 0,
@@ -299,34 +276,18 @@ export async function parseStatement(
     const isDuplicate = duplicateFlags[i];
     if (isDuplicate) summary.duplicates++;
 
-    const cat = catResults[i];
-    const source = cat?.source ?? "none";
-
-    switch (source) {
-      case "lookup":
-        summary.fromLookup++;
-        break;
-      case "correction":
-        summary.fromCorrection++;
-        break;
-      case "ai":
-        summary.fromAI++;
-        break;
-      case "none":
-        summary.uncategorized++;
-        break;
-    }
+    summary.uncategorized++;
 
     if (t.needsReview) summary.needsReview++;
 
     return {
       ...t,
-      subcategory_id: cat?.subcategory_id ?? null,
-      subcategory_name: cat?.subcategory_name ?? null,
-      category_name: cat?.category_name ?? null,
-      categorizationSource: source,
+      subcategory_id: null,
+      subcategory_name: null,
+      category_name: null,
+      categorizationSource: "none",
       isDuplicate,
-      aiConfidence: cat?.confidence ?? 0,
+      aiConfidence: 0,
     };
   });
 

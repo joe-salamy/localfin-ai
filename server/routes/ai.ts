@@ -3,7 +3,6 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { categorizeTransactions } from '../services/ai.js';
 import { chatWithAssistant, streamChatWithAssistant } from '../services/ai-chat.js';
-import { saveAICorrection, getAICorrections } from '../services/ai-corrections.js';
 import { finiteNumber, nonEmptyString, parseRequest } from './validation.js';
 import { HTTP_HEADERS } from '../config/app.js';
 
@@ -17,12 +16,6 @@ const categorizeSchema = z.object({
   })).min(1).max(500),
   conversationId: nonEmptyString.optional(),
 });
-const correctionSchema = z.object({
-  transaction_name: nonEmptyString,
-  account_id: nonEmptyString,
-  ai_suggested_subcategory_id: nonEmptyString.nullable().optional(),
-  user_corrected_subcategory_id: nonEmptyString,
-});
 const chatSchema = z.object({
   conversationId: nonEmptyString,
   message: nonEmptyString.max(10_000),
@@ -34,18 +27,6 @@ router.post('/categorize', async (req: Request, res: Response) => {
     const body = parseRequest(categorizeSchema, req.body, res);
     if (!body) return;
     const data = await categorizeTransactions(body);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    res.status(400).json({ success: false, error: message });
-  }
-});
-
-router.post('/corrections', (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(correctionSchema, req.body, res);
-    if (!body) return;
-    const data = saveAICorrection(body);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -89,16 +70,6 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
     res.write('event: error\n');
     res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
     res.end();
-  }
-});
-
-router.get('/corrections', (_req: Request, res: Response) => {
-  try {
-    const data = getAICorrections();
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    res.status(400).json({ success: false, error: message });
   }
 });
 

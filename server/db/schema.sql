@@ -45,7 +45,6 @@ CREATE TABLE IF NOT EXISTS transactions (
   comment TEXT,
   is_initial_balance INTEGER NOT NULL DEFAULT 0,
   ai_suggested INTEGER NOT NULL DEFAULT 0,
-  user_corrected INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   deleted_at TEXT
@@ -68,14 +67,3 @@ CREATE TABLE IF NOT EXISTS spending_goals (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   deleted_at TEXT
 );
-
--- ai_corrections
-CREATE TABLE IF NOT EXISTS ai_corrections (
-  id TEXT PRIMARY KEY,
-  transaction_name TEXT NOT NULL,
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  ai_suggested_subcategory_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL,
-  user_corrected_subcategory_id TEXT NOT NULL REFERENCES subcategories(id) ON DELETE CASCADE,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_ai_corrections_lookup ON ai_corrections(account_id, transaction_name);

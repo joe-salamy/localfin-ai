@@ -34,7 +34,6 @@ const createTransactionSchema = z.object({
   subcategory_id: nonEmptyString.nullable().optional(),
   comment: z.string().nullable().optional(),
   ai_suggested: z.boolean().optional(),
-  user_corrected: z.boolean().optional(),
 });
 const updateTransactionSchema = z.object({
   date: isoDateString.optional(),
@@ -43,7 +42,6 @@ const updateTransactionSchema = z.object({
   subcategory_id: nonEmptyString.nullable().optional(),
   comment: z.string().nullable().optional(),
   ai_suggested: z.boolean().optional(),
-  user_corrected: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, 'At least one update field is required');
 const bulkCreateSchema = z.object({
   transactions: z.array(createTransactionSchema).min(1).max(500),

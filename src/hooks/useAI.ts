@@ -18,13 +18,12 @@ interface CategorizeResult {
   subcategory_name: string | null;
   category_name: string | null;
   confidence: number;
-  source: "correction" | "lookup" | "ai" | "none";
+  source: "lookup" | "ai" | "none";
 }
 
 interface ParseStatementRequest {
   text: string;
   accountId: string;
-  conversationId: string;
 }
 
 interface ParseStatementResult {
@@ -33,7 +32,6 @@ interface ParseStatementResult {
     total: number;
     duplicates: number;
     fromLookup: number;
-    fromCorrection: number;
     fromAI: number;
     uncategorized: number;
     needsReview: number;
@@ -41,13 +39,6 @@ interface ParseStatementResult {
   format: string | null;
   parseSuccessRate: number;
   errors: string[];
-}
-
-interface SaveCorrectionData {
-  transaction_name: string;
-  account_id: string;
-  ai_suggested_subcategory_id?: string | null;
-  user_corrected_subcategory_id: string;
 }
 
 export interface ChatRequest {
@@ -110,10 +101,6 @@ export function useAI() {
       apiPost<ParseStatementResult>("/parser/parse-statement", data),
   });
 
-  const saveCorrection = useMutation({
-    mutationFn: (data: SaveCorrectionData) => apiPost("/ai/corrections", data),
-  });
-
   const chat = useMutation({
     mutationFn: (data: ChatRequest) => apiPost<ChatResult>("/ai/chat", data),
     onSuccess: () => invalidateFinanceData(),
@@ -146,7 +133,6 @@ export function useAI() {
   return {
     categorize,
     parseStatement,
-    saveCorrection,
     chat,
     streamChat,
   };

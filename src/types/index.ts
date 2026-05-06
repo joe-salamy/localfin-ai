@@ -49,7 +49,6 @@ export interface Transaction {
   comment: string | null;
   is_initial_balance: boolean;
   ai_suggested: boolean;
-  user_corrected: boolean;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -81,15 +80,6 @@ export interface SpendingGoalWithDetails extends SpendingGoal {
   subcategory_name: string;
   category_name: string;
   category_type: CategoryType;
-}
-
-export interface AICorrection {
-  id: string;
-  transaction_name: string;
-  account_id: string;
-  ai_suggested_subcategory_id: string | null;
-  user_corrected_subcategory_id: string;
-  created_at: string;
 }
 
 // === DASHBOARD TYPES ===
@@ -201,7 +191,7 @@ export interface EnrichedTransaction extends ParsedTransaction {
   subcategory_id: string | null;
   subcategory_name: string | null;
   category_name: string | null;
-  categorizationSource: 'lookup' | 'correction' | 'ai' | 'none';
+  categorizationSource: 'lookup' | 'ai' | 'none';
   isDuplicate: boolean;
   aiConfidence: number;
 }
@@ -256,7 +246,6 @@ export interface CreateTransactionData {
   subcategory_id?: string | null;
   comment?: string | null;
   ai_suggested?: boolean;
-  user_corrected?: boolean;
 }
 
 export interface CreateSpendingGoalData {

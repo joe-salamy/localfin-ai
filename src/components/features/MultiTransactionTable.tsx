@@ -24,7 +24,7 @@ interface TransactionRow {
   comment: string;
   isDuplicate: boolean;
   transferMatch: unknown | null;
-  categorizationSource: 'lookup' | 'correction' | 'ai' | 'none' | 'manual';
+  categorizationSource: 'lookup' | 'ai' | 'none' | 'manual';
   aiConfidence: number | null;
   aiSuggestedSubcategoryId: string | null;
 }
@@ -141,7 +141,7 @@ export function MultiTransactionTable() {
   const { accounts } = useAccounts();
   const { categories, subcategories } = useCategories();
   const { bulkCreateTransactions, checkDuplicates } = useTransactions();
-  const { categorize, parseStatement, saveCorrection } = useAI();
+  const { categorize, parseStatement } = useAI();
 
   const [rows, setRows] = useState<TransactionRow[]>(initialRows);
   const [saving, setSaving] = useState(false);
@@ -170,7 +170,7 @@ export function MultiTransactionTable() {
   }, []);
 
   const handleSubcategoryChange = useCallback(
-    async (row: TransactionRow, value: string) => {
+    (row: TransactionRow, value: string) => {
       updateRow(row.id, 'subcategory_id', value);
       setRows((prev) =>
         prev.map((r) =>
@@ -183,22 +183,8 @@ export function MultiTransactionTable() {
             : r,
         ),
       );
-
-      if (!value || row.categorizationSource !== 'ai' || !row.account_id) return;
-
-      try {
-        await saveCorrection.mutateAsync({
-          transaction_name: row.name,
-          account_id: row.account_id,
-          ai_suggested_subcategory_id: row.aiSuggestedSubcategoryId,
-          user_corrected_subcategory_id: value,
-        });
-        toast.success('AI correction saved for future matches.');
-      } catch {
-        toast.error('Category changed, but AI correction was not saved.');
-      }
     },
-    [saveCorrection, updateRow],
+    [updateRow],
   );
 
   const removeRow = useCallback((id: string) => {
@@ -306,14 +292,10 @@ export function MultiTransactionTable() {
       return;
     }
 
-    const conversationId = crypto.randomUUID();
-    setLastRunId(conversationId);
-
     try {
       const result = await parseStatement.mutateAsync({
         text: statementText,
         accountId: statementAccountId,
-        conversationId,
       });
       const data = result.data;
       if (!data) return;
@@ -334,7 +316,7 @@ export function MultiTransactionTable() {
       })));
       setDuplicatesChecked(data.summary.duplicates > 0);
       setParseSummary(
-        `${data.summary.total} parsed, ${data.summary.fromAI} from AI, ${data.summary.duplicates} duplicate(s), ${Math.round(data.parseSuccessRate * 100)}% success`,
+        `${data.summary.total} parsed, ${data.summary.duplicates} duplicate(s), ${data.summary.uncategorized} uncategorized, ${Math.round(data.parseSuccessRate * 100)}% success`,
       );
       toast.success(`Parsed ${data.summary.total} transaction(s).`);
     } catch (err) {
@@ -404,7 +386,6 @@ export function MultiTransactionTable() {
         subcategory_id: r.subcategory_id || null,
         comment: r.comment || null,
         ai_suggested: r.categorizationSource === 'ai',
-        user_corrected: r.categorizationSource === 'manual' && Boolean(r.aiSuggestedSubcategoryId),
       }));
 
       await bulkCreateTransactions.mutateAsync(payload);
@@ -606,7 +587,7 @@ export function MultiTransactionTable() {
                 <td className="px-1 py-0.5">
                   <GroupedSubcategorySelect
                     value={row.subcategory_id}
-                    onChange={(val) => void handleSubcategoryChange(row, val)}
+                    onChange={(val) => handleSubcategoryChange(row, val)}
                     categories={categories}
                     subcategories={subcategories}
                     filterType={getSubcategoryFilter(row.amount)}
