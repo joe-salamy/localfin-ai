@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ClipboardEvent } from 'react';
 import type { TransactionWithDetails, Subcategory } from '@/types';
 import { format, parseISO } from 'date-fns';
 import { Pencil, Trash2, Check, X, ArrowUp, ArrowDown } from 'lucide-react';
@@ -24,6 +25,24 @@ interface EditState {
   amount: string;
   subcategory_id: string;
   comment: string;
+}
+
+function normalizeClipboardValue(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function resolveSubcategoryId(value: string, subcategories: Subcategory[]): string | null {
+  const normalized = normalizeClipboardValue(value);
+  if (!normalized) return null;
+
+  const parts = value.split('>').map((part) => part.trim()).filter(Boolean);
+  const candidateName = normalizeClipboardValue(parts[parts.length - 1] ?? value);
+
+  return subcategories.find((subcategory) => (
+    subcategory.id.toLowerCase() === normalized ||
+    subcategory.name.toLowerCase() === normalized ||
+    subcategory.name.toLowerCase() === candidateName
+  ))?.id ?? null;
 }
 
 function SortIcon({ column, sortColumn, sortDirection }: { column: string; sortColumn: string; sortDirection: 'asc' | 'desc' }) {
@@ -110,6 +129,48 @@ export function TransactionTable({
       setDeleteTarget(null);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const applySubcategoryPaste = async (
+    e: ClipboardEvent<HTMLElement>,
+    transaction: TransactionWithDetails,
+  ) => {
+    if (e.defaultPrevented) return;
+
+    const text = e.clipboardData.getData('text/plain');
+    const values = text
+      .split(/\r?\n/)
+      .map((line) => line.split('\t')[0]?.trim() ?? '')
+      .filter(Boolean);
+    if (values.length === 0) return;
+
+    const resolvedIds = values.map((value) => resolveSubcategoryId(value, subcategories));
+    if (resolvedIds.every((id) => !id)) return;
+
+    e.preventDefault();
+
+    if (editingId === transaction.id) {
+      const firstResolvedId = resolvedIds.find((id): id is string => id != null);
+      if (firstResolvedId) {
+        setEditState((current) => ({ ...current, subcategory_id: firstResolvedId }));
+      }
+      return;
+    }
+
+    const targetTransactions =
+      selectedIds.size > 0
+        ? transactions.filter((item) => selectedIds.has(item.id))
+        : transactions.slice(transactions.findIndex((item) => item.id === transaction.id));
+    const updates = values.length === 1
+      ? targetTransactions.map((item) => ({ item, subcategoryId: resolvedIds[0] }))
+      : targetTransactions
+        .slice(0, resolvedIds.length)
+        .map((item, index) => ({ item, subcategoryId: resolvedIds[index] }));
+
+    for (const update of updates) {
+      if (!update.subcategoryId) continue;
+      await onEdit(update.item.id, { subcategory_id: update.subcategoryId });
     }
   };
 
@@ -224,11 +285,17 @@ export function TransactionTable({
                       </span>
                     )}
                   </td>
-                  <td className={cellClass}>
+                  <td
+                    className={cellClass}
+                    tabIndex={isEditing ? undefined : 0}
+                    onPaste={(e) => void applySubcategoryPaste(e, t)}
+                    title="Paste a copied subcategory here to apply it to this row or selected rows"
+                  >
                     {isEditing ? (
                       <select
                         value={editState.subcategory_id}
                         onChange={(e) => setEditState({ ...editState, subcategory_id: e.target.value })}
+                        onPaste={(e) => void applySubcategoryPaste(e, t)}
                         className="h-7 w-36 rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       >
                         <option value="">None</option>
