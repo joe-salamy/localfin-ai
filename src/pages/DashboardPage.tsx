@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { format, subDays } from 'date-fns';
 import { TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { useDashboard } from '@/hooks/useDashboard';
@@ -10,7 +10,6 @@ import { NetWorthChart } from '@/components/features/NetWorthChart';
 import { SankeyDiagram } from '@/components/features/SankeyDiagram';
 import { formatCurrency, cn } from '@/lib/utils';
 import { DEFAULT_DATE_RANGE_DAYS } from '@/config/constants';
-import type { NetWorthSummary } from '@/types';
 
 const DATE_FMT = 'yyyy-MM-dd';
 
@@ -23,23 +22,13 @@ export function DashboardPage() {
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(today);
 
-  const { accountSummary, categorySummary, metrics, netWorthChart, sankeyChart, isLoading } =
+  const { accountSummary, netWorth, categorySummary, metrics, netWorthChart, sankeyChart, isLoading } =
     useDashboard(startDate, endDate);
 
   const applyDates = () => {
     setStartDate(startInput);
     setEndDate(endInput);
   };
-
-  const netWorth = useMemo<NetWorthSummary>(() => {
-    let total_assets = 0;
-    let total_liabilities = 0;
-    for (const a of accountSummary) {
-      if (a.account_type === 'asset') total_assets += a.ending_balance;
-      else total_liabilities += a.ending_balance;
-    }
-    return { total_assets, total_liabilities, net_worth: total_assets - total_liabilities };
-  }, [accountSummary]);
 
   return (
     <div className="space-y-4">

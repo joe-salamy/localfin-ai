@@ -138,6 +138,11 @@ export interface NetWorthSummary {
   net_worth: number;
 }
 
+export interface AccountSummaryResponse {
+  accounts: AccountSummary[];
+  netWorth: NetWorthSummary;
+}
+
 export interface DashboardMetrics {
   totalIncome: number;
   totalExpenses: number;

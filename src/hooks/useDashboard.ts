@@ -2,12 +2,19 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
 import type {
-  AccountSummary,
+  AccountSummaryResponse,
   CategorySummary,
   DashboardMetrics,
   NetWorthDataPoint,
+  NetWorthSummary,
   SankeyData,
 } from '@/types/index';
+
+const EMPTY_NET_WORTH: NetWorthSummary = {
+  total_assets: 0,
+  total_liabilities: 0,
+  net_worth: 0,
+};
 
 export function useDashboard(startDate: string, endDate: string) {
   const dateParams = `?startDate=${startDate}&endDate=${endDate}`;
@@ -15,8 +22,8 @@ export function useDashboard(startDate: string, endDate: string) {
   const accountSummaryQuery = useQuery({
     queryKey: queryKeys.dashboard.accountSummary(startDate, endDate),
     queryFn: () =>
-      apiGet<AccountSummary[]>(`/dashboard/account-summary${dateParams}`),
-    select: (res) => res.data ?? [],
+      apiGet<AccountSummaryResponse>(`/dashboard/account-summary${dateParams}`),
+    select: (res) => res.data ?? { accounts: [], netWorth: EMPTY_NET_WORTH },
   });
 
   const categorySummaryQuery = useQuery({
@@ -48,7 +55,8 @@ export function useDashboard(startDate: string, endDate: string) {
   });
 
   return {
-    accountSummary: accountSummaryQuery.data ?? [],
+    accountSummary: accountSummaryQuery.data?.accounts ?? [],
+    netWorth: accountSummaryQuery.data?.netWorth ?? EMPTY_NET_WORTH,
     categorySummary: categorySummaryQuery.data ?? [],
     metrics: metricsQuery.data,
     netWorthChart: netWorthChartQuery.data ?? [],
