@@ -87,7 +87,6 @@ interface GroupedSelectProps {
   onChange: (value: string) => void;
   categories: Category[];
   subcategories: Subcategory[];
-  filterType: 'income' | 'expense' | null;
   className?: string;
 }
 
@@ -96,21 +95,16 @@ function GroupedSubcategorySelect({
   onChange,
   categories,
   subcategories,
-  filterType,
   className,
 }: GroupedSelectProps) {
   const filtered = useMemo(() => {
-    const relevantCategories = filterType
-      ? categories.filter((c) => c.type === filterType)
-      : categories;
-
-    return relevantCategories
+    return categories
       .map((cat) => ({
         category: cat,
         subs: subcategories.filter((s) => s.category_id === cat.id),
       }))
       .filter((g) => g.subs.length > 0);
-  }, [categories, subcategories, filterType]);
+  }, [categories, subcategories]);
 
   return (
     <select
@@ -401,17 +395,6 @@ export function MultiTransactionTable() {
     }
   }, [filledRows, duplicatesChecked, checkDuplicates, bulkCreateTransactions]);
 
-  // ── Subcategory filter type ───────────────────────────────────────
-
-  const getSubcategoryFilter = (
-    amountStr: string,
-  ): 'income' | 'expense' | null => {
-    const num = displayAmountToNumber(amountStr);
-    if (num > 0) return 'income';
-    if (num < 0) return 'expense';
-    return null;
-  };
-
   // ── Render ────────────────────────────────────────────────────────
 
   const accountOptions = useMemo(
@@ -590,7 +573,6 @@ export function MultiTransactionTable() {
                     onChange={(val) => handleSubcategoryChange(row, val)}
                     categories={categories}
                     subcategories={subcategories}
-                    filterType={getSubcategoryFilter(row.amount)}
                     className="w-36"
                   />
                   {row.categorizationSource !== 'manual' && (
