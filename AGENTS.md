@@ -12,10 +12,6 @@ LocalFin AI is a local-first personal finance tracker that uses LLM-powered pars
 
 - When asking clarifying questions in plan mode, be liberal; when in doubt, ask more rather than fewer.
 
-## Design System
-
-This project uses the design system in `design.md`. Always reference it for colors, typography, spacing, components, and styles. Generate UI that strictly matches the tokens and patterns defined there.
-
 ## Documentation
 
 - Keep READMEs concise.
