@@ -72,8 +72,15 @@ test("unsafe-looking input remains a LIKE parameter", () => {
   const compiled = compileTransactionSearch('name:"x%' + "' OR 1=1 --" + '"', aliases);
 
   assert.equal(compiled.params.length, 1);
-  assert.equal(compiled.params[0], "%x%' or 1=1 --%");
+  assert.equal(compiled.params[0], "%x\\%' or 1=1 --%");
   assert.doesNotMatch(compiled.clause, /1=1/);
+});
+
+test("LIKE wildcard characters are searched literally", () => {
+  const compiled = compileTransactionSearch("name:100%_match", aliases);
+
+  assert.match(compiled.clause, /ESCAPE '\\'/);
+  assert.deepEqual(compiled.params, ["%100\\%\\_match%"]);
 });
 
 
@@ -96,6 +103,10 @@ test("invalid syntax reports a search syntax error", () => {
   );
   assert.throws(
     () => compileTransactionSearch("amount>coffee", aliases),
+    TransactionSearchSyntaxError,
+  );
+  assert.throws(
+    () => compileTransactionSearch("date:2026-99-99", aliases),
     TransactionSearchSyntaxError,
   );
 });

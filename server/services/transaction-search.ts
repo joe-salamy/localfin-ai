@@ -277,11 +277,15 @@ function parseField(rawField: string): SearchField {
 }
 
 function likePattern(value: string): string {
-  return `%${value.toLowerCase()}%`;
+  return `%${escapeLikeValue(value.toLowerCase())}%`;
+}
+
+function escapeLikeValue(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
 function textLike(column: string): string {
-  return `LOWER(COALESCE(${column}, '')) LIKE ?`;
+  return `LOWER(COALESCE(${column}, '')) LIKE ? ESCAPE '\\'`;
 }
 
 function transactionColumn(aliases: SearchAliases, column: string): string {
@@ -317,11 +321,19 @@ function compileNumericField(column: string, operator: SearchOperator, value: st
 }
 
 function compileDateField(column: string, operator: SearchOperator, value: string): CompiledTransactionSearch {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  if (!isIsoDate(value)) {
     throw new TransactionSearchSyntaxError(`date search requires YYYY-MM-DD`);
   }
   const sqlOperator = operator === ":" ? "=" : operator;
   return { clause: `${column} ${sqlOperator} ?`, params: [value] };
+}
+
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  );
 }
 
 function compileTypeField(
