@@ -9,13 +9,11 @@ import { CategorySummaryTable } from '@/components/features/CategorySummary';
 import { NetWorthChart } from '@/components/features/NetWorthChart';
 import { SankeyDiagram } from '@/components/features/SankeyDiagram';
 import { formatCurrency, cn } from '@/lib/utils';
-import { DEFAULT_DATE_RANGE_DAYS } from '@/config/constants';
-
-const DATE_FMT = 'yyyy-MM-dd';
+import { DATE_FORMAT, DEFAULT_DATE_RANGE_DAYS } from '@/config/constants';
 
 export function DashboardPage() {
-  const today = format(new Date(), DATE_FMT);
-  const defaultStart = format(subDays(new Date(), DEFAULT_DATE_RANGE_DAYS), DATE_FMT);
+  const today = format(new Date(), DATE_FORMAT);
+  const defaultStart = format(subDays(new Date(), DEFAULT_DATE_RANGE_DAYS), DATE_FORMAT);
 
   const [startInput, setStartInput] = useState(defaultStart);
   const [endInput, setEndInput] = useState(today);

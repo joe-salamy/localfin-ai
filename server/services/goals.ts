@@ -12,6 +12,7 @@ import {
   startOfYear,
 } from "date-fns";
 import { getDb } from "../db/index.js";
+import { DATE_CONFIG } from "../config/app.js";
 import type {
   CreateSpendingGoalData,
   GoalPeriod,
@@ -95,8 +96,8 @@ function getPeriodBoundaries(
   }
 
   return {
-    periodStart: format(start, "yyyy-MM-dd"),
-    periodEnd: format(end, "yyyy-MM-dd"),
+    periodStart: format(start, DATE_CONFIG.isoDateFormat),
+    periodEnd: format(end, DATE_CONFIG.isoDateFormat),
   };
 }
 

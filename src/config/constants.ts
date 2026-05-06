@@ -12,6 +12,12 @@ export const DEFAULT_DATE_RANGE_DAYS = 90;
 export const AI_BATCH_SIZE = 25;
 export const AI_CONTEXT_SIZE = 100;
 
+export const API_BASE_PATH = '/api';
+export const SSE_ACCEPT_HEADER = 'text/event-stream';
+export const SERVER_UNREACHABLE_MESSAGE =
+  'Cannot reach the LocalFin server. Start the app with npm run dev and open http://localhost:5173.';
+export const INVALID_SERVER_RESPONSE_MESSAGE = 'LocalFin server returned an invalid response.';
+
 // System UUIDs (must match seed data)
 export const SYSTEM_CATEGORIES = {
   INCOME_UNASSIGNED: '00000000-0000-0000-0000-000000000001',

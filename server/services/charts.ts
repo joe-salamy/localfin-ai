@@ -8,6 +8,7 @@ import {
   parseISO,
 } from "date-fns";
 import { getDb } from "../db/index.js";
+import { DATE_CONFIG } from "../config/app.js";
 import type {
   NetWorthDataPoint,
   SankeyData,
@@ -46,13 +47,13 @@ export function prepareNetWorthData(
 
   if (totalDays < 28) {
     advanceFn = addDays;
-    dateFormat = "MMM d";
+    dateFormat = DATE_CONFIG.shortMonthDayFormat;
   } else if (totalDays < 180) {
     advanceFn = addWeeks;
-    dateFormat = "MMM d";
+    dateFormat = DATE_CONFIG.shortMonthDayFormat;
   } else {
     advanceFn = addMonths;
-    dateFormat = "MMM yyyy";
+    dateFormat = DATE_CONFIG.monthYearFormat;
   }
 
   // Get all non-deleted accounts
@@ -75,9 +76,9 @@ export function prepareNetWorthData(
 
   while (
     isBefore(current, end) ||
-    format(current, "yyyy-MM-dd") === format(end, "yyyy-MM-dd")
+    format(current, DATE_CONFIG.isoDateFormat) === format(end, DATE_CONFIG.isoDateFormat)
   ) {
-    const dateStr = format(current, "yyyy-MM-dd");
+    const dateStr = format(current, DATE_CONFIG.isoDateFormat);
     const formattedDate = format(current, dateFormat);
 
     const point: NetWorthDataPoint = {
@@ -113,7 +114,7 @@ export function prepareNetWorthData(
     // Ensure we don't go past the end date
     if (
       isBefore(end, current) &&
-      format(current, "yyyy-MM-dd") !== format(end, "yyyy-MM-dd")
+      format(current, DATE_CONFIG.isoDateFormat) !== format(end, DATE_CONFIG.isoDateFormat)
     ) {
       break;
     }

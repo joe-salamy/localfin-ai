@@ -5,6 +5,7 @@ import { categorizeTransactions } from '../services/ai.js';
 import { chatWithAssistant, streamChatWithAssistant } from '../services/ai-chat.js';
 import { saveAICorrection, getAICorrections } from '../services/ai-corrections.js';
 import { finiteNumber, nonEmptyString, parseRequest } from './validation.js';
+import { HTTP_HEADERS } from '../config/app.js';
 
 const router = Router();
 const categorizeSchema = z.object({
@@ -69,9 +70,9 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
     const body = parseRequest(chatSchema, req.body, res);
     if (!body) return;
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
+    res.setHeader(HTTP_HEADERS.contentType, HTTP_HEADERS.sseContentType);
+    res.setHeader(HTTP_HEADERS.cacheControl, HTTP_HEADERS.sseCacheControl);
+    res.setHeader(HTTP_HEADERS.connection, HTTP_HEADERS.sseConnection);
     res.flushHeaders();
 
     await streamChatWithAssistant(body, (event) => {

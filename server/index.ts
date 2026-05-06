@@ -10,6 +10,7 @@ import { dashboardRouter } from './routes/dashboard.js';
 import { goalRouter } from './routes/goals.js';
 import { aiRouter } from './routes/ai.js';
 import { parserRouter } from './routes/parser.js';
+import { API_ROUTES, ENV_KEYS, SERVER_CONFIG } from './config/app.js';
 
 dotenv.config();
 
@@ -17,9 +18,9 @@ dotenv.config();
 getDb();
 
 const app = express();
-const PORT = 3001;
+const PORT = SERVER_CONFIG.port;
 const allowedOrigins = new Set(
-  (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://127.0.0.1:5173')
+  (process.env[ENV_KEYS.corsOrigin] ?? SERVER_CONFIG.defaultCorsOrigins)
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
@@ -34,20 +35,20 @@ app.use(cors({
     callback(new Error('Origin not allowed by CORS'));
   },
 }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: SERVER_CONFIG.jsonLimit }));
 
-app.get('/api/health', (_req, res) => {
+app.get(API_ROUTES.health, (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
 });
 
-app.use('/api/accounts', accountRouter);
-app.use('/api/categories', categoryRouter);
-app.use('/api/subcategories', subcategoryRouter);
-app.use('/api/transactions', transactionRouter);
-app.use('/api/dashboard', dashboardRouter);
-app.use('/api/goals', goalRouter);
-app.use('/api/ai', aiRouter);
-app.use('/api/parser', parserRouter);
+app.use(API_ROUTES.accounts, accountRouter);
+app.use(API_ROUTES.categories, categoryRouter);
+app.use(API_ROUTES.subcategories, subcategoryRouter);
+app.use(API_ROUTES.transactions, transactionRouter);
+app.use(API_ROUTES.dashboard, dashboardRouter);
+app.use(API_ROUTES.goals, goalRouter);
+app.use(API_ROUTES.ai, aiRouter);
+app.use(API_ROUTES.parser, parserRouter);
 
 const errorHandler: ErrorRequestHandler = (error, _req, res, next) => {
   void next;

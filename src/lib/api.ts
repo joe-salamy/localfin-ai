@@ -1,11 +1,15 @@
+import {
+  API_BASE_PATH,
+  INVALID_SERVER_RESPONSE_MESSAGE,
+  SERVER_UNREACHABLE_MESSAGE,
+  SSE_ACCEPT_HEADER,
+} from '@/config/constants';
+
 interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
 }
-
-const SERVER_UNREACHABLE_MESSAGE =
-  'Cannot reach the LocalFin server. Start the app with npm run dev and open http://localhost:5173.';
 
 function isApiResponse<T>(value: unknown): value is ApiResponse<T> {
   return typeof value === 'object' && value !== null && 'success' in value;
@@ -23,7 +27,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<ApiRe
   let res: Response;
 
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(`${API_BASE_PATH}${path}`, {
       headers: { 'Content-Type': 'application/json', ...options?.headers },
       ...options,
     });
@@ -39,7 +43,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<ApiRe
       json = JSON.parse(text);
     } catch {
       const message = res.ok
-        ? 'LocalFin server returned an invalid response.'
+        ? INVALID_SERVER_RESPONSE_MESSAGE
         : fallbackErrorMessage(res.status);
       throw new Error(message);
     }
@@ -49,7 +53,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<ApiRe
     if (!res.ok) {
       throw new Error(fallbackErrorMessage(res.status));
     }
-    throw new Error('LocalFin server returned an invalid response.');
+    throw new Error(INVALID_SERVER_RESPONSE_MESSAGE);
   }
 
   if (!res.ok || !json.success) {
@@ -71,9 +75,9 @@ export async function apiStream<TEvent>(
   onEvent: (event: TEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE_PATH}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    headers: { 'Content-Type': 'application/json', Accept: SSE_ACCEPT_HEADER },
     body: JSON.stringify(body),
     signal,
   });

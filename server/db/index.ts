@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { seed } from './seed.js';
+import { DATABASE_CONFIG } from '../config/app.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -11,12 +12,12 @@ let db: Database.Database | null = null;
 export function getDb(): Database.Database {
   if (db) return db;
 
-  const dataDir = path.resolve(__dirname, '../../data');
+  const dataDir = DATABASE_CONFIG.dataDirectory;
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  const dbPath = path.join(dataDir, 'budget.db');
+  const dbPath = path.join(dataDir, DATABASE_CONFIG.fileName);
   db = new Database(dbPath);
 
   // Enable WAL mode and foreign keys
@@ -24,7 +25,7 @@ export function getDb(): Database.Database {
   db.pragma('foreign_keys = ON');
 
   // Run schema
-  const schema = fs.readFileSync(path.resolve(__dirname, 'schema.sql'), 'utf-8');
+  const schema = fs.readFileSync(path.resolve(__dirname, DATABASE_CONFIG.schemaFileName), 'utf-8');
   db.exec(schema);
 
   // Seed system data

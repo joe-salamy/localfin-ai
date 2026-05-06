@@ -1,6 +1,6 @@
 import { getDb } from "../db/index.js";
 import { callOpenRouter } from "../ai/openrouter.js";
-import { AI_MODELS } from "../config/ai-models.js";
+import { AI_CONFIG, AI_MODELS } from "../config/app.js";
 import { getAICorrection, getAICorrections } from "./ai-corrections.js";
 
 interface CategorizeRequest {
@@ -65,9 +65,6 @@ interface CorrectionRow {
   user_corrected_subcategory_id: string;
   created_at: string;
 }
-
-const AI_BATCH_SIZE = 25;
-const AI_CONTEXT_SIZE = 100;
 
 export async function categorizeTransactions(
   request: CategorizeRequest,
@@ -176,13 +173,13 @@ export async function categorizeTransactions(
       ORDER BY t.date DESC LIMIT ?
     `,
       )
-      .all(AI_CONTEXT_SIZE) as PastExampleRow[];
+      .all(AI_CONFIG.contextSize) as PastExampleRow[];
 
     const corrections = getAICorrections();
 
     // Process in batches
-    for (let i = 0; i < unknowns.length; i += AI_BATCH_SIZE) {
-      const batch = unknowns.slice(i, i + AI_BATCH_SIZE);
+    for (let i = 0; i < unknowns.length; i += AI_CONFIG.batchSize) {
+      const batch = unknowns.slice(i, i + AI_CONFIG.batchSize);
 
       try {
         const aiResults = await callOpenRouterForCategorization(

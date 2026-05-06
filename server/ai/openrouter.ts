@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { AI_MODELS, type AIModel } from '../config/ai-models.js';
+import { AI_MODELS, ENV_KEYS, OPENROUTER_CONFIG, type AIModel } from '../config/app.js';
 
 interface OpenRouterMessage {
   role: 'system' | 'user' | 'assistant';
@@ -34,19 +34,17 @@ export interface OpenRouterCallResult {
   usage?: OpenRouterResponse['usage'];
 }
 
-const LOG_DIR = path.resolve(process.cwd(), 'logs');
-
 function safeLogId(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 120) || crypto.randomUUID();
+  return value.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, OPENROUTER_CONFIG.maxLogIdLength) || crypto.randomUUID();
 }
 
 export async function appendConversationLog(
   conversationId: string,
   event: Record<string, unknown>,
 ): Promise<string> {
-  await mkdir(LOG_DIR, { recursive: true });
+  await mkdir(OPENROUTER_CONFIG.logDirectory, { recursive: true });
   const fileName = `${safeLogId(conversationId)}.jsonl`;
-  const logFile = path.join(LOG_DIR, fileName);
+  const logFile = path.join(OPENROUTER_CONFIG.logDirectory, fileName);
   await appendFile(logFile, `${JSON.stringify(event)}\n`, 'utf8');
   return logFile;
 }
@@ -63,14 +61,14 @@ export async function callOpenRouter(
   messages: OpenRouterMessage[],
   options: OpenRouterLogOptions = {},
 ): Promise<OpenRouterCallResult> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey || apiKey === 'your_openrouter_api_key_here') {
-    throw new Error('OPENROUTER_API_KEY not configured. Set it in .env file.');
+  const apiKey = process.env[ENV_KEYS.openRouterApiKey];
+  if (!apiKey || apiKey === OPENROUTER_CONFIG.apiKeyPlaceholder) {
+    throw new Error(`${ENV_KEYS.openRouterApiKey} not configured. Set it in .env file.`);
   }
 
   const conversationId = safeLogId(options.conversationId ?? crypto.randomUUID());
   const requestId = options.requestId ?? crypto.randomUUID();
-  const operation = options.operation ?? 'openrouter.chat_completion';
+  const operation = options.operation ?? OPENROUTER_CONFIG.defaultOperation;
   const model = options.model ?? AI_MODELS.transactionCategorization;
   const startedAt = new Date();
   const body = {
@@ -81,7 +79,7 @@ export async function callOpenRouter(
   };
 
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const response = await fetch(OPENROUTER_CONFIG.apiUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -98,7 +96,7 @@ export async function callOpenRouter(
         completedAt: new Date().toISOString(),
         durationMs: Date.now() - startedAt.getTime(),
         status: 'error',
-        provider: 'openrouter',
+        provider: OPENROUTER_CONFIG.providerName,
         operation,
         model,
         conversationId,
@@ -124,7 +122,7 @@ export async function callOpenRouter(
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
       status: 'success',
-      provider: 'openrouter',
+      provider: OPENROUTER_CONFIG.providerName,
       operation,
       model,
       conversationId,
@@ -152,7 +150,7 @@ export async function callOpenRouter(
         completedAt: new Date().toISOString(),
         durationMs: Date.now() - startedAt.getTime(),
         status: 'error',
-        provider: 'openrouter',
+        provider: OPENROUTER_CONFIG.providerName,
         operation,
         model,
         conversationId,
