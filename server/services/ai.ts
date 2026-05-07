@@ -43,6 +43,11 @@ interface PastTxRow {
 
 interface AIResultItem {
   index: number;
+  subcategory_name: string | null;
+}
+
+interface ResolvedAIResultItem {
+  index: number;
   subcategory_id: string;
   subcategory_name: string;
   category_name: string;
@@ -246,16 +251,16 @@ async function callOpenRouterForCategorization(
     batchNumber: number;
     batchCount: number;
   },
-): Promise<AIResultItem[]> {
+): Promise<ResolvedAIResultItem[]> {
   // Build subcategory list grouped by type
   const incomeSubcategories = subcategories
     .filter((s) => s.category_type === "income")
-    .map((s) => `  - ${s.category_name} > ${s.name} (id: ${s.id})`)
+    .map((s) => `  - ${s.category_name} > ${s.name}`)
     .join("\n");
 
   const expenseSubcategories = subcategories
     .filter((s) => s.category_type === "expense")
-    .map((s) => `  - ${s.category_name} > ${s.name} (id: ${s.id})`)
+    .map((s) => `  - ${s.category_name} > ${s.name}`)
     .join("\n");
 
   // Build past examples context
@@ -270,6 +275,7 @@ RULES:
 - Positive amounts are income, negative amounts are expenses
 - Match the subcategory type to the transaction direction (income subcategories for positive, expense for negative)
 - If unsure, use "Unassigned" for the appropriate type
+- For subcategory_name, return only the subcategory text after ">", not the category
 - Return ONLY the JSON, no explanation
 AVAILABLE SUBCATEGORIES:
 Income:
@@ -294,7 +300,7 @@ ${exampleLines.join("\n")}
 ${transactionLines.join("\n")}
 
 Return exactly one result per transaction using the same zero-based index values shown above.
-Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_name": "...", "category_name": "..." }] }`;
+Return JSON: { "results": [{ "index": 0, "subcategory_name": "..." }] }`;
 
   const response = await callOpenRouter(
     [
@@ -325,9 +331,9 @@ Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_n
     return [];
   }
 
-  // Validate subcategory IDs and build indexed results
-  const validSubcategoryIds = new Set(subcategories.map((s) => s.id));
-  const indexedResults: AIResultItem[] = [];
+  // Validate subcategory names and build indexed results
+  const subcategoriesByName = createUniqueSubcategoryNameMap(subcategories);
+  const indexedResults: ResolvedAIResultItem[] = [];
   const resultIndexes = parsed.results
     .map((result) => result.index)
     .filter((index): index is number => Number.isInteger(index));
@@ -344,11 +350,17 @@ Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_n
     );
     if (batchIndex === null) continue;
 
-    if (
-      result.subcategory_id &&
-      validSubcategoryIds.has(result.subcategory_id)
-    ) {
-      indexedResults[batchIndex] = result;
+    const subcategory = findSubcategoryByName(
+      result.subcategory_name,
+      subcategoriesByName,
+    );
+    if (subcategory) {
+      indexedResults[batchIndex] = {
+        index: batchIndex,
+        subcategory_id: subcategory.id,
+        subcategory_name: subcategory.name,
+        category_name: subcategory.category_name,
+      };
     } else {
       // Fall back to Unassigned
       const tx = batch[batchIndex];
@@ -386,4 +398,44 @@ Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_n
   }
 
   return indexedResults;
+}
+
+function normalizeSubcategoryName(name: unknown): string | null {
+  if (typeof name !== "string") return null;
+
+  const trimmed = name.trim();
+  return trimmed.length > 0 ? trimmed.toLowerCase() : null;
+}
+
+export function createUniqueSubcategoryNameMap(
+  subcategories: SubcategoryRow[],
+): Map<string, SubcategoryRow> {
+  const subcategoryCounts = new Map<string, number>();
+  for (const subcategory of subcategories) {
+    const normalizedName = normalizeSubcategoryName(subcategory.name);
+    if (!normalizedName) continue;
+    subcategoryCounts.set(
+      normalizedName,
+      (subcategoryCounts.get(normalizedName) ?? 0) + 1,
+    );
+  }
+
+  const subcategoriesByName = new Map<string, SubcategoryRow>();
+  for (const subcategory of subcategories) {
+    const normalizedName = normalizeSubcategoryName(subcategory.name);
+    if (!normalizedName || subcategoryCounts.get(normalizedName) !== 1) continue;
+    subcategoriesByName.set(normalizedName, subcategory);
+  }
+
+  return subcategoriesByName;
+}
+
+function findSubcategoryByName(
+  name: unknown,
+  subcategoriesByName: Map<string, SubcategoryRow>,
+): SubcategoryRow | null {
+  const normalizedName = normalizeSubcategoryName(name);
+  if (!normalizedName) return null;
+
+  return subcategoriesByName.get(normalizedName) ?? null;
 }
