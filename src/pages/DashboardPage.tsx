@@ -10,6 +10,9 @@ import { NetWorthChart } from '@/components/features/NetWorthChart';
 import { SankeyDiagram } from '@/components/features/SankeyDiagram';
 import { formatCurrency, cn } from '@/lib/utils';
 import { DATE_FORMAT, DEFAULT_DATE_RANGE_DAYS } from '@/config/constants';
+import { dateRangePresets, type DateRangePreset } from '@/lib/dateRangePresets';
+
+const ALL_TIME_START_DATE = '0001-01-01';
 
 export function DashboardPage() {
   const today = format(new Date(), DATE_FORMAT);
@@ -20,36 +23,68 @@ export function DashboardPage() {
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(today);
 
+  const dashboardStartDate = startDate || ALL_TIME_START_DATE;
+  const dashboardEndDate = endDate || today;
+
   const { accountSummary, netWorth, categorySummary, metrics, netWorthChart, sankeyChart, isLoading } =
-    useDashboard(startDate, endDate);
+    useDashboard(dashboardStartDate, dashboardEndDate);
 
   const applyDates = () => {
     setStartDate(startInput);
     setEndDate(endInput);
   };
 
+  const applyDateRangePreset = (preset: DateRangePreset) => {
+    const range = preset.getRange();
+    setStartInput(range.startDate);
+    setEndInput(range.endDate);
+    setStartDate(range.startDate);
+    setEndDate(range.endDate);
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex items-end gap-2">
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-muted-foreground">Start</label>
-          <input
-            type="date"
-            value={startInput}
-            onChange={(e) => setStartInput(e.target.value)}
-            className="h-8 rounded border border-border bg-input px-2 text-sm text-foreground"
-          />
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-muted-foreground">Start</label>
+            <input
+              type="date"
+              value={startInput}
+              onChange={(e) => setStartInput(e.target.value)}
+              className="h-8 rounded border border-border bg-input px-2 text-sm text-foreground"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-muted-foreground">End</label>
+            <input
+              type="date"
+              value={endInput}
+              onChange={(e) => setEndInput(e.target.value)}
+              className="h-8 rounded border border-border bg-input px-2 text-sm text-foreground"
+            />
+          </div>
+          <Button size="sm" onClick={applyDates}>Apply</Button>
         </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-muted-foreground">End</label>
-          <input
-            type="date"
-            value={endInput}
-            onChange={(e) => setEndInput(e.target.value)}
-            className="h-8 rounded border border-border bg-input px-2 text-sm text-foreground"
-          />
+        <div className="flex flex-wrap gap-2">
+          {dateRangePresets.map((preset) => {
+            const range = preset.getRange();
+            const isActive = startDate === range.startDate && endDate === range.endDate;
+
+            return (
+              <Button
+                key={preset.id}
+                type="button"
+                size="sm"
+                variant={isActive ? 'primary' : 'secondary'}
+                onClick={() => applyDateRangePreset(preset)}
+                className="h-7 px-2 text-xs"
+              >
+                {preset.label}
+              </Button>
+            );
+          })}
         </div>
-        <Button size="sm" onClick={applyDates}>Apply</Button>
       </div>
 
       {isLoading ? (

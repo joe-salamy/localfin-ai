@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { TransactionFilters } from '@/types';
-import { format, startOfMonth, startOfYear, subDays, subMonths, subYears } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -12,86 +12,10 @@ import { TransactionTable } from '@/components/features/TransactionTable';
 import { BulkEditModal } from '@/components/features/BulkEditModal';
 import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
 import { DEFAULT_DATE_RANGE_DAYS, DATE_FORMAT } from '@/config/constants';
+import { dateRangePresets, type DateRangePreset } from '@/lib/dateRangePresets';
 
 const today = format(new Date(), DATE_FORMAT);
 const defaultStart = format(subDays(new Date(), DEFAULT_DATE_RANGE_DAYS), DATE_FORMAT);
-
-interface DateRangePreset {
-  id: string;
-  label: string;
-  getRange: () => {
-    startDate: string;
-    endDate: string;
-  };
-}
-
-const formatDate = (date: Date) => format(date, DATE_FORMAT);
-
-const dateRangePresets: DateRangePreset[] = [
-  {
-    id: 'this-month',
-    label: 'This month',
-    getRange: () => {
-      const now = new Date();
-      return {
-        startDate: formatDate(startOfMonth(now)),
-        endDate: formatDate(now),
-      };
-    },
-  },
-  {
-    id: 'last-3-months',
-    label: 'Last 3 months',
-    getRange: () => {
-      const now = new Date();
-      return {
-        startDate: formatDate(subMonths(now, 3)),
-        endDate: formatDate(now),
-      };
-    },
-  },
-  {
-    id: 'last-6-months',
-    label: 'Last 6 months',
-    getRange: () => {
-      const now = new Date();
-      return {
-        startDate: formatDate(subMonths(now, 6)),
-        endDate: formatDate(now),
-      };
-    },
-  },
-  {
-    id: 'this-year',
-    label: 'This year',
-    getRange: () => {
-      const now = new Date();
-      return {
-        startDate: formatDate(startOfYear(now)),
-        endDate: formatDate(now),
-      };
-    },
-  },
-  {
-    id: 'last-year',
-    label: 'Last year',
-    getRange: () => {
-      const lastYear = subYears(new Date(), 1);
-      return {
-        startDate: formatDate(startOfYear(lastYear)),
-        endDate: formatDate(subDays(startOfYear(new Date()), 1)),
-      };
-    },
-  },
-  {
-    id: 'all-time',
-    label: 'All time',
-    getRange: () => ({
-      startDate: '',
-      endDate: '',
-    }),
-  },
-];
 
 export function TransactionHistoryPage() {
   // Filter state
