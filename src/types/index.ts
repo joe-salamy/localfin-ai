@@ -64,6 +64,17 @@ export interface TransactionWithDetails extends Transaction {
   running_balance?: number;
 }
 
+export interface RecentAccountTransaction {
+  account_id: string;
+  account_name: string;
+  account_type: AccountType;
+  current_balance: number;
+  last_transaction_id: string | null;
+  last_transaction_date: string | null;
+  last_transaction_name: string | null;
+  last_transaction_amount: number | null;
+}
+
 export interface SpendingGoal {
   id: string;
   subcategory_id: string;
