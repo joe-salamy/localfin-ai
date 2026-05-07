@@ -15,12 +15,14 @@ export function useCategories() {
     queryKey: queryKeys.categories.list(),
     queryFn: () => apiGet<Category[]>('/categories'),
     select: (res) => res.data ?? [],
+    staleTime: Infinity,
   });
 
   const subcategoriesQuery = useQuery({
     queryKey: queryKeys.subcategories.list(),
     queryFn: () => apiGet<Subcategory[]>('/subcategories'),
     select: (res) => res.data ?? [],
+    staleTime: Infinity,
   });
 
   const invalidateRelated = () =>
