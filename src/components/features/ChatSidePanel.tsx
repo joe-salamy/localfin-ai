@@ -192,7 +192,7 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
 
       {open && (
         <aside className="fixed inset-0 z-50 flex flex-col border-l border-border bg-background shadow-2xl md:sticky md:inset-auto md:top-0 md:h-screen md:w-[28rem] md:shrink-0">
-          <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-3">
+          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4">
             <Bot className="h-5 w-5" />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold">LocalFin AI</div>
@@ -275,20 +275,20 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
 
           <div className="border-t border-border bg-card p-3">
             <form
-              className="flex gap-2"
+              className="flex items-end gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 void sendMessage();
               }}
             >
-              <input
+              <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask or request an update..."
                 disabled={isStreaming}
-                className="h-9 min-w-0 flex-1 rounded border border-border bg-input px-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-24 min-w-0 flex-1 resize-none rounded border border-border bg-input px-2 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
-              <Button type="submit" size="sm" loading={isStreaming} aria-label="Send message">
+              <Button type="submit" size="sm" loading={isStreaming} aria-label="Send message" className="shrink-0">
                 <Send className="h-4 w-4" />
               </Button>
             </form>

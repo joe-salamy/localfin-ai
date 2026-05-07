@@ -19,8 +19,8 @@ export function Navbar() {
   const { pathname } = useLocation();
 
   return (
-    <nav className="border-b border-border bg-card px-4 py-3">
-      <div className="mx-auto flex max-w-7xl items-center justify-between">
+    <nav className="h-14 border-b border-border bg-card px-4">
+      <div className="mx-auto flex h-full max-w-7xl items-center justify-between">
         <Link to="/" className="text-lg font-bold text-foreground">
           Budget
         </Link>
