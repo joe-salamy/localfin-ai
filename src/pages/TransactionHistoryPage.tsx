@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { TransactionFilters } from '@/types';
-import { subDays, format } from 'date-fns';
+import { format, startOfMonth, startOfYear, subDays, subMonths, subYears } from 'date-fns';
 import { toast } from 'sonner';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -15,6 +15,83 @@ import { DEFAULT_DATE_RANGE_DAYS, DATE_FORMAT } from '@/config/constants';
 
 const today = format(new Date(), DATE_FORMAT);
 const defaultStart = format(subDays(new Date(), DEFAULT_DATE_RANGE_DAYS), DATE_FORMAT);
+
+interface DateRangePreset {
+  id: string;
+  label: string;
+  getRange: () => {
+    startDate: string;
+    endDate: string;
+  };
+}
+
+const formatDate = (date: Date) => format(date, DATE_FORMAT);
+
+const dateRangePresets: DateRangePreset[] = [
+  {
+    id: 'this-month',
+    label: 'This month',
+    getRange: () => {
+      const now = new Date();
+      return {
+        startDate: formatDate(startOfMonth(now)),
+        endDate: formatDate(now),
+      };
+    },
+  },
+  {
+    id: 'last-3-months',
+    label: 'Last 3 months',
+    getRange: () => {
+      const now = new Date();
+      return {
+        startDate: formatDate(subMonths(now, 3)),
+        endDate: formatDate(now),
+      };
+    },
+  },
+  {
+    id: 'last-6-months',
+    label: 'Last 6 months',
+    getRange: () => {
+      const now = new Date();
+      return {
+        startDate: formatDate(subMonths(now, 6)),
+        endDate: formatDate(now),
+      };
+    },
+  },
+  {
+    id: 'this-year',
+    label: 'This year',
+    getRange: () => {
+      const now = new Date();
+      return {
+        startDate: formatDate(startOfYear(now)),
+        endDate: formatDate(now),
+      };
+    },
+  },
+  {
+    id: 'last-year',
+    label: 'Last year',
+    getRange: () => {
+      const lastYear = subYears(new Date(), 1);
+      return {
+        startDate: formatDate(startOfYear(lastYear)),
+        endDate: formatDate(subDays(startOfYear(new Date()), 1)),
+      };
+    },
+  },
+  {
+    id: 'all-time',
+    label: 'All time',
+    getRange: () => ({
+      startDate: '',
+      endDate: '',
+    }),
+  },
+];
 
 export function TransactionHistoryPage() {
   // Filter state
@@ -50,6 +127,19 @@ export function TransactionHistoryPage() {
     setAppliedFilters({
       startDate: startDate || undefined,
       endDate: endDate || undefined,
+      accountId: accountId || undefined,
+      searchQuery: searchQuery || undefined,
+    });
+  };
+
+  const applyDateRangePreset = (preset: DateRangePreset) => {
+    const range = preset.getRange();
+    setStartDate(range.startDate);
+    setEndDate(range.endDate);
+    setSelectedIds(new Set());
+    setAppliedFilters({
+      startDate: range.startDate || undefined,
+      endDate: range.endDate || undefined,
       accountId: accountId || undefined,
       searchQuery: searchQuery || undefined,
     });
@@ -177,6 +267,27 @@ export function TransactionHistoryPage() {
         <Button size="sm" onClick={applyFilters} className="h-8 text-xs">
           Apply
         </Button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {dateRangePresets.map((preset) => {
+          const range = preset.getRange();
+          const isActive =
+            (appliedFilters.startDate ?? '') === range.startDate &&
+            (appliedFilters.endDate ?? '') === range.endDate;
+
+          return (
+            <Button
+              key={preset.id}
+              type="button"
+              size="sm"
+              variant={isActive ? 'primary' : 'secondary'}
+              onClick={() => applyDateRangePreset(preset)}
+              className="h-7 px-2 text-xs"
+            >
+              {preset.label}
+            </Button>
+          );
+        })}
       </div>
       {searchError && (
         <div className="text-xs text-destructive">{searchError}</div>
