@@ -1,16 +1,24 @@
-import { useState, useCallback, useMemo } from 'react';
-import type { ClipboardEvent, ChangeEvent } from 'react';
-import { format, parse } from 'date-fns';
-import { X, AlertTriangle, Plus, Trash2, Save, Sparkles, FileText } from 'lucide-react';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { useAccounts } from '@/hooks/useAccounts';
-import { useAI } from '@/hooks/useAI';
-import { useCategories } from '@/hooks/useCategories';
-import { useTransactions } from '@/hooks/useTransactions';
-import { formatDateInput, cn } from '@/lib/utils';
-import type { Category, Subcategory, CreateTransactionData } from '@/types';
+import { useState, useCallback, useMemo } from "react";
+import type { ClipboardEvent, ChangeEvent } from "react";
+import { format, parse } from "date-fns";
+import {
+  X,
+  AlertTriangle,
+  Plus,
+  Trash2,
+  Save,
+  Sparkles,
+  FileText,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { useAccounts } from "@/hooks/useAccounts";
+import { useAI } from "@/hooks/useAI";
+import { useCategories } from "@/hooks/useCategories";
+import { useTransactions } from "@/hooks/useTransactions";
+import { formatDateInput, cn } from "@/lib/utils";
+import type { Category, Subcategory, CreateTransactionData } from "@/types";
 
 // ── Row type ──────────────────────────────────────────────────────────
 
@@ -24,33 +32,39 @@ interface TransactionRow {
   comment: string;
   isDuplicate: boolean;
   transferMatch: unknown | null;
-  categorizationSource: 'lookup' | 'ai' | 'none' | 'manual';
+  categorizationSource: "lookup" | "ai" | "none" | "manual";
   aiSuggestedSubcategoryId: string | null;
 }
 
-type PasteField = 'date' | 'name' | 'amount' | 'account_id' | 'subcategory_id' | 'comment';
+type PasteField =
+  | "date"
+  | "name"
+  | "amount"
+  | "account_id"
+  | "subcategory_id"
+  | "comment";
 
 const pasteFields: PasteField[] = [
-  'date',
-  'name',
-  'amount',
-  'account_id',
-  'subcategory_id',
-  'comment',
+  "date",
+  "name",
+  "amount",
+  "account_id",
+  "subcategory_id",
+  "comment",
 ];
 
 function emptyRow(): TransactionRow {
   return {
     id: crypto.randomUUID(),
-    date: '',
-    name: '',
-    amount: '',
-    account_id: '',
-    subcategory_id: '',
-    comment: '',
+    date: "",
+    name: "",
+    amount: "",
+    account_id: "",
+    subcategory_id: "",
+    comment: "",
     isDuplicate: false,
     transferMatch: null,
-    categorizationSource: 'manual',
+    categorizationSource: "manual",
     aiSuggestedSubcategoryId: null,
   };
 }
@@ -70,13 +84,13 @@ function isRowValid(row: TransactionRow) {
 }
 
 function displayAmountToNumber(val: string): number {
-  const cleaned = val.replace(/[$,\s]/g, '');
+  const cleaned = val.replace(/[$,\s]/g, "");
   return parseFloat(cleaned) || 0;
 }
 
 function formatAmountDisplay(val: string): string {
   const num = displayAmountToNumber(val);
-  if (!num && val === '') return '';
+  if (!num && val === "") return "";
   // Keep the raw number so user can edit; just normalise decimals
   const negative = num < 0;
   const abs = Math.abs(num).toFixed(2);
@@ -85,21 +99,27 @@ function formatAmountDisplay(val: string): string {
 
 function toApiDate(displayDate: string): string {
   // MM/DD/YYYY -> YYYY-MM-DD
-  const parsed = parse(displayDate, 'MM/dd/yyyy', new Date());
-  return format(parsed, 'yyyy-MM-dd');
+  const parsed = parse(displayDate, "MM/dd/yyyy", new Date());
+  return format(parsed, "yyyy-MM-dd");
 }
 
 function normaliseClipboardValue(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function resolveAccountId(value: string, accounts: { id: string; name: string }[]): string | null {
+function resolveAccountId(
+  value: string,
+  accounts: { id: string; name: string }[],
+): string | null {
   const normalized = normaliseClipboardValue(value);
   if (!normalized) return null;
-  return accounts.find((account) => (
-    account.id.toLowerCase() === normalized ||
-    account.name.toLowerCase() === normalized
-  ))?.id ?? null;
+  return (
+    accounts.find(
+      (account) =>
+        account.id.toLowerCase() === normalized ||
+        account.name.toLowerCase() === normalized,
+    )?.id ?? null
+  );
 }
 
 function resolveSubcategoryId(
@@ -110,21 +130,28 @@ function resolveSubcategoryId(
   const normalized = normaliseClipboardValue(value);
   if (!normalized) return null;
 
-  const direct = subcategories.find((subcategory) => (
-    subcategory.id.toLowerCase() === normalized ||
-    subcategory.name.toLowerCase() === normalized
-  ));
+  const direct = subcategories.find(
+    (subcategory) =>
+      subcategory.id.toLowerCase() === normalized ||
+      subcategory.name.toLowerCase() === normalized,
+  );
   if (direct) return direct.id;
 
-  const parts = value.split('>').map((part) => part.trim()).filter(Boolean);
+  const parts = value
+    .split(">")
+    .map((part) => part.trim())
+    .filter(Boolean);
   if (parts.length >= 2) {
     const categoryName = normaliseClipboardValue(parts[0]);
     const subcategoryName = normaliseClipboardValue(parts[parts.length - 1]);
-    const category = categories.find((cat) => cat.name.toLowerCase() === categoryName);
-    const scoped = subcategories.find((subcategory) => (
-      subcategory.category_id === category?.id &&
-      subcategory.name.toLowerCase() === subcategoryName
-    ));
+    const category = categories.find(
+      (cat) => cat.name.toLowerCase() === categoryName,
+    );
+    const scoped = subcategories.find(
+      (subcategory) =>
+        subcategory.category_id === category?.id &&
+        subcategory.name.toLowerCase() === subcategoryName,
+    );
     if (scoped) return scoped.id;
   }
 
@@ -141,11 +168,12 @@ function applyPastedValue(
 ): TransactionRow {
   if (!value.trim()) return row;
 
-  if (field === 'date') return { ...row, date: formatDateInput(value) };
-  if (field === 'name') return { ...row, name: value };
-  if (field === 'amount') return { ...row, amount: value.replace(/[$,\s]/g, '') };
-  if (field === 'comment') return { ...row, comment: value };
-  if (field === 'account_id') {
+  if (field === "date") return { ...row, date: formatDateInput(value) };
+  if (field === "name") return { ...row, name: value };
+  if (field === "amount")
+    return { ...row, amount: value.replace(/[$,\s]/g, "") };
+  if (field === "comment") return { ...row, comment: value };
+  if (field === "account_id") {
     const accountId = resolveAccountId(value, accounts);
     return accountId ? { ...row, account_id: accountId } : row;
   }
@@ -153,10 +181,13 @@ function applyPastedValue(
   const subcategoryId = resolveSubcategoryId(value, categories, subcategories);
   return subcategoryId
     ? {
-      ...row,
-      subcategory_id: subcategoryId,
-      categorizationSource: row.categorizationSource === 'ai' ? 'manual' : row.categorizationSource,
-    }
+        ...row,
+        subcategory_id: subcategoryId,
+        categorizationSource:
+          row.categorizationSource === "ai"
+            ? "manual"
+            : row.categorizationSource,
+      }
     : row;
 }
 
@@ -194,7 +225,7 @@ function GroupedSubcategorySelect({
       onChange={(e) => onChange(e.target.value)}
       onPaste={onPaste}
       className={cn(
-        'h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        "h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,
       )}
     >
@@ -223,8 +254,8 @@ export function MultiTransactionTable() {
   const [rows, setRows] = useState<TransactionRow[]>(initialRows);
   const [saving, setSaving] = useState(false);
   const [duplicatesChecked, setDuplicatesChecked] = useState(false);
-  const [statementText, setStatementText] = useState('');
-  const [statementAccountId, setStatementAccountId] = useState('');
+  const [statementText, setStatementText] = useState("");
+  const [statementAccountId, setStatementAccountId] = useState("");
   const [lastRunId, setLastRunId] = useState<string | null>(null);
   const [parseSummary, setParseSummary] = useState<string | null>(null);
 
@@ -248,15 +279,18 @@ export function MultiTransactionTable() {
 
   const handleSubcategoryChange = useCallback(
     (row: TransactionRow, value: string) => {
-      updateRow(row.id, 'subcategory_id', value);
+      updateRow(row.id, "subcategory_id", value);
       setRows((prev) =>
         prev.map((r) =>
           r.id === row.id
             ? {
-              ...r,
-              subcategory_id: value,
-              categorizationSource: row.categorizationSource === 'ai' ? 'manual' : r.categorizationSource,
-            }
+                ...r,
+                subcategory_id: value,
+                categorizationSource:
+                  row.categorizationSource === "ai"
+                    ? "manual"
+                    : r.categorizationSource,
+              }
             : r,
         ),
       );
@@ -285,9 +319,10 @@ export function MultiTransactionTable() {
       rowIndex: number,
       startField: PasteField,
     ) => {
-      const text = e.clipboardData.getData('text/plain');
-      const isStructuredPaste = text.includes('\t') || text.includes('\n');
-      const isSelectPaste = startField === 'account_id' || startField === 'subcategory_id';
+      const text = e.clipboardData.getData("text/plain");
+      const isStructuredPaste = text.includes("\t") || text.includes("\n");
+      const isSelectPaste =
+        startField === "account_id" || startField === "subcategory_id";
       if (!isStructuredPaste && !isSelectPaste) return;
 
       e.preventDefault();
@@ -300,7 +335,7 @@ export function MultiTransactionTable() {
       setRows((prev) => {
         const next = [...prev];
         for (let i = 0; i < lines.length; i++) {
-          const cols = lines[i].split('\t');
+          const cols = lines[i].split("\t");
           const targetIdx = rowIndex + i;
           if (targetIdx >= next.length) {
             next.push(emptyRow());
@@ -309,7 +344,14 @@ export function MultiTransactionTable() {
           for (let j = 0; j < cols.length; j++) {
             const field = pasteFields[startColumn + j];
             if (!field) break;
-            row = applyPastedValue(row, field, cols[j], accounts, categories, subcategories);
+            row = applyPastedValue(
+              row,
+              field,
+              cols[j],
+              accounts,
+              categories,
+              subcategories,
+            );
           }
           next[targetIdx] = row;
         }
@@ -325,9 +367,13 @@ export function MultiTransactionTable() {
   const filledRows = useMemo(() => rows.filter(isRowFilled), [rows]);
 
   const handleAICategorize = useCallback(async () => {
-    const eligibleRows = filledRows.filter((r) => r.name && r.amount && r.account_id);
+    const eligibleRows = filledRows.filter(
+      (r) => r.name && r.amount && r.account_id,
+    );
     if (eligibleRows.length === 0) {
-      toast.error('Rows need a name, amount, and account before AI categorization.');
+      toast.error(
+        "Rows need a name, amount, and account before AI categorization.",
+      );
       return;
     }
 
@@ -340,13 +386,17 @@ export function MultiTransactionTable() {
         transactions: eligibleRows.map((row) => ({
           name: row.name,
           account_id: row.account_id,
-          account_name: accounts.find((account) => account.id === row.account_id)?.name ?? 'Unknown',
+          account_name:
+            accounts.find((account) => account.id === row.account_id)?.name ??
+            "Unknown",
           amount: displayAmountToNumber(row.amount),
         })),
       });
       const data = result.data ?? [];
       setRows((prev) => {
-        const byId = new Map(eligibleRows.map((row, index) => [row.id, data[index]]));
+        const byId = new Map(
+          eligibleRows.map((row, index) => [row.id, data[index]]),
+        );
         return prev.map((row) => {
           const cat = byId.get(row.id);
           if (!cat) return row;
@@ -354,19 +404,22 @@ export function MultiTransactionTable() {
             ...row,
             subcategory_id: cat.subcategory_id ?? row.subcategory_id,
             categorizationSource: cat.source,
-            aiSuggestedSubcategoryId: cat.source === 'ai' ? cat.subcategory_id : null,
+            aiSuggestedSubcategoryId:
+              cat.source === "ai" ? cat.subcategory_id : null,
           };
         });
       });
       toast.success(`Categorized ${data.length} row(s).`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'AI categorization failed.');
+      toast.error(
+        err instanceof Error ? err.message : "AI categorization failed.",
+      );
     }
   }, [accounts, categorize, filledRows]);
 
   const handleParseStatement = useCallback(async () => {
     if (!statementText.trim() || !statementAccountId) {
-      toast.error('Choose an account and paste statement text first.');
+      toast.error("Choose an account and paste statement text first.");
       return;
     }
 
@@ -378,26 +431,33 @@ export function MultiTransactionTable() {
       const data = result.data;
       if (!data) return;
 
-      setRows(data.transactions.map((tx) => ({
-        id: crypto.randomUUID(),
-        date: formatDateInput(tx.date),
-        name: tx.name,
-        amount: String(tx.amount.toFixed(2)),
-        account_id: statementAccountId,
-        subcategory_id: tx.subcategory_id ?? '',
-        comment: tx.needsReview ? 'Needs review' : '',
-        isDuplicate: tx.isDuplicate,
-        transferMatch: null,
-        categorizationSource: tx.categorizationSource,
-        aiSuggestedSubcategoryId: tx.categorizationSource === 'ai' ? tx.subcategory_id : null,
-      })));
+      setRows(
+        data.transactions.map((tx) => ({
+          id: crypto.randomUUID(),
+          date: formatDateInput(tx.date),
+          name: tx.name,
+          amount: String(tx.amount.toFixed(2)),
+          account_id: statementAccountId,
+          subcategory_id: tx.subcategory_id ?? "",
+          comment: tx.needsReview ? "Needs review" : "",
+          isDuplicate: tx.isDuplicate,
+          transferMatch: null,
+          categorizationSource: tx.categorizationSource,
+          aiSuggestedSubcategoryId:
+            tx.categorizationSource === "ai" ? tx.subcategory_id : null,
+        })),
+      );
       setDuplicatesChecked(data.summary.duplicates > 0);
       setParseSummary(
         `${data.summary.total} parsed, ${data.summary.duplicates} duplicate(s), ${data.summary.uncategorized} uncategorized, ${Math.round(data.parseSuccessRate * 100)}% success`,
       );
+      setStatementText("");
+      setStatementAccountId("");
       toast.success(`Parsed ${data.summary.total} transaction(s).`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Statement parsing failed.');
+      toast.error(
+        err instanceof Error ? err.message : "Statement parsing failed.",
+      );
     }
   }, [parseStatement, statementAccountId, statementText]);
 
@@ -405,13 +465,11 @@ export function MultiTransactionTable() {
     // Validate
     const invalid = filledRows.filter((r) => !isRowValid(r));
     if (invalid.length > 0) {
-      toast.error(
-        'Each row needs at least a date, name, amount, and account.',
-      );
+      toast.error("Each row needs at least a date, name, amount, and account.");
       return;
     }
     if (filledRows.length === 0) {
-      toast.error('No transactions to save.');
+      toast.error("No transactions to save.");
       return;
     }
 
@@ -448,7 +506,7 @@ export function MultiTransactionTable() {
           setDuplicatesChecked(true);
           setSaving(false);
           toast.warning(
-            'Some transactions may be duplicates. Remove them or click Save All again to confirm.',
+            "Some transactions may be duplicates. Remove them or click Save All again to confirm.",
           );
           return;
         }
@@ -462,7 +520,7 @@ export function MultiTransactionTable() {
         amount: displayAmountToNumber(r.amount),
         subcategory_id: r.subcategory_id || null,
         comment: r.comment || null,
-        ai_suggested: r.categorizationSource === 'ai',
+        ai_suggested: r.categorizationSource === "ai",
       }));
 
       await bulkCreateTransactions.mutateAsync(payload);
@@ -471,7 +529,7 @@ export function MultiTransactionTable() {
       setDuplicatesChecked(false);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : 'Failed to save transactions.',
+        err instanceof Error ? err.message : "Failed to save transactions.",
       );
     } finally {
       setSaving(false);
@@ -493,7 +551,12 @@ export function MultiTransactionTable() {
           <Plus className="mr-1 h-3.5 w-3.5" />
           Add Row
         </Button>
-        <Button size="sm" variant="secondary" onClick={handleAICategorize} loading={categorize.isPending}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={handleAICategorize}
+          loading={categorize.isPending}
+        >
           <Sparkles className="mr-1 h-3.5 w-3.5" />
           AI Categorize
         </Button>
@@ -532,7 +595,12 @@ export function MultiTransactionTable() {
                 </option>
               ))}
             </select>
-            <Button size="sm" variant="secondary" onClick={handleParseStatement} loading={parseStatement.isPending}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleParseStatement}
+              loading={parseStatement.isPending}
+            >
               Parse Statement
             </Button>
             {lastRunId && (
@@ -547,7 +615,9 @@ export function MultiTransactionTable() {
             placeholder="Paste statement lines here"
             className="min-h-20 w-full rounded border border-border bg-input px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-          {parseSummary && <p className="text-xs text-muted-foreground">{parseSummary}</p>}
+          {parseSummary && (
+            <p className="text-xs text-muted-foreground">{parseSummary}</p>
+          )}
         </CardContent>
       </Card>
 
@@ -571,8 +641,8 @@ export function MultiTransactionTable() {
               <tr
                 key={row.id}
                 className={cn(
-                  'border-b border-border last:border-b-0',
-                  row.isDuplicate && 'bg-yellow-500/10',
+                  "border-b border-border last:border-b-0",
+                  row.isDuplicate && "bg-yellow-500/10",
                 )}
               >
                 {/* Duplicate indicator */}
@@ -589,9 +659,9 @@ export function MultiTransactionTable() {
                     placeholder="MM/DD/YYYY"
                     value={row.date}
                     onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      updateRow(row.id, 'date', formatDateInput(e.target.value))
+                      updateRow(row.id, "date", formatDateInput(e.target.value))
                     }
-                    onPaste={(e) => handlePaste(e, idx, 'date')}
+                    onPaste={(e) => handlePaste(e, idx, "date")}
                     className="h-7 w-28 rounded border border-border bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
@@ -603,9 +673,9 @@ export function MultiTransactionTable() {
                     placeholder="Description"
                     value={row.name}
                     onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      updateRow(row.id, 'name', e.target.value)
+                      updateRow(row.id, "name", e.target.value)
                     }
-                    onPaste={(e) => handlePaste(e, idx, 'name')}
+                    onPaste={(e) => handlePaste(e, idx, "name")}
                     className="h-7 w-44 rounded border border-border bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
@@ -617,16 +687,16 @@ export function MultiTransactionTable() {
                     placeholder="0.00"
                     value={row.amount}
                     onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      updateRow(row.id, 'amount', e.target.value)
+                      updateRow(row.id, "amount", e.target.value)
                     }
                     onBlur={() =>
                       updateRow(
                         row.id,
-                        'amount',
+                        "amount",
                         formatAmountDisplay(row.amount),
                       )
                     }
-                    onPaste={(e) => handlePaste(e, idx, 'amount')}
+                    onPaste={(e) => handlePaste(e, idx, "amount")}
                     className="h-7 w-24 rounded border border-border bg-input px-1.5 text-right text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
@@ -636,9 +706,9 @@ export function MultiTransactionTable() {
                   <select
                     value={row.account_id}
                     onChange={(e) =>
-                      updateRow(row.id, 'account_id', e.target.value)
+                      updateRow(row.id, "account_id", e.target.value)
                     }
-                    onPaste={(e) => handlePaste(e, idx, 'account_id')}
+                    onPaste={(e) => handlePaste(e, idx, "account_id")}
                     className="h-7 w-32 rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <option value="">--</option>
@@ -658,9 +728,9 @@ export function MultiTransactionTable() {
                     categories={categories}
                     subcategories={subcategories}
                     className="w-36"
-                    onPaste={(e) => handlePaste(e, idx, 'subcategory_id')}
+                    onPaste={(e) => handlePaste(e, idx, "subcategory_id")}
                   />
-                  {row.categorizationSource !== 'manual' && (
+                  {row.categorizationSource !== "manual" && (
                     <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                       {row.categorizationSource}
                     </div>
@@ -674,9 +744,9 @@ export function MultiTransactionTable() {
                     placeholder="Note"
                     value={row.comment}
                     onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      updateRow(row.id, 'comment', e.target.value)
+                      updateRow(row.id, "comment", e.target.value)
                     }
-                    onPaste={(e) => handlePaste(e, idx, 'comment')}
+                    onPaste={(e) => handlePaste(e, idx, "comment")}
                     className="h-7 w-32 rounded border border-border bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>

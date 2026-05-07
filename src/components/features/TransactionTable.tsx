@@ -213,6 +213,7 @@ export function TransactionTable({
                 </th>
               ))}
               <th className={headerClass}>Category</th>
+              <th className={headerClass}>Subcategory</th>
               <th className={headerClass}>Account</th>
               <th className={cn(headerClass, 'w-20')}>Actions</th>
             </tr>
@@ -220,7 +221,7 @@ export function TransactionTable({
           <tbody className="divide-y divide-border">
             {transactions.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-2 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={9} className="px-2 py-8 text-center text-sm text-muted-foreground">
                   No transactions found.
                 </td>
               </tr>
@@ -299,6 +300,9 @@ export function TransactionTable({
                   <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
                     {formatCurrency(t.running_balance ?? 0)}
                   </td>
+                  <td className={cn(cellClass, 'text-xs')}>
+                    {t.category_name ?? '-'}
+                  </td>
                   <td
                     className={cellClass}
                     tabIndex={isEditing ? undefined : 0}
@@ -319,9 +323,7 @@ export function TransactionTable({
                       </select>
                     ) : (
                       <span className="text-xs">
-                        {t.category_name && t.subcategory_name
-                          ? `${t.category_name} > ${t.subcategory_name}`
-                          : t.subcategory_name ?? '-'}
+                        {t.subcategory_name ?? '-'}
                       </span>
                     )}
                   </td>
