@@ -3,6 +3,8 @@ import type { Subcategory } from '@/types';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { SimpleSelect } from '@/components/ui/SimpleSelect';
+import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
+import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
 
 interface BulkEditModalProps {
   isOpen: boolean;
@@ -34,6 +36,10 @@ export function BulkEditModal({
     onClose();
   };
 
+  useShortcutScope('modal', isOpen);
+  useShortcut('modal.confirm', handleConfirm, { enabled: isOpen && Boolean(subcategoryId) && !isLoading });
+  useShortcut('modal.cancel', handleClose, { enabled: isOpen && !isLoading });
+
   return (
     <Modal
       open={isOpen}
@@ -53,6 +59,7 @@ export function BulkEditModal({
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={handleClose} disabled={isLoading}>
           Cancel
+          <ShortcutHint commandId="modal.cancel" />
         </Button>
         <Button
           size="sm"
@@ -61,6 +68,7 @@ export function BulkEditModal({
           loading={isLoading}
         >
           Confirm
+          <ShortcutHint commandId="modal.confirm" />
         </Button>
       </div>
     </Modal>

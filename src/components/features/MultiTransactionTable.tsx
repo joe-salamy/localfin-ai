@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import type { ClipboardEvent, ChangeEvent } from "react";
 import { format, parse } from "date-fns";
 import {
@@ -19,6 +19,8 @@ import { useCategories } from "@/hooks/useCategories";
 import { useTransactions } from "@/hooks/useTransactions";
 import { formatDateInput, cn } from "@/lib/utils";
 import type { Category, Subcategory, CreateTransactionData } from "@/types";
+import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
+import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 
 // ── Row type ──────────────────────────────────────────────────────────
 
@@ -200,6 +202,9 @@ interface GroupedSelectProps {
   subcategories: Subcategory[];
   className?: string;
   onPaste?: (event: ClipboardEvent<HTMLSelectElement>) => void;
+  onFocus?: () => void;
+  refIndex?: number;
+  registerRef?: (index: number, node: HTMLSelectElement | null) => void;
 }
 
 function GroupedSubcategorySelect({
@@ -209,6 +214,9 @@ function GroupedSubcategorySelect({
   subcategories,
   className,
   onPaste,
+  onFocus,
+  refIndex,
+  registerRef,
 }: GroupedSelectProps) {
   const filtered = useMemo(() => {
     return categories
@@ -221,9 +229,15 @@ function GroupedSubcategorySelect({
 
   return (
     <select
+      ref={(node) => {
+        if (refIndex !== undefined) {
+          registerRef?.(refIndex, node);
+        }
+      }}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       onPaste={onPaste}
+      onFocus={onFocus}
       className={cn(
         "h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,
@@ -258,6 +272,13 @@ export function MultiTransactionTable() {
   const [statementAccountId, setStatementAccountId] = useState("");
   const [lastRunId, setLastRunId] = useState<string | null>(null);
   const [parseSummary, setParseSummary] = useState<string | null>(null);
+  const statementAccountRef = useRef<HTMLSelectElement>(null);
+  const statementTextRef = useRef<HTMLTextAreaElement>(null);
+  const cellRefs = useRef<Array<HTMLElement | null>>([]);
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+
+  useShortcutScope("transactionInput");
+  useShortcutScope("transactionInputGrid", focusedRowId !== null);
 
   // ── Row manipulation ──────────────────────────────────────────────
 
@@ -310,6 +331,19 @@ export function MultiTransactionTable() {
     setRows(initialRows());
     setDuplicatesChecked(false);
   }, []);
+
+  const focusCell = useCallback((index: number) => {
+    const cells = cellRefs.current.filter((cell): cell is HTMLElement => cell !== null);
+    if (cells.length === 0) return;
+    const nextIndex = Math.max(0, Math.min(index, cells.length - 1));
+    cells[nextIndex]?.focus();
+  }, []);
+
+  const focusAdjacentCell = useCallback((direction: 1 | -1) => {
+    const active = document.activeElement;
+    const currentIndex = cellRefs.current.findIndex((cell) => cell === active);
+    focusCell(currentIndex >= 0 ? currentIndex + direction : 0);
+  }, [focusCell]);
 
   // ── Paste handling ────────────────────────────────────────────────
 
@@ -536,6 +570,26 @@ export function MultiTransactionTable() {
     }
   }, [filledRows, duplicatesChecked, checkDuplicates, bulkCreateTransactions]);
 
+  useShortcut("transactionInput.addRow", addRow);
+  useShortcut("transactionInput.aiCategorize", () => {
+    void handleAICategorize();
+  }, { enabled: !categorize.isPending });
+  useShortcut("transactionInput.clearAll", clearAll);
+  useShortcut("transactionInput.saveAll", () => {
+    void handleSave();
+  }, { enabled: !saving });
+  useShortcut("transactionInput.parseStatement", () => {
+    void handleParseStatement();
+  }, { enabled: !parseStatement.isPending });
+  useShortcut("transactionInput.focusStatementText", useCallback(() => statementTextRef.current?.focus(), []));
+  useShortcut("transactionInput.focusStatementAccount", useCallback(() => statementAccountRef.current?.focus(), []));
+  useShortcut("transactionInput.focusGrid", useCallback(() => focusCell(0), [focusCell]));
+  useShortcut("transactionInput.removeFocusedRow", useCallback(() => {
+    if (focusedRowId) removeRow(focusedRowId);
+  }, [focusedRowId, removeRow]), { enabled: focusedRowId !== null });
+  useShortcut("transactionInput.nextCell", useCallback(() => focusAdjacentCell(1), [focusAdjacentCell]));
+  useShortcut("transactionInput.previousCell", useCallback(() => focusAdjacentCell(-1), [focusAdjacentCell]));
+
   // ── Render ────────────────────────────────────────────────────────
 
   const accountOptions = useMemo(
@@ -550,6 +604,7 @@ export function MultiTransactionTable() {
         <Button size="sm" onClick={addRow}>
           <Plus className="mr-1 h-3.5 w-3.5" />
           Add Row
+          <ShortcutHint commandId="transactionInput.addRow" />
         </Button>
         <Button
           size="sm"
@@ -559,10 +614,12 @@ export function MultiTransactionTable() {
         >
           <Sparkles className="mr-1 h-3.5 w-3.5" />
           AI Categorize
+          <ShortcutHint commandId="transactionInput.aiCategorize" />
         </Button>
         <Button size="sm" variant="ghost" onClick={clearAll}>
           <Trash2 className="mr-1 h-3.5 w-3.5" />
           Clear All
+          <ShortcutHint commandId="transactionInput.clearAll" />
         </Button>
         <div className="flex-1" />
         <span className="text-xs text-muted-foreground">
@@ -571,6 +628,7 @@ export function MultiTransactionTable() {
         <Button size="sm" onClick={handleSave} loading={saving}>
           <Save className="mr-1 h-3.5 w-3.5" />
           Save All
+          <ShortcutHint commandId="transactionInput.saveAll" />
         </Button>
       </div>
 
@@ -584,6 +642,7 @@ export function MultiTransactionTable() {
         <CardContent className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <select
+              ref={statementAccountRef}
               value={statementAccountId}
               onChange={(e) => setStatementAccountId(e.target.value)}
               className="h-8 rounded border border-border bg-input px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -602,6 +661,7 @@ export function MultiTransactionTable() {
               loading={parseStatement.isPending}
             >
               Parse Statement
+              <ShortcutHint commandId="transactionInput.parseStatement" />
             </Button>
             {lastRunId && (
               <span className="self-center text-xs text-muted-foreground">
@@ -610,6 +670,7 @@ export function MultiTransactionTable() {
             )}
           </div>
           <textarea
+            ref={statementTextRef}
             value={statementText}
             onChange={(e) => setStatementText(e.target.value)}
             placeholder="Paste statement lines here"
@@ -655,6 +716,9 @@ export function MultiTransactionTable() {
                 {/* Date */}
                 <td className="px-1 py-0.5">
                   <input
+                    ref={(node) => {
+                      cellRefs.current[idx * 6] = node;
+                    }}
                     type="text"
                     placeholder="MM/DD/YYYY"
                     value={row.date}
@@ -662,6 +726,7 @@ export function MultiTransactionTable() {
                       updateRow(row.id, "date", formatDateInput(e.target.value))
                     }
                     onPaste={(e) => handlePaste(e, idx, "date")}
+                    onFocus={() => setFocusedRowId(row.id)}
                     className="h-7 w-28 rounded border border-border bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
@@ -669,6 +734,9 @@ export function MultiTransactionTable() {
                 {/* Name */}
                 <td className="px-1 py-0.5">
                   <input
+                    ref={(node) => {
+                      cellRefs.current[idx * 6 + 1] = node;
+                    }}
                     type="text"
                     placeholder="Description"
                     value={row.name}
@@ -676,6 +744,7 @@ export function MultiTransactionTable() {
                       updateRow(row.id, "name", e.target.value)
                     }
                     onPaste={(e) => handlePaste(e, idx, "name")}
+                    onFocus={() => setFocusedRowId(row.id)}
                     className="h-7 w-44 rounded border border-border bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
@@ -683,6 +752,9 @@ export function MultiTransactionTable() {
                 {/* Amount */}
                 <td className="px-1 py-0.5">
                   <input
+                    ref={(node) => {
+                      cellRefs.current[idx * 6 + 2] = node;
+                    }}
                     type="text"
                     placeholder="0.00"
                     value={row.amount}
@@ -697,6 +769,7 @@ export function MultiTransactionTable() {
                       )
                     }
                     onPaste={(e) => handlePaste(e, idx, "amount")}
+                    onFocus={() => setFocusedRowId(row.id)}
                     className="h-7 w-24 rounded border border-border bg-input px-1.5 text-right text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
@@ -704,11 +777,15 @@ export function MultiTransactionTable() {
                 {/* Account */}
                 <td className="px-1 py-0.5">
                   <select
+                    ref={(node) => {
+                      cellRefs.current[idx * 6 + 3] = node;
+                    }}
                     value={row.account_id}
                     onChange={(e) =>
                       updateRow(row.id, "account_id", e.target.value)
                     }
                     onPaste={(e) => handlePaste(e, idx, "account_id")}
+                    onFocus={() => setFocusedRowId(row.id)}
                     className="h-7 w-32 rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <option value="">--</option>
@@ -723,12 +800,17 @@ export function MultiTransactionTable() {
                 {/* Subcategory (grouped) */}
                 <td className="px-1 py-0.5">
                   <GroupedSubcategorySelect
+                    refIndex={idx * 6 + 4}
+                    registerRef={(index, node) => {
+                      cellRefs.current[index] = node;
+                    }}
                     value={row.subcategory_id}
                     onChange={(val) => handleSubcategoryChange(row, val)}
                     categories={categories}
                     subcategories={subcategories}
                     className="w-36"
                     onPaste={(e) => handlePaste(e, idx, "subcategory_id")}
+                    onFocus={() => setFocusedRowId(row.id)}
                   />
                   {row.categorizationSource !== "manual" && (
                     <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -740,6 +822,9 @@ export function MultiTransactionTable() {
                 {/* Comment */}
                 <td className="px-1 py-0.5">
                   <input
+                    ref={(node) => {
+                      cellRefs.current[idx * 6 + 5] = node;
+                    }}
                     type="text"
                     placeholder="Note"
                     value={row.comment}
@@ -747,6 +832,7 @@ export function MultiTransactionTable() {
                       updateRow(row.id, "comment", e.target.value)
                     }
                     onPaste={(e) => handlePaste(e, idx, "comment")}
+                    onFocus={() => setFocusedRowId(row.id)}
                     className="h-7 w-32 rounded border border-border bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
@@ -756,6 +842,7 @@ export function MultiTransactionTable() {
                   <button
                     type="button"
                     onClick={() => removeRow(row.id)}
+                    onFocus={() => setFocusedRowId(row.id)}
                     className="rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
                     aria-label="Remove row"
                   >

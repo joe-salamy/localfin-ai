@@ -6,14 +6,44 @@ import {
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
+import type { CommandId } from "@/features/shortcuts/commands";
+import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
+import { useShortcutMetadata } from "@/features/shortcuts/hooks";
 
 const links = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/setup", label: "Setup", icon: SlidersHorizontal },
-  { to: "/transactions/input", label: "Add", icon: Plus },
-  { to: "/transactions/history", label: "History", icon: History },
-  { to: "/settings", label: "Settings", icon: Settings },
-];
+  { to: "/", label: "Dashboard", icon: LayoutDashboard, commandId: "global.dashboard" },
+  { to: "/setup", label: "Setup", icon: SlidersHorizontal, commandId: "global.setup" },
+  { to: "/transactions/input", label: "Add", icon: Plus, commandId: "global.addTransactions" },
+  { to: "/transactions/history", label: "History", icon: History, commandId: "global.transactionHistory" },
+  { to: "/settings", label: "Settings", icon: Settings, commandId: "global.settings" },
+] as const satisfies ReadonlyArray<{ to: string; label: string; icon: typeof LayoutDashboard; commandId: CommandId }>;
+
+function NavLink({ to, label, icon: Icon, commandId, active }: {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  commandId: CommandId;
+  active: boolean;
+}) {
+  const { ariaKeyShortcuts, label: shortcutLabel } = useShortcutMetadata(commandId);
+
+  return (
+    <Link
+      to={to}
+      aria-keyshortcuts={ariaKeyShortcuts}
+      title={`${label} (${shortcutLabel})`}
+      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+        active
+          ? "bg-secondary text-foreground"
+          : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      <Icon size={16} />
+      {label}
+      <ShortcutHint commandId={commandId} />
+    </Link>
+  );
+}
 
 export function Navbar() {
   const { pathname } = useLocation();
@@ -25,19 +55,15 @@ export function Navbar() {
           Budget
         </Link>
         <div className="flex gap-1">
-          {links.map(({ to, label, icon: Icon }) => (
-            <Link
+          {links.map(({ to, label, icon, commandId }) => (
+            <NavLink
               key={to}
               to={to}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
-                pathname === to
-                  ? "bg-secondary text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Icon size={16} />
-              {label}
-            </Link>
+              label={label}
+              icon={icon}
+              commandId={commandId}
+              active={pathname === to}
+            />
           ))}
         </div>
       </div>

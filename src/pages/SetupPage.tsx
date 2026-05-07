@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import {
@@ -20,6 +20,8 @@ import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import type { AccountWithBalance, Category, Subcategory } from '@/types';
+import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
+import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -100,21 +102,22 @@ function SortHeader<TKey extends string>({
 function CollapsibleSection({
   title,
   count,
-  defaultOpen = true,
+  open,
+  onOpenChange,
   children,
 }: {
   title: string;
   count: number;
-  defaultOpen?: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
     <Card>
       <button
         type="button"
         className="flex w-full items-center justify-between p-4"
-        onClick={() => setOpen(!open)}
+        onClick={() => onOpenChange(!open)}
       >
         <span className="text-lg font-semibold text-foreground">
           {title}
@@ -147,6 +150,7 @@ function AccountsSection() {
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const [sort, setSort] = useState<SortConfig<AccountSortKey>>({
     key: 'name',
     direction: 'asc',
@@ -172,9 +176,11 @@ function AccountsSection() {
   const selectedCount = selectedIds.size;
   const allSelected =
     selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+  const focusedAccount = sortedAccounts.find((account) => account.id === focusedId) ?? sortedAccounts[0] ?? null;
 
-  async function handleAdd(e: FormEvent) {
-    e.preventDefault();
+  useShortcutScope('setupAccounts');
+
+  async function submitAddAccount() {
     if (!name.trim()) return;
     setSaving(true);
     try {
@@ -193,6 +199,11 @@ function AccountsSection() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault();
+    await submitAddAccount();
   }
 
   async function handleUpdate(id: string) {
@@ -287,6 +298,35 @@ function AccountsSection() {
     });
   }
 
+  const cancelAccountForm = useCallback(() => {
+    setShowAdd(false);
+    setEditId(null);
+  }, []);
+
+  useShortcut('setup.accounts.add', useCallback(() => setShowAdd(true), []));
+  useShortcut('setup.accounts.save', () => {
+    if (showAdd) {
+      void submitAddAccount();
+    } else if (editId) {
+      void handleUpdate(editId);
+    }
+  });
+  useShortcut('setup.accounts.cancel', cancelAccountForm, { enabled: showAdd || editId !== null });
+  useShortcut('setup.accounts.editFocused', useCallback(() => {
+    if (focusedAccount) startEdit(focusedAccount);
+  }, [focusedAccount]));
+  useShortcut('setup.accounts.deleteFocused', useCallback(() => {
+    if (focusedAccount) setDeleteTarget(focusedAccount);
+  }, [focusedAccount]));
+  useShortcut('setup.accounts.bulkDelete', useCallback(() => setShowBulkDelete(true), []), { enabled: selectedCount > 0 });
+  useShortcut('setup.accounts.selectAll', toggleAllSelected);
+  useShortcut('setup.accounts.toggleFocused', useCallback(() => {
+    if (focusedAccount) toggleSelected(focusedAccount.id);
+  }, [focusedAccount]));
+  useShortcut('setup.accounts.sortName', useCallback(() => setSort((current) => nextSort(current, 'name')), []));
+  useShortcut('setup.accounts.sortType', useCallback(() => setSort((current) => nextSort(current, 'type')), []));
+  useShortcut('setup.accounts.sortBalance', useCallback(() => setSort((current) => nextSort(current, 'balance')), []));
+
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
 
   return (
@@ -304,6 +344,7 @@ function AccountsSection() {
             onClick={() => setShowBulkDelete(true)}
           >
             <Trash2 size={14} className="mr-1" /> Delete Selected
+            <ShortcutHint commandId="setup.accounts.bulkDelete" />
           </Button>
         </div>
       )}
@@ -351,7 +392,14 @@ function AccountsSection() {
         </thead>
         <tbody>
           {sortedAccounts.map((a) => (
-            <tr key={a.id} className="border-b border-border/50">
+            <tr
+              key={a.id}
+              tabIndex={0}
+              onFocus={() => setFocusedId(a.id)}
+              className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
+                focusedId === a.id ? 'bg-secondary/20' : ''
+              }`}
+            >
               {editId === a.id ? (
                 <>
                   <td className="py-1.5" />
@@ -453,6 +501,7 @@ function AccountsSection() {
           onClick={() => setShowAdd(true)}
         >
           <Plus size={14} className="mr-1" /> Add Account
+          <ShortcutHint commandId="setup.accounts.add" />
         </Button>
       )}
 
@@ -496,6 +545,7 @@ function CategoriesSection() {
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const [sort, setSort] = useState<SortConfig<CategorySortKey>>({
     key: 'name',
     direction: 'asc',
@@ -516,9 +566,11 @@ function CategoriesSection() {
   const selectedCount = selectedIds.size;
   const allSelected =
     selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+  const focusedCategory = sortedCategories.find((category) => category.id === focusedId) ?? sortedCategories.find((category) => !category.is_system) ?? null;
 
-  async function handleAdd(e: FormEvent) {
-    e.preventDefault();
+  useShortcutScope('setupCategories');
+
+  async function submitAddCategory() {
     if (!name.trim()) return;
     setSaving(true);
     try {
@@ -532,6 +584,11 @@ function CategoriesSection() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault();
+    await submitAddCategory();
   }
 
   async function handleUpdate(id: string) {
@@ -626,6 +683,34 @@ function CategoriesSection() {
     });
   }
 
+  const cancelCategoryForm = useCallback(() => {
+    setShowAdd(false);
+    setEditId(null);
+  }, []);
+
+  useShortcut('setup.categories.add', useCallback(() => setShowAdd(true), []));
+  useShortcut('setup.categories.save', () => {
+    if (showAdd) {
+      void submitAddCategory();
+    } else if (editId) {
+      void handleUpdate(editId);
+    }
+  });
+  useShortcut('setup.categories.cancel', cancelCategoryForm, { enabled: showAdd || editId !== null });
+  useShortcut('setup.categories.editFocused', useCallback(() => {
+    if (focusedCategory && !focusedCategory.is_system) startEdit(focusedCategory);
+  }, [focusedCategory]));
+  useShortcut('setup.categories.deleteFocused', useCallback(() => {
+    if (focusedCategory && !focusedCategory.is_system) setDeleteTarget(focusedCategory);
+  }, [focusedCategory]));
+  useShortcut('setup.categories.bulkDelete', useCallback(() => setShowBulkDelete(true), []), { enabled: selectedCount > 0 });
+  useShortcut('setup.categories.selectAll', toggleAllSelected);
+  useShortcut('setup.categories.toggleFocused', useCallback(() => {
+    if (focusedCategory && !focusedCategory.is_system) toggleSelected(focusedCategory.id);
+  }, [focusedCategory]));
+  useShortcut('setup.categories.sortName', useCallback(() => setSort((current) => nextSort(current, 'name')), []));
+  useShortcut('setup.categories.sortType', useCallback(() => setSort((current) => nextSort(current, 'type')), []));
+
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
 
   return (
@@ -643,6 +728,7 @@ function CategoriesSection() {
             onClick={() => setShowBulkDelete(true)}
           >
             <Trash2 size={14} className="mr-1" /> Delete Selected
+            <ShortcutHint commandId="setup.categories.bulkDelete" />
           </Button>
         </div>
       )}
@@ -680,7 +766,14 @@ function CategoriesSection() {
         </thead>
         <tbody>
           {sortedCategories.map((c) => (
-            <tr key={c.id} className="border-b border-border/50">
+            <tr
+              key={c.id}
+              tabIndex={0}
+              onFocus={() => setFocusedId(c.id)}
+              className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
+                focusedId === c.id ? 'bg-secondary/20' : ''
+              }`}
+            >
               {editId === c.id ? (
                 <>
                   <td className="py-1.5" />
@@ -778,6 +871,7 @@ function CategoriesSection() {
           onClick={() => setShowAdd(true)}
         >
           <Plus size={14} className="mr-1" /> Add Category
+          <ShortcutHint commandId="setup.categories.add" />
         </Button>
       )}
 
@@ -831,6 +925,7 @@ function SubcategoriesSection() {
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const [sort, setSort] = useState<SortConfig<SubcategorySortKey>>({
     key: 'name',
     direction: 'asc',
@@ -868,9 +963,11 @@ function SubcategoriesSection() {
   const selectedCount = selectedIds.size;
   const allSelected =
     selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+  const focusedSubcategory = sortedSubcategories.find((subcategory) => subcategory.id === focusedId) ?? sortedSubcategories.find((subcategory) => !subcategory.is_system) ?? null;
 
-  async function handleAdd(e: FormEvent) {
-    e.preventDefault();
+  useShortcutScope('setupSubcategories');
+
+  async function submitAddSubcategory() {
     if (!name.trim() || !categoryId) return;
     setSaving(true);
     try {
@@ -889,6 +986,11 @@ function SubcategoriesSection() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault();
+    await submitAddSubcategory();
   }
 
   async function handleUpdate(id: string) {
@@ -989,6 +1091,35 @@ function SubcategoriesSection() {
     });
   }
 
+  const cancelSubcategoryForm = useCallback(() => {
+    setShowAdd(false);
+    setEditId(null);
+  }, []);
+
+  useShortcut('setup.subcategories.add', useCallback(() => setShowAdd(true), []));
+  useShortcut('setup.subcategories.save', () => {
+    if (showAdd) {
+      void submitAddSubcategory();
+    } else if (editId) {
+      void handleUpdate(editId);
+    }
+  });
+  useShortcut('setup.subcategories.cancel', cancelSubcategoryForm, { enabled: showAdd || editId !== null });
+  useShortcut('setup.subcategories.editFocused', useCallback(() => {
+    if (focusedSubcategory && !focusedSubcategory.is_system) startEdit(focusedSubcategory);
+  }, [focusedSubcategory]));
+  useShortcut('setup.subcategories.deleteFocused', useCallback(() => {
+    if (focusedSubcategory && !focusedSubcategory.is_system) setDeleteTarget(focusedSubcategory);
+  }, [focusedSubcategory]));
+  useShortcut('setup.subcategories.bulkDelete', useCallback(() => setShowBulkDelete(true), []), { enabled: selectedCount > 0 });
+  useShortcut('setup.subcategories.selectAll', toggleAllSelected);
+  useShortcut('setup.subcategories.toggleFocused', useCallback(() => {
+    if (focusedSubcategory && !focusedSubcategory.is_system) toggleSelected(focusedSubcategory.id);
+  }, [focusedSubcategory]));
+  useShortcut('setup.subcategories.sortName', useCallback(() => setSort((current) => nextSort(current, 'name')), []));
+  useShortcut('setup.subcategories.sortCategory', useCallback(() => setSort((current) => nextSort(current, 'category')), []));
+  useShortcut('setup.subcategories.sortGoal', useCallback(() => setSort((current) => nextSort(current, 'monthlyGoal')), []));
+
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
 
   return (
@@ -1006,6 +1137,7 @@ function SubcategoriesSection() {
             onClick={() => setShowBulkDelete(true)}
           >
             <Trash2 size={14} className="mr-1" /> Delete Selected
+            <ShortcutHint commandId="setup.subcategories.bulkDelete" />
           </Button>
         </div>
       )}
@@ -1054,7 +1186,14 @@ function SubcategoriesSection() {
           {sortedSubcategories.map((s) => {
             const parentCat = categoryMap.get(s.category_id);
             return (
-              <tr key={s.id} className="border-b border-border/50">
+              <tr
+                key={s.id}
+                tabIndex={0}
+                onFocus={() => setFocusedId(s.id)}
+                className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
+                  focusedId === s.id ? 'bg-secondary/20' : ''
+                }`}
+              >
                 {editId === s.id ? (
                   <>
                     <td className="py-1.5" />
@@ -1177,6 +1316,7 @@ function SubcategoriesSection() {
           onClick={() => setShowAdd(true)}
         >
           <Plus size={14} className="mr-1" /> Add Subcategory
+          <ShortcutHint commandId="setup.subcategories.add" />
         </Button>
       )}
 
@@ -1205,20 +1345,28 @@ function SubcategoriesSection() {
 export function SetupPage() {
   const { accounts } = useAccounts();
   const { categories, subcategories } = useCategories();
+  const [accountsOpen, setAccountsOpen] = useState(true);
+  const [categoriesOpen, setCategoriesOpen] = useState(true);
+  const [subcategoriesOpen, setSubcategoriesOpen] = useState(true);
+
+  useShortcutScope('setup');
+  useShortcut('setup.toggleAccounts', useCallback(() => setAccountsOpen((open) => !open), []));
+  useShortcut('setup.toggleCategories', useCallback(() => setCategoriesOpen((open) => !open), []));
+  useShortcut('setup.toggleSubcategories', useCallback(() => setSubcategoriesOpen((open) => !open), []));
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Setup</h1>
 
-      <CollapsibleSection title="Accounts" count={accounts?.length ?? 0}>
+      <CollapsibleSection title="Accounts" count={accounts?.length ?? 0} open={accountsOpen} onOpenChange={setAccountsOpen}>
         <AccountsSection />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Categories" count={categories?.length ?? 0}>
+      <CollapsibleSection title="Categories" count={categories?.length ?? 0} open={categoriesOpen} onOpenChange={setCategoriesOpen}>
         <CategoriesSection />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Subcategories" count={subcategories?.length ?? 0}>
+      <CollapsibleSection title="Subcategories" count={subcategories?.length ?? 0} open={subcategoriesOpen} onOpenChange={setSubcategoriesOpen}>
         <SubcategoriesSection />
       </CollapsibleSection>
     </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { format, subDays } from 'date-fns';
 import { TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { useDashboard } from '@/hooks/useDashboard';
@@ -11,6 +11,10 @@ import { SankeyDiagram } from '@/components/features/SankeyDiagram';
 import { formatCurrency, cn } from '@/lib/utils';
 import { DATE_FORMAT, DEFAULT_DATE_RANGE_DAYS } from '@/config/constants';
 import { dateRangePresets, type DateRangePreset } from '@/lib/dateRangePresets';
+import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
+import { useShortcutMetadata } from '@/features/shortcuts/hooks';
+import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
+import type { CommandId } from '@/features/shortcuts/commands';
 
 const ALL_TIME_START_DATE = '0001-01-01';
 
@@ -22,6 +26,10 @@ export function DashboardPage() {
   const [endInput, setEndInput] = useState(today);
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(today);
+  const startInputRef = useRef<HTMLInputElement>(null);
+  const endInputRef = useRef<HTMLInputElement>(null);
+
+  useShortcutScope('dashboard');
 
   const dashboardStartDate = startDate || ALL_TIME_START_DATE;
   const dashboardEndDate = endDate || today;
@@ -29,18 +37,37 @@ export function DashboardPage() {
   const { accountSummary, netWorth, categorySummary, metrics, netWorthChart, sankeyChart, isLoading } =
     useDashboard(dashboardStartDate, dashboardEndDate);
 
-  const applyDates = () => {
+  const applyDates = useCallback(() => {
     setStartDate(startInput);
     setEndDate(endInput);
-  };
+  }, [endInput, startInput]);
 
-  const applyDateRangePreset = (preset: DateRangePreset) => {
+  const applyDateRangePreset = useCallback((preset: DateRangePreset) => {
     const range = preset.getRange();
     setStartInput(range.startDate);
     setEndInput(range.endDate);
     setStartDate(range.startDate);
     setEndDate(range.endDate);
-  };
+  }, []);
+
+  useShortcut('dashboard.applyDateRange', applyDates);
+  useShortcut('dashboard.focusStartDate', useCallback(() => startInputRef.current?.focus(), []));
+  useShortcut('dashboard.focusEndDate', useCallback(() => endInputRef.current?.focus(), []));
+
+  const applyPreset1 = useCallback(() => dateRangePresets[0] && applyDateRangePreset(dateRangePresets[0]), [applyDateRangePreset]);
+  const applyPreset2 = useCallback(() => dateRangePresets[1] && applyDateRangePreset(dateRangePresets[1]), [applyDateRangePreset]);
+  const applyPreset3 = useCallback(() => dateRangePresets[2] && applyDateRangePreset(dateRangePresets[2]), [applyDateRangePreset]);
+  const applyPreset4 = useCallback(() => dateRangePresets[3] && applyDateRangePreset(dateRangePresets[3]), [applyDateRangePreset]);
+  const applyPreset5 = useCallback(() => dateRangePresets[4] && applyDateRangePreset(dateRangePresets[4]), [applyDateRangePreset]);
+  const applyPreset6 = useCallback(() => dateRangePresets[5] && applyDateRangePreset(dateRangePresets[5]), [applyDateRangePreset]);
+  useShortcut('dashboard.preset1', applyPreset1, { enabled: dateRangePresets.length > 0 });
+  useShortcut('dashboard.preset2', applyPreset2, { enabled: dateRangePresets.length > 1 });
+  useShortcut('dashboard.preset3', applyPreset3, { enabled: dateRangePresets.length > 2 });
+  useShortcut('dashboard.preset4', applyPreset4, { enabled: dateRangePresets.length > 3 });
+  useShortcut('dashboard.preset5', applyPreset5, { enabled: dateRangePresets.length > 4 });
+  useShortcut('dashboard.preset6', applyPreset6, { enabled: dateRangePresets.length > 5 });
+
+  const applyShortcut = useShortcutMetadata('dashboard.applyDateRange');
 
   return (
     <div className="space-y-4">
@@ -49,6 +76,7 @@ export function DashboardPage() {
           <div className="space-y-1">
             <label className="block text-xs font-medium text-muted-foreground">Start</label>
             <input
+              ref={startInputRef}
               type="date"
               value={startInput}
               onChange={(e) => setStartInput(e.target.value)}
@@ -58,18 +86,28 @@ export function DashboardPage() {
           <div className="space-y-1">
             <label className="block text-xs font-medium text-muted-foreground">End</label>
             <input
+              ref={endInputRef}
               type="date"
               value={endInput}
               onChange={(e) => setEndInput(e.target.value)}
               className="h-8 rounded border border-border bg-input px-2 text-sm text-foreground"
             />
           </div>
-          <Button size="sm" onClick={applyDates}>Apply</Button>
+          <Button
+            size="sm"
+            onClick={applyDates}
+            aria-keyshortcuts={applyShortcut.ariaKeyShortcuts}
+            title={`Apply (${applyShortcut.label})`}
+          >
+            Apply
+            <ShortcutHint commandId="dashboard.applyDateRange" />
+          </Button>
         </div>
         <div className="flex flex-wrap gap-2">
-          {dateRangePresets.map((preset) => {
+          {dateRangePresets.map((preset, index) => {
             const range = preset.getRange();
             const isActive = startDate === range.startDate && endDate === range.endDate;
+            const commandId = `dashboard.preset${index + 1}` as CommandId;
 
             return (
               <Button
@@ -81,6 +119,7 @@ export function DashboardPage() {
                 className="h-7 px-2 text-xs"
               >
                 {preset.label}
+                {index < 6 && <ShortcutHint commandId={commandId} />}
               </Button>
             );
           })}
