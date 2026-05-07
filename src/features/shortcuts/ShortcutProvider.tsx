@@ -32,6 +32,26 @@ function isScopeActive(scope: CommandScope, activeScopes: CommandScope[]): boole
   return scope === 'global' || activeScopes.includes(scope);
 }
 
+function isNativeInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest('button, a, input, textarea, select, [role="button"], [role="link"], [contenteditable="true"]'));
+}
+
+function isUnmodifiedNativeControlKey(binding: ShortcutBinding): boolean {
+  return [
+    'Enter',
+    'Space',
+    'Delete',
+    'Backspace',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'Home',
+    'End',
+    'Escape',
+  ].includes(binding.key);
+}
+
 export function ShortcutProvider({ children }: { children: ReactNode }) {
   const initialSettings = useMemo(() => readShortcutSettings(), []);
   const [overrides, setOverrides] = useState<ShortcutOverrides>(() => toShortcutOverrides(initialSettings));
@@ -125,6 +145,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     const onKeyDown = (event: KeyboardEvent) => {
       const binding = normalizeKeyboardEvent(event);
       if (!binding) return;
+      if (isNativeInteractiveTarget(event.target) && isUnmodifiedNativeControlKey(binding)) return;
 
       const activeScopes = scopesRef.current.map((item) => item.scope);
       const matchingCommands = DEFAULT_COMMANDS.filter((command) => {

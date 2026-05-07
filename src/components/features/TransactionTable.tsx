@@ -78,12 +78,13 @@ export function TransactionTable({
   const [deleteTarget, setDeleteTarget] = useState<TransactionWithDetails | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [focusedId, setFocusedId] = useState<string | null>(transactions[0]?.id ?? null);
+  const [tableFocused, setTableFocused] = useState(false);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
 
   const allSelected = transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
   const focusedTransaction = transactions.find((transaction) => transaction.id === focusedId) ?? transactions[0] ?? null;
 
-  useShortcutScope('transactionHistoryTable');
+  useShortcutScope('transactionHistoryTable', tableFocused || editingId !== null);
   useShortcutScope('transactionHistoryEdit', editingId !== null);
 
   useEffect(() => {
@@ -240,7 +241,15 @@ export function TransactionTable({
 
   return (
     <>
-      <div className="overflow-x-auto border border-border rounded-md">
+      <div
+        className="overflow-x-auto border border-border rounded-md"
+        onFocus={() => setTableFocused(true)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setTableFocused(false);
+          }
+        }}
+      >
         <table className="w-full">
           <thead className="bg-secondary/50">
             <tr>

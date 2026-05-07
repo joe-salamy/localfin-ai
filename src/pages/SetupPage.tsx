@@ -151,6 +151,7 @@ function AccountsSection() {
   const [deleting, setDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [sectionFocused, setSectionFocused] = useState(false);
   const [sort, setSort] = useState<SortConfig<AccountSortKey>>({
     key: 'name',
     direction: 'asc',
@@ -178,7 +179,7 @@ function AccountsSection() {
     selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
   const focusedAccount = sortedAccounts.find((account) => account.id === focusedId) ?? sortedAccounts[0] ?? null;
 
-  useShortcutScope('setupAccounts');
+  useShortcutScope('setupAccounts', sectionFocused || showAdd || editId !== null);
 
   async function submitAddAccount() {
     if (!name.trim()) return;
@@ -330,7 +331,14 @@ function AccountsSection() {
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
 
   return (
-    <>
+    <div
+      onFocus={() => setSectionFocused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setSectionFocused(false);
+        }
+      }}
+    >
       {selectedCount > 0 && (
         <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
@@ -522,7 +530,7 @@ function AccountsSection() {
         message={`Delete ${selectedCount} selected account${selectedCount === 1 ? '' : 's'}? This cannot be undone.`}
         isLoading={deleting}
       />
-    </>
+    </div>
   );
 }
 
@@ -546,6 +554,7 @@ function CategoriesSection() {
   const [deleting, setDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [sectionFocused, setSectionFocused] = useState(false);
   const [sort, setSort] = useState<SortConfig<CategorySortKey>>({
     key: 'name',
     direction: 'asc',
@@ -568,7 +577,7 @@ function CategoriesSection() {
     selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
   const focusedCategory = sortedCategories.find((category) => category.id === focusedId) ?? sortedCategories.find((category) => !category.is_system) ?? null;
 
-  useShortcutScope('setupCategories');
+  useShortcutScope('setupCategories', sectionFocused || showAdd || editId !== null);
 
   async function submitAddCategory() {
     if (!name.trim()) return;
@@ -714,7 +723,14 @@ function CategoriesSection() {
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
 
   return (
-    <>
+    <div
+      onFocus={() => setSectionFocused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setSectionFocused(false);
+        }
+      }}
+    >
       {selectedCount > 0 && (
         <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
@@ -891,7 +907,7 @@ function CategoriesSection() {
         message={`Delete ${selectedCount} selected categor${selectedCount === 1 ? 'y' : 'ies'}? All subcategories under them will also be removed.`}
         isLoading={deleting}
       />
-    </>
+    </div>
   );
 }
 
@@ -926,6 +942,7 @@ function SubcategoriesSection() {
   const [deleting, setDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [sectionFocused, setSectionFocused] = useState(false);
   const [sort, setSort] = useState<SortConfig<SubcategorySortKey>>({
     key: 'name',
     direction: 'asc',
@@ -965,7 +982,7 @@ function SubcategoriesSection() {
     selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
   const focusedSubcategory = sortedSubcategories.find((subcategory) => subcategory.id === focusedId) ?? sortedSubcategories.find((subcategory) => !subcategory.is_system) ?? null;
 
-  useShortcutScope('setupSubcategories');
+  useShortcutScope('setupSubcategories', sectionFocused || showAdd || editId !== null);
 
   async function submitAddSubcategory() {
     if (!name.trim() || !categoryId) return;
@@ -1123,7 +1140,14 @@ function SubcategoriesSection() {
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
 
   return (
-    <>
+    <div
+      onFocus={() => setSectionFocused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setSectionFocused(false);
+        }
+      }}
+    >
       {selectedCount > 0 && (
         <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
@@ -1336,7 +1360,7 @@ function SubcategoriesSection() {
         message={`Delete ${selectedCount} selected subcategor${selectedCount === 1 ? 'y' : 'ies'}? This cannot be undone.`}
         isLoading={deleting}
       />
-    </>
+    </div>
   );
 }
 

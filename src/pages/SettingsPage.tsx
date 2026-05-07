@@ -26,9 +26,10 @@ export function SettingsPage() {
   const [selectedCommandId, setSelectedCommandId] = useState<CommandId>('global.dashboard');
   const [capturingCommandId, setCapturingCommandId] = useState<CommandId | null>(null);
   const [message, setMessage] = useState('');
+  const [shortcutsTableFocused, setShortcutsTableFocused] = useState(false);
 
   useShortcutScope('settings');
-  useShortcutScope('settingsShortcuts');
+  useShortcutScope('settingsShortcuts', shortcutsTableFocused || capturingCommandId !== null);
 
   const filteredCommands = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -171,7 +172,15 @@ export function SettingsPage() {
             </p>
           )}
 
-          <div className="overflow-x-auto rounded-md border border-border">
+          <div
+            className="overflow-x-auto rounded-md border border-border"
+            onFocus={() => setShortcutsTableFocused(true)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                setShortcutsTableFocused(false);
+              }
+            }}
+          >
             <table className="w-full text-sm">
               <thead className="bg-secondary/50 text-left text-xs uppercase text-muted-foreground">
                 <tr>

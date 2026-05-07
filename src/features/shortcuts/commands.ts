@@ -171,7 +171,7 @@ export const DEFAULT_COMMANDS = [
   command('global.keyboardShortcuts', 'Open Keyboard Shortcuts', 'Navigate to settings and focus keyboard shortcuts.', 'Global', 'global', 'Ctrl+Alt+K'),
   command('global.toggleAssistant', 'Toggle AI Assistant', 'Open or close the AI assistant side panel.', 'Global', 'global', 'Ctrl+Alt+I'),
   command('global.focusAssistant', 'Focus AI Assistant Input', 'Move focus to the assistant message box.', 'Global', 'global', 'Ctrl+Alt+.'),
-  command('global.close', 'Close Current Panel', 'Close the current panel, modal, or edit mode.', 'Global', 'global', 'Escape'),
+  command('global.close', 'Close AI Assistant', 'Close the AI assistant side panel.', 'Global', 'assistant', 'Escape'),
   command('assistant.send', 'Send Assistant Message', 'Send the current assistant message.', 'Global', 'assistant', 'Ctrl+Enter', { inputSafe: true }),
 
   command('dashboard.applyDateRange', 'Apply Date Range', 'Apply the custom dashboard date range.', 'Dashboard', 'dashboard', 'Ctrl+Enter', { inputSafe: true }),
@@ -193,8 +193,8 @@ export const DEFAULT_COMMANDS = [
   command('transactionInput.focusStatementAccount', 'Focus Statement Account', 'Focus the statement account selector.', 'Add Transactions', 'transactionInput', 'Ctrl+Alt+U'),
   command('transactionInput.focusGrid', 'Focus Transaction Grid', 'Focus the first transaction entry cell.', 'Add Transactions', 'transactionInput', 'Ctrl+Alt+F'),
   command('transactionInput.removeFocusedRow', 'Remove Focused Row', 'Remove the currently focused transaction entry row.', 'Add Transactions', 'transactionInputGrid', 'Ctrl+Alt+Delete'),
-  command('transactionInput.nextCell', 'Next Transaction Cell', 'Move to the next transaction entry cell.', 'Add Transactions', 'transactionInputGrid', 'Alt+ArrowRight', { inputSafe: true }),
-  command('transactionInput.previousCell', 'Previous Transaction Cell', 'Move to the previous transaction entry cell.', 'Add Transactions', 'transactionInputGrid', 'Alt+ArrowLeft', { inputSafe: true }),
+  command('transactionInput.nextCell', 'Next Transaction Cell', 'Move to the next transaction entry cell.', 'Add Transactions', 'transactionInputGrid', 'Ctrl+Alt+ArrowRight', { inputSafe: true }),
+  command('transactionInput.previousCell', 'Previous Transaction Cell', 'Move to the previous transaction entry cell.', 'Add Transactions', 'transactionInputGrid', 'Ctrl+Alt+ArrowLeft', { inputSafe: true }),
 
   command('transactionHistory.applyFilters', 'Apply Transaction Filters', 'Apply transaction history filters.', 'Transaction History', 'transactionHistory', 'Ctrl+Enter', { inputSafe: true }),
   command('transactionHistory.focusSearch', 'Focus Transaction Search', 'Focus the transaction history search field.', 'Transaction History', 'transactionHistory', 'Ctrl+Alt+F'),
@@ -263,7 +263,7 @@ export const DEFAULT_COMMANDS = [
   command('modal.confirm', 'Confirm Modal', 'Confirm the active modal action.', 'Modals', 'modal', 'Ctrl+Enter', { inputSafe: true }),
   command('modal.cancel', 'Cancel Modal', 'Cancel or close the active modal.', 'Modals', 'modal', 'Escape', { inputSafe: true }),
 
-  command('settings.focusShortcuts', 'Focus Keyboard Shortcuts Section', 'Move focus to the keyboard shortcuts settings section.', 'Settings', 'settings', 'Ctrl+Alt+K'),
+  command('settings.focusShortcuts', 'Focus Keyboard Shortcuts Section', 'Move focus to the keyboard shortcuts settings section.', 'Settings', 'settings', null),
   command('settings.focusShortcutSearch', 'Focus Shortcut Search', 'Focus the shortcut command search field.', 'Settings', 'settings', 'Ctrl+Alt+F'),
   command('settings.editSelectedShortcut', 'Edit Selected Shortcut', 'Start editing the selected shortcut.', 'Settings', 'settingsShortcuts', 'Enter'),
   command('settings.clearSelectedShortcut', 'Clear Selected Shortcut', 'Clear the selected shortcut binding.', 'Settings', 'settingsShortcuts', 'Delete'),

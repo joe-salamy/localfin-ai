@@ -276,9 +276,10 @@ export function MultiTransactionTable() {
   const statementTextRef = useRef<HTMLTextAreaElement>(null);
   const cellRefs = useRef<Array<HTMLElement | null>>([]);
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+  const [gridFocused, setGridFocused] = useState(false);
 
   useShortcutScope("transactionInput");
-  useShortcutScope("transactionInputGrid", focusedRowId !== null);
+  useShortcutScope("transactionInputGrid", gridFocused);
 
   // ── Row manipulation ──────────────────────────────────────────────
 
@@ -683,7 +684,16 @@ export function MultiTransactionTable() {
       </Card>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div
+        className="overflow-x-auto rounded-md border border-border"
+        onFocus={() => setGridFocused(true)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setGridFocused(false);
+            setFocusedRowId(null);
+          }
+        }}
+      >
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-border bg-card text-left text-muted-foreground">
