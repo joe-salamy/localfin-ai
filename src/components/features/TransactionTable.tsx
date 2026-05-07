@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
 import type { TransactionWithDetails, Subcategory } from '@/types';
 import { format, parseISO } from 'date-fns';
@@ -6,6 +6,8 @@ import { Pencil, Trash2, Check, X, ArrowUp, ArrowDown } from 'lucide-react';
 import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
 import { formatCurrency, cn } from '@/lib/utils';
 import { DISPLAY_DATE_FORMAT } from '@/config/constants';
+import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
+import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
 
 interface TransactionTableProps {
   transactions: TransactionWithDetails[];
@@ -75,18 +77,35 @@ export function TransactionTable({
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TransactionWithDetails | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [focusedId, setFocusedId] = useState<string | null>(transactions[0]?.id ?? null);
+  const [tableFocused, setTableFocused] = useState(false);
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
 
   const allSelected = transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
+  const focusedTransaction = transactions.find((transaction) => transaction.id === focusedId) ?? transactions[0] ?? null;
 
-  const toggleAll = () => {
+  useShortcutScope('transactionHistoryTable', tableFocused || editingId !== null);
+  useShortcutScope('transactionHistoryEdit', editingId !== null);
+
+  useEffect(() => {
+    if (transactions.length === 0) {
+      setFocusedId(null);
+      return;
+    }
+    if (!focusedId || !transactions.some((transaction) => transaction.id === focusedId)) {
+      setFocusedId(transactions[0]?.id ?? null);
+    }
+  }, [focusedId, transactions]);
+
+  const toggleAll = useCallback(() => {
     if (allSelected) {
       onSelectionChange(new Set());
     } else {
       onSelectionChange(new Set(transactions.map((t) => t.id)));
     }
-  };
+  }, [allSelected, onSelectionChange, transactions]);
 
-  const toggleOne = (id: string) => {
+  const toggleOne = useCallback((id: string) => {
     const next = new Set(selectedIds);
     if (next.has(id)) {
       next.delete(id);
@@ -94,9 +113,22 @@ export function TransactionTable({
       next.add(id);
     }
     onSelectionChange(next);
-  };
+  }, [onSelectionChange, selectedIds]);
 
-  const startEdit = (t: TransactionWithDetails) => {
+  const focusRow = useCallback((id: string | null) => {
+    if (!id) return;
+    setFocusedId(id);
+    rowRefs.current.get(id)?.focus();
+  }, []);
+
+  const focusRowByOffset = useCallback((offset: number) => {
+    if (transactions.length === 0) return;
+    const currentIndex = Math.max(0, transactions.findIndex((transaction) => transaction.id === focusedId));
+    const nextIndex = Math.max(0, Math.min(currentIndex + offset, transactions.length - 1));
+    focusRow(transactions[nextIndex]?.id ?? null);
+  }, [focusRow, focusedId, transactions]);
+
+  const startEdit = useCallback((t: TransactionWithDetails) => {
     setEditingId(t.id);
     setEditState({
       date: t.date,
@@ -105,13 +137,13 @@ export function TransactionTable({
       subcategory_id: t.subcategory_id ?? '',
       comment: t.comment ?? '',
     });
-  };
+  }, []);
 
-  const cancelEdit = () => {
+  const cancelEdit = useCallback(() => {
     setEditingId(null);
-  };
+  }, []);
 
-  const saveEdit = async () => {
+  const saveEdit = useCallback(async () => {
     if (!editingId) return;
     setSaving(true);
     try {
@@ -126,7 +158,7 @@ export function TransactionTable({
     } finally {
       setSaving(false);
     }
-  };
+  }, [editState, editingId, onEdit]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -138,6 +170,29 @@ export function TransactionTable({
       setDeleting(false);
     }
   };
+
+  useShortcut('transactionHistory.selectAll', toggleAll);
+  useShortcut('transactionHistory.toggleFocusedRow', useCallback(() => {
+    if (focusedTransaction) toggleOne(focusedTransaction.id);
+  }, [focusedTransaction, toggleOne]));
+  useShortcut('transactionHistory.editFocusedRow', useCallback(() => {
+    if (focusedTransaction && editingId === null) startEdit(focusedTransaction);
+  }, [editingId, focusedTransaction, startEdit]));
+  useShortcut('transactionHistory.saveEdit', useCallback(() => {
+    void saveEdit();
+  }, [saveEdit]));
+  useShortcut('transactionHistory.cancelEdit', cancelEdit, { enabled: editingId !== null });
+  useShortcut('transactionHistory.deleteFocusedRow', useCallback(() => {
+    if (focusedTransaction && editingId === null) setDeleteTarget(focusedTransaction);
+  }, [editingId, focusedTransaction]));
+  useShortcut('transactionHistory.sortDate', useCallback(() => onSort('date'), [onSort]));
+  useShortcut('transactionHistory.sortName', useCallback(() => onSort('name'), [onSort]));
+  useShortcut('transactionHistory.sortAmount', useCallback(() => onSort('amount'), [onSort]));
+  useShortcut('transactionHistory.sortBalance', useCallback(() => onSort('balance'), [onSort]));
+  useShortcut('transactionHistory.nextRow', useCallback(() => focusRowByOffset(1), [focusRowByOffset]));
+  useShortcut('transactionHistory.previousRow', useCallback(() => focusRowByOffset(-1), [focusRowByOffset]));
+  useShortcut('transactionHistory.firstRow', useCallback(() => focusRow(transactions[0]?.id ?? null), [focusRow, transactions]));
+  useShortcut('transactionHistory.lastRow', useCallback(() => focusRow(transactions[transactions.length - 1]?.id ?? null), [focusRow, transactions]));
 
   const applySubcategoryPaste = async (
     e: ClipboardEvent<HTMLElement>,
@@ -186,7 +241,15 @@ export function TransactionTable({
 
   return (
     <>
-      <div className="overflow-x-auto border border-border rounded-md">
+      <div
+        className="overflow-x-auto border border-border rounded-md"
+        onFocus={() => setTableFocused(true)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setTableFocused(false);
+          }
+        }}
+      >
         <table className="w-full">
           <thead className="bg-secondary/50">
             <tr>
@@ -231,9 +294,19 @@ export function TransactionTable({
               return (
                 <tr
                   key={t.id}
+                  ref={(node) => {
+                    if (node) {
+                      rowRefs.current.set(t.id, node);
+                    } else {
+                      rowRefs.current.delete(t.id);
+                    }
+                  }}
+                  tabIndex={0}
+                  onFocus={() => setFocusedId(t.id)}
                   className={cn(
-                    'hover:bg-secondary/30',
+                    'outline-none hover:bg-secondary/30 focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring',
                     selectedIds.has(t.id) && 'bg-secondary/20',
+                    focusedId === t.id && 'bg-secondary/30',
                   )}
                 >
                   <td className={cellClass}>
@@ -338,6 +411,7 @@ export function TransactionTable({
                           title="Save"
                         >
                           <Check className="h-3.5 w-3.5" />
+                          <ShortcutHint commandId="transactionHistory.saveEdit" />
                         </button>
                         <button
                           onClick={cancelEdit}
@@ -346,6 +420,7 @@ export function TransactionTable({
                           title="Cancel"
                         >
                           <X className="h-3.5 w-3.5" />
+                          <ShortcutHint commandId="transactionHistory.cancelEdit" />
                         </button>
                       </div>
                     ) : (

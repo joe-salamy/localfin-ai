@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import type { TransactionFilters } from '@/types';
 import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
@@ -13,6 +13,9 @@ import { BulkEditModal } from '@/components/features/BulkEditModal';
 import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
 import { DEFAULT_DATE_RANGE_DAYS, DATE_FORMAT } from '@/config/constants';
 import { dateRangePresets, type DateRangePreset } from '@/lib/dateRangePresets';
+import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
+import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
+import type { CommandId } from '@/features/shortcuts/commands';
 
 const today = format(new Date(), DATE_FORMAT);
 const defaultStart = format(subDays(new Date(), DEFAULT_DATE_RANGE_DAYS), DATE_FORMAT);
@@ -23,6 +26,12 @@ export function TransactionHistoryPage() {
   const [endDate, setEndDate] = useState(today);
   const [accountId, setAccountId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const startDateRef = useRef<HTMLInputElement>(null);
+  const endDateRef = useRef<HTMLInputElement>(null);
+  const accountRef = useRef<HTMLSelectElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useShortcutScope('transactionHistory');
 
   // Applied filters (only update on Apply click)
   const [appliedFilters, setAppliedFilters] = useState<TransactionFilters>({
@@ -46,7 +55,7 @@ export function TransactionHistoryPage() {
   const { accounts } = useAccounts();
   const { subcategories } = useCategories();
 
-  const applyFilters = () => {
+  const applyFilters = useCallback(() => {
     setSelectedIds(new Set());
     setAppliedFilters({
       startDate: startDate || undefined,
@@ -54,9 +63,9 @@ export function TransactionHistoryPage() {
       accountId: accountId || undefined,
       searchQuery: searchQuery || undefined,
     });
-  };
+  }, [accountId, endDate, searchQuery, startDate]);
 
-  const applyDateRangePreset = (preset: DateRangePreset) => {
+  const applyDateRangePreset = useCallback((preset: DateRangePreset) => {
     const range = preset.getRange();
     setStartDate(range.startDate);
     setEndDate(range.endDate);
@@ -67,7 +76,7 @@ export function TransactionHistoryPage() {
       accountId: accountId || undefined,
       searchQuery: searchQuery || undefined,
     });
-  };
+  }, [accountId, searchQuery]);
 
   // Sort transactions client-side
   const sortedTransactions = useMemo(() => {
@@ -150,6 +159,26 @@ export function TransactionHistoryPage() {
     ? error.message
     : null;
 
+  const applyPreset1 = useCallback(() => dateRangePresets[0] && applyDateRangePreset(dateRangePresets[0]), [applyDateRangePreset]);
+  const applyPreset2 = useCallback(() => dateRangePresets[1] && applyDateRangePreset(dateRangePresets[1]), [applyDateRangePreset]);
+  const applyPreset3 = useCallback(() => dateRangePresets[2] && applyDateRangePreset(dateRangePresets[2]), [applyDateRangePreset]);
+  const applyPreset4 = useCallback(() => dateRangePresets[3] && applyDateRangePreset(dateRangePresets[3]), [applyDateRangePreset]);
+  const applyPreset5 = useCallback(() => dateRangePresets[4] && applyDateRangePreset(dateRangePresets[4]), [applyDateRangePreset]);
+  const applyPreset6 = useCallback(() => dateRangePresets[5] && applyDateRangePreset(dateRangePresets[5]), [applyDateRangePreset]);
+  useShortcut('transactionHistory.applyFilters', applyFilters);
+  useShortcut('transactionHistory.focusSearch', useCallback(() => searchRef.current?.focus(), []));
+  useShortcut('transactionHistory.focusStartDate', useCallback(() => startDateRef.current?.focus(), []));
+  useShortcut('transactionHistory.focusEndDate', useCallback(() => endDateRef.current?.focus(), []));
+  useShortcut('transactionHistory.focusAccount', useCallback(() => accountRef.current?.focus(), []));
+  useShortcut('transactionHistory.preset1', applyPreset1, { enabled: dateRangePresets.length > 0 });
+  useShortcut('transactionHistory.preset2', applyPreset2, { enabled: dateRangePresets.length > 1 });
+  useShortcut('transactionHistory.preset3', applyPreset3, { enabled: dateRangePresets.length > 2 });
+  useShortcut('transactionHistory.preset4', applyPreset4, { enabled: dateRangePresets.length > 3 });
+  useShortcut('transactionHistory.preset5', applyPreset5, { enabled: dateRangePresets.length > 4 });
+  useShortcut('transactionHistory.preset6', applyPreset6, { enabled: dateRangePresets.length > 5 });
+  useShortcut('transactionHistory.bulkEdit', useCallback(() => setBulkEditOpen(true), []), { enabled: selectedIds.size > 0 });
+  useShortcut('transactionHistory.bulkDelete', useCallback(() => setBulkDeleteOpen(true), []), { enabled: selectedIds.size > 0 });
+
   return (
     <div className="space-y-3">
       <h1 className="text-lg font-bold">Transaction History</h1>
@@ -159,6 +188,7 @@ export function TransactionHistoryPage() {
         <div>
           <label className="block text-xs text-muted-foreground mb-0.5">From</label>
           <input
+            ref={startDateRef}
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
@@ -168,6 +198,7 @@ export function TransactionHistoryPage() {
         <div>
           <label className="block text-xs text-muted-foreground mb-0.5">To</label>
           <input
+            ref={endDateRef}
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
@@ -176,6 +207,7 @@ export function TransactionHistoryPage() {
         </div>
         <div className="w-40">
           <SimpleSelect
+            ref={accountRef}
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
             options={[{ value: '', label: 'All Accounts' }, ...accountOptions]}
@@ -184,6 +216,7 @@ export function TransactionHistoryPage() {
         </div>
         <div className="w-48">
           <Input
+            ref={searchRef}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search: coffee AND amount>5"
@@ -193,14 +226,16 @@ export function TransactionHistoryPage() {
         </div>
         <Button size="sm" onClick={applyFilters} className="h-8 text-xs">
           Apply
+          <ShortcutHint commandId="transactionHistory.applyFilters" />
         </Button>
       </div>
       <div className="flex flex-wrap gap-2">
-        {dateRangePresets.map((preset) => {
+        {dateRangePresets.map((preset, index) => {
           const range = preset.getRange();
           const isActive =
             (appliedFilters.startDate ?? '') === range.startDate &&
             (appliedFilters.endDate ?? '') === range.endDate;
+          const commandId = `transactionHistory.preset${index + 1}` as CommandId;
 
           return (
             <Button
@@ -212,6 +247,7 @@ export function TransactionHistoryPage() {
               className="h-7 px-2 text-xs"
             >
               {preset.label}
+              {index < 6 && <ShortcutHint commandId={commandId} />}
             </Button>
           );
         })}
@@ -226,9 +262,11 @@ export function TransactionHistoryPage() {
           <span className="text-muted-foreground">{selectedIds.size} selected</span>
           <Button size="sm" variant="secondary" onClick={() => setBulkEditOpen(true)} className="h-7 text-xs">
             Bulk Edit
+            <ShortcutHint commandId="transactionHistory.bulkEdit" />
           </Button>
           <Button size="sm" variant="destructive" onClick={() => setBulkDeleteOpen(true)} className="h-7 text-xs">
             Bulk Delete
+            <ShortcutHint commandId="transactionHistory.bulkDelete" />
           </Button>
         </div>
       )}

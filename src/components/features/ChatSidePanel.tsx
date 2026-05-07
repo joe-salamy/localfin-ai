@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import { Bot, MessageSquare, Send, X, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -6,6 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { useAI } from '@/hooks/useAI';
 import type { ChatActionResult, ChatStreamEvent, PlannedChatAction } from '@/hooks/useAI';
 import { cn } from '@/lib/utils';
+import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
+import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
 
 interface ChatMessage {
   id: string;
@@ -18,6 +21,7 @@ interface ChatMessage {
 interface ChatSidePanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
 }
 
 type StreamAction =
@@ -67,7 +71,7 @@ function actionStatusText(action: StreamAction | ChatActionResult) {
   return action.status === 'success' ? 'Succeeded' : 'Failed';
 }
 
-export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
+export function ChatSidePanel({ open, onOpenChange, inputRef }: ChatSidePanelProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamState, setStreamState] = useState<StreamState | null>(null);
@@ -80,11 +84,13 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
   const logHint = useMemo(() => `logs/*-${conversationId}.jsonl`, [conversationId]);
   const isStreaming = streamState !== null;
 
+  useShortcutScope('assistant', open);
+
   useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
 
-  const updateStreamState = (
+  const updateStreamState = useCallback((
     update: StreamState | null | ((prev: StreamState | null) => StreamState | null),
   ) => {
     setStreamState((prev) => {
@@ -92,9 +98,9 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
       streamStateRef.current = next;
       return next;
     });
-  };
+  }, []);
 
-  const handleStreamEvent = (event: ChatStreamEvent) => {
+  const handleStreamEvent = useCallback((event: ChatStreamEvent) => {
     switch (event.type) {
       case 'started':
         updateStreamState({
@@ -206,9 +212,9 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
       default:
         return;
     }
-  };
+  }, [updateStreamState]);
 
-  const sendMessage = async () => {
+  const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || isStreaming) return;
 
@@ -252,7 +258,11 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
         abortRef.current = null;
       }
     }
-  };
+  }, [conversationId, handleStreamEvent, input, isStreaming, pathname, streamChat, updateStreamState]);
+
+  useShortcut('assistant.send', () => {
+    void sendMessage();
+  }, { enabled: open && Boolean(input.trim()) && !isStreaming });
 
   return (
     <>
@@ -406,6 +416,7 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
               }}
             >
               <textarea
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask or request an update..."
@@ -414,6 +425,7 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
               />
               <Button type="submit" size="sm" loading={isStreaming} aria-label="Send message" className="shrink-0">
                 <Send className="h-4 w-4" />
+                <ShortcutHint commandId="assistant.send" />
               </Button>
             </form>
           </div>
