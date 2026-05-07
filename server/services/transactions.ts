@@ -314,12 +314,7 @@ export function getRecentTransactionByNameAndAccount(
   return row ? rowToTransaction(row) : null;
 }
 
-export function getRecentActivityByAccount(): RecentActivityRow[] {
-  const db = getDb();
-
-  const rows = db
-    .prepare(
-      `
+export const recentActivityByAccountSql = `
     WITH ranked_transactions AS (
       SELECT
         t.id,
@@ -365,8 +360,13 @@ export function getRecentActivityByAccount(): RecentActivityRow[] {
     LEFT JOIN ranked_transactions latest ON a.id = latest.account_id AND latest.rn = 1
     WHERE a.deleted_at IS NULL
     ORDER BY a.name ASC
-  `,
-    )
+  `;
+
+export function getRecentActivityByAccount(): RecentActivityRow[] {
+  const db = getDb();
+
+  const rows = db
+    .prepare(recentActivityByAccountSql)
     .all() as RecentActivityRow[];
 
   return rows;
