@@ -193,7 +193,6 @@ export interface EnrichedTransaction extends ParsedTransaction {
   category_name: string | null;
   categorizationSource: 'lookup' | 'ai' | 'none';
   isDuplicate: boolean;
-  aiConfidence: number;
 }
 
 // === AI TYPES ===
@@ -208,7 +207,6 @@ export interface CategorizationResult {
   subcategory_id: string;
   subcategory_name: string;
   category_name: string;
-  confidence: number;
 }
 
 // === API RESPONSE ===

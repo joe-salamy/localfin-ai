@@ -287,7 +287,6 @@ export async function parseStatement(
       category_name: null,
       categorizationSource: "none",
       isDuplicate,
-      aiConfidence: 0,
     };
   });
 

@@ -17,7 +17,6 @@ interface CategorizeResult {
   subcategory_id: string | null;
   subcategory_name: string | null;
   category_name: string | null;
-  confidence: number;
   source: "lookup" | "ai" | "none";
 }
 
@@ -47,7 +46,6 @@ interface AIResultItem {
   subcategory_id: string;
   subcategory_name: string;
   category_name: string;
-  confidence: number;
 }
 
 interface UnknownTransaction {
@@ -90,7 +88,6 @@ export async function categorizeTransactions(
         subcategory_id: pastTx.subcategory_id,
         subcategory_name: pastTx.subcategory_name,
         category_name: pastTx.category_name,
-        confidence: 0.95,
         source: "lookup",
       };
       continue;
@@ -103,7 +100,6 @@ export async function categorizeTransactions(
       subcategory_id: null,
       subcategory_name: null,
       category_name: null,
-      confidence: 0,
       source: "none",
     };
   }
@@ -230,7 +226,6 @@ async function processCategorizationBatches({
             subcategory_id: aiResult.subcategory_id,
             subcategory_name: aiResult.subcategory_name,
             category_name: aiResult.category_name,
-            confidence: aiResult.confidence || 0.7,
             source: "ai",
           };
         }
@@ -299,7 +294,7 @@ ${exampleLines.join("\n")}
 ${transactionLines.join("\n")}
 
 Return exactly one result per transaction using the same zero-based index values shown above.
-Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_name": "...", "category_name": "...", "confidence": 0.8 }] }`;
+Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_name": "...", "category_name": "..." }] }`;
 
   const response = await callOpenRouter(
     [
@@ -367,7 +362,6 @@ Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_n
           subcategory_id: unassigned.id,
           subcategory_name: unassigned.name,
           category_name: unassigned.category_name,
-          confidence: 0.1,
         };
       }
     }
@@ -387,7 +381,6 @@ Return JSON: { "results": [{ "index": 0, "subcategory_id": "...", "subcategory_n
         subcategory_id: unassigned.id,
         subcategory_name: unassigned.name,
         category_name: unassigned.category_name,
-        confidence: 0.1,
       };
     }
   }

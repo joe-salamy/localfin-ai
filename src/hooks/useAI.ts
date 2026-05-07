@@ -17,7 +17,6 @@ interface CategorizeResult {
   subcategory_id: string | null;
   subcategory_name: string | null;
   category_name: string | null;
-  confidence: number;
   source: "lookup" | "ai" | "none";
 }
 

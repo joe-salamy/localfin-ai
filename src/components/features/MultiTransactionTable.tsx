@@ -25,7 +25,6 @@ interface TransactionRow {
   isDuplicate: boolean;
   transferMatch: unknown | null;
   categorizationSource: 'lookup' | 'ai' | 'none' | 'manual';
-  aiConfidence: number | null;
   aiSuggestedSubcategoryId: string | null;
 }
 
@@ -52,7 +51,6 @@ function emptyRow(): TransactionRow {
     isDuplicate: false,
     transferMatch: null,
     categorizationSource: 'manual',
-    aiConfidence: null,
     aiSuggestedSubcategoryId: null,
   };
 }
@@ -356,7 +354,6 @@ export function MultiTransactionTable() {
             ...row,
             subcategory_id: cat.subcategory_id ?? row.subcategory_id,
             categorizationSource: cat.source,
-            aiConfidence: cat.confidence,
             aiSuggestedSubcategoryId: cat.source === 'ai' ? cat.subcategory_id : null,
           };
         });
@@ -392,7 +389,6 @@ export function MultiTransactionTable() {
         isDuplicate: tx.isDuplicate,
         transferMatch: null,
         categorizationSource: tx.categorizationSource,
-        aiConfidence: tx.aiConfidence,
         aiSuggestedSubcategoryId: tx.categorizationSource === 'ai' ? tx.subcategory_id : null,
       })));
       setDuplicatesChecked(data.summary.duplicates > 0);
@@ -667,7 +663,6 @@ export function MultiTransactionTable() {
                   {row.categorizationSource !== 'manual' && (
                     <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                       {row.categorizationSource}
-                      {row.aiConfidence != null ? ` ${Math.round(row.aiConfidence * 100)}%` : ''}
                     </div>
                   )}
                 </td>
