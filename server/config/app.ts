@@ -61,6 +61,7 @@ export const OPENROUTER_CONFIG = {
   defaultOperation: 'openrouter.chat_completion',
   providerName: 'openrouter',
   logDirectory: path.resolve(process.cwd(), 'logs'),
+  logFileTimeZone: 'America/Los_Angeles',
   maxLogIdLength: 120,
 } as const;
 

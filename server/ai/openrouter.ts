@@ -40,8 +40,22 @@ function safeLogId(value: string): string {
 
 const conversationLogFiles = new Map<string, string>();
 
-function sortableTimestamp(date = new Date()): string {
-  return date.toISOString().replace('T', '_').replace(/[:.]/g, '-');
+export function sortableTimestamp(date = new Date()): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: OPENROUTER_CONFIG.logFileTimeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      fractionalSecondDigits: 3,
+      hourCycle: 'h23',
+    }).formatToParts(date).map((part) => [part.type, part.value]),
+  );
+
+  return `${parts.year}-${parts.month}-${parts.day}_${parts.hour}-${parts.minute}-${parts.second}-${parts.fractionalSecond}PT`;
 }
 
 async function resolveConversationLogFile(conversationId: string): Promise<string> {
