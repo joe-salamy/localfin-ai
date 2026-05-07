@@ -234,7 +234,23 @@ export function getTransactionsWithDetails(
   let sql = `
     SELECT t.*, a.name AS account_name, a.type AS account_type,
            s.name AS subcategory_name, s.category_id,
-           c.name AS category_name, c.type AS category_type
+           c.name AS category_name, c.type AS category_type,
+           (
+             SELECT COALESCE(SUM(prior.amount), 0)
+             FROM transactions prior
+             WHERE prior.account_id = t.account_id
+               AND prior.deleted_at IS NULL
+               AND (
+                 prior.date < t.date
+                 OR (
+                   prior.date = t.date
+                   AND (
+                     prior.created_at < t.created_at
+                     OR (prior.created_at = t.created_at AND prior.rowid <= t.rowid)
+                   )
+                 )
+               )
+           ) AS running_balance
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
     LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL

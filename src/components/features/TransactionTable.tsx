@@ -52,6 +52,13 @@ function SortIcon({ column, sortColumn, sortDirection }: { column: string; sortC
     : <ArrowDown className="inline h-3 w-3 ml-0.5" />;
 }
 
+const sortableColumns = [
+  { id: 'date', label: 'Date', align: 'left' },
+  { id: 'name', label: 'Name', align: 'left' },
+  { id: 'amount', label: 'Amount', align: 'right' },
+  { id: 'balance', label: 'Balance', align: 'right' },
+] as const;
+
 export function TransactionTable({
   transactions,
   selectedIds,
@@ -191,14 +198,18 @@ export function TransactionTable({
                   className="rounded border-border"
                 />
               </th>
-              {(['date', 'name', 'amount'] as const).map((col) => (
+              {sortableColumns.map((col) => (
                 <th
-                  key={col}
-                  className={cn(headerClass, 'cursor-pointer select-none hover:text-foreground')}
-                  onClick={() => onSort(col)}
+                  key={col.id}
+                  className={cn(
+                    headerClass,
+                    col.align === 'right' && 'text-right',
+                    'cursor-pointer select-none hover:text-foreground',
+                  )}
+                  onClick={() => onSort(col.id)}
                 >
-                  {col.charAt(0).toUpperCase() + col.slice(1)}
-                  <SortIcon column={col} sortColumn={sortColumn} sortDirection={sortDirection} />
+                  {col.label}
+                  <SortIcon column={col.id} sortColumn={sortColumn} sortDirection={sortDirection} />
                 </th>
               ))}
               <th className={headerClass}>Category</th>
@@ -209,7 +220,7 @@ export function TransactionTable({
           <tbody className="divide-y divide-border">
             {transactions.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-2 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={8} className="px-2 py-8 text-center text-sm text-muted-foreground">
                   No transactions found.
                 </td>
               </tr>
@@ -270,7 +281,7 @@ export function TransactionTable({
                       </div>
                     )}
                   </td>
-                  <td className={cn(cellClass, 'font-mono tabular-nums')}>
+                  <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
                     {isEditing ? (
                       <input
                         type="number"
@@ -284,6 +295,9 @@ export function TransactionTable({
                         {formatCurrency(t.amount)}
                       </span>
                     )}
+                  </td>
+                  <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
+                    {formatCurrency(t.running_balance ?? 0)}
                   </td>
                   <td
                     className={cellClass}

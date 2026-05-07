@@ -160,6 +160,9 @@ export function TransactionHistoryPage() {
         case 'amount':
           cmp = a.amount - b.amount;
           break;
+        case 'balance':
+          cmp = (a.running_balance ?? 0) - (b.running_balance ?? 0);
+          break;
         default:
           cmp = 0;
       }
