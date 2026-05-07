@@ -5,6 +5,7 @@ import type {
   Transaction,
   TransactionFilters,
   TransactionWithDetails,
+  RecentAccountTransaction,
   CreateTransactionData,
 } from '@/types/index';
 
@@ -106,7 +107,7 @@ export function useTransactions(filters?: TransactionFilters) {
 export function useRecentActivity() {
   const query = useQuery({
     queryKey: queryKeys.transactions.recentActivity(),
-    queryFn: () => apiGet<TransactionWithDetails[]>('/transactions/recent-activity'),
+    queryFn: () => apiGet<RecentAccountTransaction[]>('/transactions/recent-activity'),
     select: (res) => res.data ?? [],
   });
 

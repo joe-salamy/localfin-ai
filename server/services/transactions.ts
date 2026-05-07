@@ -40,9 +40,10 @@ interface RecentActivityRow {
   account_name: string;
   account_type: string;
   current_balance: number;
-  last_transaction_date: string;
-  last_transaction_name: string;
-  last_transaction_amount: number;
+  last_transaction_id: string | null;
+  last_transaction_date: string | null;
+  last_transaction_name: string | null;
+  last_transaction_amount: number | null;
 }
 
 interface UpdateTransactionData {
@@ -319,34 +320,51 @@ export function getRecentActivityByAccount(): RecentActivityRow[] {
   const rows = db
     .prepare(
       `
+    WITH ranked_transactions AS (
+      SELECT
+        t.id,
+        t.account_id,
+        t.date,
+        t.name,
+        t.amount,
+        t.created_at,
+        t.rowid,
+        (
+          SELECT COALESCE(SUM(prior.amount), 0)
+          FROM transactions prior
+          WHERE prior.account_id = t.account_id
+            AND prior.deleted_at IS NULL
+            AND (
+              prior.date < t.date
+              OR (
+                prior.date = t.date
+                AND (
+                  prior.created_at < t.created_at
+                  OR (prior.created_at = t.created_at AND prior.rowid <= t.rowid)
+                )
+              )
+            )
+        ) AS running_balance,
+        ROW_NUMBER() OVER (
+          PARTITION BY t.account_id
+          ORDER BY t.date DESC, t.created_at DESC, t.rowid DESC
+        ) AS rn
+      FROM transactions t
+      WHERE t.deleted_at IS NULL
+    )
     SELECT
       a.id AS account_id,
       a.name AS account_name,
       a.type AS account_type,
-      COALESCE(SUM(t.amount), 0) AS current_balance,
-      latest.last_transaction_date,
-      latest.last_transaction_name,
-      latest.last_transaction_amount
+      COALESCE(latest.running_balance, 0) AS current_balance,
+      latest.id AS last_transaction_id,
+      latest.date AS last_transaction_date,
+      latest.name AS last_transaction_name,
+      latest.amount AS last_transaction_amount
     FROM accounts a
-    LEFT JOIN transactions t ON t.account_id = a.id AND t.deleted_at IS NULL
-    LEFT JOIN (
-      SELECT
-        t2.account_id,
-        t2.date AS last_transaction_date,
-        t2.name AS last_transaction_name,
-        t2.amount AS last_transaction_amount
-      FROM transactions t2
-      INNER JOIN (
-        SELECT account_id, MAX(date) AS max_date
-        FROM transactions
-        WHERE deleted_at IS NULL
-        GROUP BY account_id
-      ) latest_dates ON t2.account_id = latest_dates.account_id AND t2.date = latest_dates.max_date
-      WHERE t2.deleted_at IS NULL
-      GROUP BY t2.account_id
-    ) latest ON a.id = latest.account_id
+    LEFT JOIN ranked_transactions latest ON a.id = latest.account_id AND latest.rn = 1
     WHERE a.deleted_at IS NULL
-    GROUP BY a.id
+    ORDER BY a.name ASC
   `,
     )
     .all() as RecentActivityRow[];
