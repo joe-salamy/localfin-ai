@@ -67,6 +67,9 @@ export type PlannedChatAction = Omit<ChatActionResult, "status" | "result" | "er
 export type ChatStreamEvent =
   | { type: "started"; conversationId: string; requestId: string }
   | { type: "thinking"; message: string }
+  | { type: "reasoning_delta"; message: string }
+  | { type: "reasoning_details"; details: Record<string, unknown>[] }
+  | { type: "response_delta"; content: string }
   | { type: "actions_planned"; actions: PlannedChatAction[] }
   | { type: "action_started"; index: number; action: PlannedChatAction }
   | { type: "action_finished"; index: number; action: ChatActionResult }

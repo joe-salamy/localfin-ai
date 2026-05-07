@@ -1,5 +1,9 @@
 import crypto from "node:crypto";
-import { callOpenRouter, appendConversationLog } from "../ai/openrouter.js";
+import {
+  appendConversationLog,
+  streamOpenRouter,
+  type OpenRouterReasoningDetail,
+} from "../ai/openrouter.js";
 import { AI_MODELS } from "../config/ai-models.js";
 import { createAccount, getAccounts, updateAccount } from "./accounts.js";
 import {
@@ -66,6 +70,9 @@ export interface ChatResult {
 export type ChatStreamEvent =
   | { type: "started"; conversationId: string; requestId: string }
   | { type: "thinking"; message: string }
+  | { type: "reasoning_delta"; message: string }
+  | { type: "reasoning_details"; details: OpenRouterReasoningDetail[] }
+  | { type: "response_delta"; content: string }
   | { type: "actions_planned"; actions: AIAction[] }
   | { type: "action_started"; index: number; action: AIAction }
   | { type: "action_finished"; index: number; action: ExecutedAction }
@@ -751,7 +758,7 @@ async function runAssistantChat(
     message: "Reading your finance context and planning actions...",
   });
 
-  const response = await callOpenRouter(
+  const response = await streamOpenRouter(
     [
       { role: "system", content: assistantSystemMessage() },
       {
@@ -769,6 +776,21 @@ async function runAssistantChat(
       operation: "assistant.chat",
       model: AI_MODELS.assistantChat,
       metadata: { currentPage: request.currentPage ?? null },
+    },
+    async (event) => {
+      switch (event.type) {
+        case "reasoning_delta":
+          await emit?.({ type: "reasoning_delta", message: event.reasoning });
+          return;
+        case "reasoning_details":
+          await emit?.({ type: "reasoning_details", details: event.details });
+          return;
+        case "content_delta":
+          await emit?.({ type: "response_delta", content: event.content });
+          return;
+        default:
+          return;
+      }
     },
   );
 

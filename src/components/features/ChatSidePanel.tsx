@@ -12,6 +12,7 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   actions?: ChatActionResult[];
+  reasoning?: string[];
 }
 
 interface ChatSidePanelProps {
@@ -27,6 +28,8 @@ interface StreamState {
   requestId?: string;
   status: string;
   actions: StreamAction[];
+  reasoning: string[];
+  responseDraft: string;
 }
 
 function actionLabel(action: PlannedChatAction | ChatActionResult) {
@@ -39,12 +42,38 @@ function upsertStreamAction(actions: StreamAction[], index: number, action: Stre
   return next;
 }
 
+function compactJson(value: unknown) {
+  return JSON.stringify(value, null, 2);
+}
+
+function reasoningDetailText(detail: Record<string, unknown>) {
+  if (typeof detail.summary === 'string' && detail.summary.trim()) {
+    return detail.summary.trim();
+  }
+
+  if (typeof detail.text === 'string' && detail.text.trim()) {
+    return detail.text.trim();
+  }
+
+  if (typeof detail.data === 'string' && detail.data.trim()) {
+    return `[${typeof detail.type === 'string' ? detail.type : 'reasoning.encrypted'}] ${detail.data}`;
+  }
+
+  return compactJson(detail);
+}
+
+function actionStatusText(action: StreamAction | ChatActionResult) {
+  if (action.status === 'pending') return 'Pending';
+  return action.status === 'success' ? 'Succeeded' : 'Failed';
+}
+
 export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamState, setStreamState] = useState<StreamState | null>(null);
   const [conversationId] = useState(() => crypto.randomUUID());
   const abortRef = useRef<AbortController | null>(null);
+  const streamStateRef = useRef<StreamState | null>(null);
   const { pathname } = useLocation();
   const { streamChat } = useAI();
 
@@ -55,33 +84,78 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
     return () => abortRef.current?.abort();
   }, []);
 
+  const updateStreamState = (
+    update: StreamState | null | ((prev: StreamState | null) => StreamState | null),
+  ) => {
+    setStreamState((prev) => {
+      const next = typeof update === 'function' ? update(prev) : update;
+      streamStateRef.current = next;
+      return next;
+    });
+  };
+
   const handleStreamEvent = (event: ChatStreamEvent) => {
     switch (event.type) {
       case 'started':
-        setStreamState({
+        updateStreamState({
           requestId: event.requestId,
           status: 'Starting assistant request...',
           actions: [],
+          reasoning: [],
+          responseDraft: '',
         });
         return;
       case 'thinking':
-        setStreamState((prev) => ({
+        updateStreamState((prev) => ({
           requestId: prev?.requestId,
           actions: prev?.actions ?? [],
+          reasoning: prev?.reasoning ?? [],
+          responseDraft: prev?.responseDraft ?? '',
           status: event.message,
         }));
         return;
+      case 'reasoning_delta':
+        updateStreamState((prev) => ({
+          requestId: prev?.requestId,
+          actions: prev?.actions ?? [],
+          reasoning: [...(prev?.reasoning ?? []), event.message],
+          responseDraft: prev?.responseDraft ?? '',
+          status: 'Streaming model reasoning...',
+        }));
+        return;
+      case 'reasoning_details':
+        updateStreamState((prev) => ({
+          requestId: prev?.requestId,
+          actions: prev?.actions ?? [],
+          reasoning: [...(prev?.reasoning ?? []), ...event.details.map(reasoningDetailText)],
+          responseDraft: prev?.responseDraft ?? '',
+          status: 'Streaming model reasoning details...',
+        }));
+        return;
+      case 'response_delta':
+        updateStreamState((prev) => ({
+          requestId: prev?.requestId,
+          actions: prev?.actions ?? [],
+          reasoning: prev?.reasoning ?? [],
+          responseDraft: `${prev?.responseDraft ?? ''}${event.content}`,
+          status: 'Streaming assistant response...',
+        }));
+        return;
       case 'actions_planned':
-        setStreamState((prev) => ({
+        updateStreamState((prev) => ({
           requestId: prev?.requestId,
           status: event.actions.length > 0 ? 'Preparing tool calls...' : 'Writing response...',
           actions: event.actions.map((action) => ({ ...action, status: 'pending' })),
+          reasoning: prev?.reasoning ?? [],
+          responseDraft: prev?.responseDraft ?? '',
         }));
         return;
       case 'action_started':
-        setStreamState((prev) => ({
+        updateStreamState((prev) => ({
           requestId: prev?.requestId,
           status: `Running ${actionLabel(event.action)}...`,
+          reasoning: prev?.reasoning ?? [],
+          responseDraft: prev?.responseDraft ?? '',
           actions: upsertStreamAction(prev?.actions ?? [], event.index, {
             ...event.action,
             status: 'pending',
@@ -89,14 +163,17 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
         }));
         return;
       case 'action_finished':
-        setStreamState((prev) => ({
+        updateStreamState((prev) => ({
           requestId: prev?.requestId,
           status: event.action.status === 'success' ? 'Tool call finished.' : 'Tool call failed.',
+          reasoning: prev?.reasoning ?? [],
+          responseDraft: prev?.responseDraft ?? '',
           actions: upsertStreamAction(prev?.actions ?? [], event.index, event.action),
         }));
         return;
       case 'final': {
         const data = event.data;
+        const reasoning = streamStateRef.current?.requestId === data.requestId ? streamStateRef.current.reasoning : [];
         setMessages((prev) => [
           ...prev,
           {
@@ -104,9 +181,10 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
             role: 'assistant',
             content: data.message,
             actions: data.actions,
+            reasoning,
           },
         ]);
-        setStreamState(null);
+        updateStreamState(null);
         const failed = data.actions.filter((action) => action.status === 'error').length;
         if (failed > 0) {
           toast.warning(`${failed} assistant action failed.`);
@@ -114,7 +192,7 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
         return;
       }
       case 'error':
-        setStreamState(null);
+        updateStreamState(null);
         setMessages((prev) => [
           ...prev,
           {
@@ -141,7 +219,7 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
     };
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
-    setStreamState({ status: 'Starting assistant request...', actions: [] });
+    updateStreamState({ status: 'Starting assistant request...', actions: [], reasoning: [], responseDraft: '' });
     abortRef.current?.abort();
     const abortController = new AbortController();
     abortRef.current = abortController;
@@ -159,7 +237,7 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
     } catch (err) {
       if (abortController.signal.aborted) return;
       const message = err instanceof Error ? err.message : 'Assistant request failed.';
-      setStreamState(null);
+      updateStreamState(null);
       setMessages((prev) => [
         ...prev,
         {
@@ -228,19 +306,36 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
                 {message.actions && message.actions.length > 0 && (
                   <div className="mt-2 space-y-1 border-t border-border pt-2 text-xs">
                     {message.actions.map((action, index) => (
-                      <div key={`${action.type}-${index}`} className="flex items-start gap-1.5">
-                        {action.status === 'success' ? (
-                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 text-income" />
-                        ) : (
-                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 text-yellow-500" />
-                        )}
-                        <span className="min-w-0 flex-1">
-                          {actionLabel(action)}
-                          {action.error ? `: ${action.error}` : ''}
-                        </span>
-                      </div>
+                      <details key={`${action.type}-${index}`} className="rounded border border-border p-2">
+                        <summary className="flex cursor-pointer items-start gap-1.5">
+                          {action.status === 'success' ? (
+                            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 text-income" />
+                          ) : (
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 text-yellow-500" />
+                          )}
+                          <span className="min-w-0 flex-1">
+                            {actionLabel(action)} - {actionStatusText(action)}
+                            {action.error ? `: ${action.error}` : ''}
+                          </span>
+                        </summary>
+                        <pre className="mt-2 max-h-48 overflow-auto rounded bg-secondary p-2 text-[11px] leading-relaxed">
+                          {compactJson({ input: action.input, result: action.result ?? null, error: action.error ?? null })}
+                        </pre>
+                      </details>
                     ))}
                   </div>
+                )}
+                {message.reasoning && message.reasoning.length > 0 && (
+                  <details className="mt-2 border-t border-border pt-2 text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">Reasoning stream</summary>
+                    <div className="mt-2 max-h-48 space-y-2 overflow-auto rounded bg-secondary p-2">
+                      {message.reasoning.map((entry, index) => (
+                        <div key={`${message.id}-reasoning-${index}`} className="whitespace-pre-wrap">
+                          {entry}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
                 )}
               </div>
             ))}
@@ -253,21 +348,50 @@ export function ChatSidePanel({ open, onOpenChange }: ChatSidePanelProps) {
                 {streamState.actions.length > 0 && (
                   <div className="mt-2 space-y-1 border-t border-border pt-2 text-xs">
                     {streamState.actions.map((action, index) => (
-                      <div key={`${action.type}-${index}`} className="flex items-start gap-1.5">
-                        {action.status === 'pending' ? (
-                          <Loader2 className="mt-0.5 h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                        ) : action.status === 'success' ? (
-                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 text-income" />
-                        ) : (
-                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 text-yellow-500" />
-                        )}
-                        <span className="min-w-0 flex-1">
-                          {actionLabel(action)}
-                          {'error' in action && action.error ? `: ${action.error}` : ''}
-                        </span>
-                      </div>
+                      <details key={`${action.type}-${index}`} open className="rounded border border-border p-2">
+                        <summary className="flex cursor-pointer items-start gap-1.5">
+                          {action.status === 'pending' ? (
+                            <Loader2 className="mt-0.5 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                          ) : action.status === 'success' ? (
+                            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 text-income" />
+                          ) : (
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 text-yellow-500" />
+                          )}
+                          <span className="min-w-0 flex-1">
+                            {actionLabel(action)} - {actionStatusText(action)}
+                            {'error' in action && action.error ? `: ${action.error}` : ''}
+                          </span>
+                        </summary>
+                        <pre className="mt-2 max-h-48 overflow-auto rounded bg-secondary p-2 text-[11px] leading-relaxed">
+                          {compactJson({
+                            input: action.input,
+                            result: 'result' in action ? action.result ?? null : null,
+                            error: 'error' in action ? action.error ?? null : null,
+                          })}
+                        </pre>
+                      </details>
                     ))}
                   </div>
+                )}
+                {streamState.reasoning.length > 0 && (
+                  <details open className="mt-2 border-t border-border pt-2 text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">Reasoning stream</summary>
+                    <div className="mt-2 max-h-48 space-y-2 overflow-auto rounded bg-secondary p-2">
+                      {streamState.reasoning.map((entry, index) => (
+                        <div key={`stream-reasoning-${index}`} className="whitespace-pre-wrap">
+                          {entry}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+                {streamState.responseDraft && (
+                  <details className="mt-2 border-t border-border pt-2 text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">Raw response stream</summary>
+                    <pre className="mt-2 max-h-48 overflow-auto rounded bg-secondary p-2 text-[11px] leading-relaxed">
+                      {streamState.responseDraft}
+                    </pre>
+                  </details>
                 )}
               </div>
             )}
