@@ -24,6 +24,12 @@ import {
   getTransactionsWithDetails,
   updateTransaction,
 } from "./transactions.js";
+import {
+  appendAgentMessage,
+  ensureAgentConversation,
+  getRecentAgentMessagesForPrompt,
+  touchAgentConversationPage,
+} from "./agent-conversations.js";
 import type {
   Account,
   AccountType,
@@ -1258,6 +1264,22 @@ async function runAssistantChat(
     conversationId: request.conversationId,
     requestId,
   });
+
+  ensureAgentConversation(request.conversationId, {
+    currentPage: request.currentPage ?? null,
+    firstMessage: request.message,
+  });
+  touchAgentConversationPage(request.conversationId, request.currentPage ?? null);
+  const conversationHistory = getRecentAgentMessagesForPrompt(
+    request.conversationId,
+  );
+  appendAgentMessage({
+    conversationId: request.conversationId,
+    role: "user",
+    content: request.message,
+    requestId,
+  });
+
   await emit?.({
     type: "thinking",
     message: "Reading your finance context and planning actions...",
@@ -1270,6 +1292,7 @@ async function runAssistantChat(
         role: "user",
         content: JSON.stringify({
           currentPage: request.currentPage ?? null,
+          history: conversationHistory,
           message: request.message,
           context: compactContext(),
         }),
@@ -1348,6 +1371,7 @@ async function runAssistantChat(
   });
 
   const actionErrors = actions.filter((action) => action.status === "error");
+  const status = actionErrors.length > 0 ? "partial" : "success";
   const suffix =
     actionErrors.length > 0
       ? ` ${actionErrors.length} action${actionErrors.length === 1 ? "" : "s"} failed; see the action details.`
@@ -1360,6 +1384,16 @@ async function runAssistantChat(
     actions,
     logFile: response.logFile,
   };
+
+  appendAgentMessage({
+    conversationId: request.conversationId,
+    role: "assistant",
+    content: result.message,
+    requestId,
+    actions,
+    logFile: response.logFile,
+    status,
+  });
 
   await emit?.({ type: "final", data: result });
   return result;

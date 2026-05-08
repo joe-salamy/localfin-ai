@@ -70,3 +70,28 @@ CREATE TABLE IF NOT EXISTS spending_goals (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   deleted_at TEXT
 );
+
+-- agent conversations
+CREATE TABLE IF NOT EXISTS agent_conversations (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  current_page TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_conversations_updated ON agent_conversations(updated_at DESC) WHERE deleted_at IS NULL;
+
+-- agent messages
+CREATE TABLE IF NOT EXISTS agent_messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  request_id TEXT,
+  actions_json TEXT,
+  log_file TEXT,
+  status TEXT NOT NULL DEFAULT 'success' CHECK(status IN ('success', 'partial', 'error')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_messages_conversation ON agent_messages(conversation_id, created_at ASC);

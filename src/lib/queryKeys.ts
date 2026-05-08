@@ -34,4 +34,9 @@ export const queryKeys = {
     sankeyChart: (startDate: string, endDate: string) =>
       [...queryKeys.dashboard.all, 'charts', 'sankey', startDate, endDate] as const,
   },
+  ai: {
+    conversations: () => ['ai', 'conversations'] as const,
+    conversationMessages: (conversationId: string) =>
+      ['ai', 'conversations', conversationId, 'messages'] as const,
+  },
 } as const;

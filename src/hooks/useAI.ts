@@ -1,7 +1,7 @@
 import { useCallback } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
-import { apiPost, apiStream } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, apiStream } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import type { EnrichedTransaction } from "@/types";
 
@@ -62,6 +62,27 @@ export interface ChatResult {
   logFile: string;
 }
 
+export interface AgentConversation {
+  id: string;
+  title: string;
+  current_page: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface AgentMessage {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant";
+  content: string;
+  request_id: string | null;
+  actions: ChatActionResult[] | null;
+  log_file: string | null;
+  status: "success" | "partial" | "error";
+  created_at: string;
+}
+
 export type PlannedChatAction = Omit<ChatActionResult, "status" | "result" | "error">;
 
 export type ChatStreamEvent =
@@ -105,8 +126,58 @@ export function useAI() {
 
   const chat = useMutation({
     mutationFn: (data: ChatRequest) => apiPost<ChatResult>("/ai/chat", data),
-    onSuccess: () => invalidateFinanceData(),
+    onSuccess: () =>
+      Promise.all([
+        invalidateFinanceData(),
+        queryClient.invalidateQueries({ queryKey: queryKeys.ai.conversations() }),
+      ]),
   });
+
+  const conversations = useQuery({
+    queryKey: queryKeys.ai.conversations(),
+    queryFn: () => apiGet<AgentConversation[]>("/ai/conversations"),
+    select: (response) => response.data ?? [],
+  });
+
+  const createConversation = useMutation({
+    mutationFn: (data: { currentPage?: string }) =>
+      apiPost<AgentConversation>("/ai/conversations", data),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.ai.conversations() }),
+  });
+
+  const deleteConversation = useMutation({
+    mutationFn: (conversationId: string) =>
+      apiDelete<{ id: string }>(`/ai/conversations/${conversationId}`),
+    onSuccess: (_data, conversationId) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.ai.conversations() }),
+        queryClient.removeQueries({
+          queryKey: queryKeys.ai.conversationMessages(conversationId),
+        }),
+      ]),
+  });
+
+  const loadConversationMessages = useCallback(
+    async (conversationId: string) => {
+      const cached = queryClient.getQueryData<AgentMessage[]>(
+        queryKeys.ai.conversationMessages(conversationId),
+      );
+      if (cached) return cached;
+
+      const response = await queryClient.fetchQuery({
+        queryKey: queryKeys.ai.conversationMessages(conversationId),
+        queryFn: async () => {
+          const response = await apiGet<AgentMessage[]>(
+            `/ai/conversations/${conversationId}/messages`,
+          );
+          return response.data ?? [];
+        },
+      });
+      return response;
+    },
+    [queryClient],
+  );
 
   const streamChat = useCallback(
     async (
@@ -125,11 +196,19 @@ export function useAI() {
           ) {
             void invalidateFinanceData();
           }
+          if (event.type === "final") {
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.ai.conversations(),
+            });
+            queryClient.removeQueries({
+              queryKey: queryKeys.ai.conversationMessages(event.data.conversationId),
+            });
+          }
         },
         signal,
       );
     },
-    [invalidateFinanceData],
+    [invalidateFinanceData, queryClient],
   );
 
   return {
@@ -137,5 +216,9 @@ export function useAI() {
     parseStatement,
     chat,
     streamChat,
+    conversations,
+    createConversation,
+    deleteConversation,
+    loadConversationMessages,
   };
 }
