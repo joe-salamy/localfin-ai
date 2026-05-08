@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAI } from "@/hooks/useAI";
 import { useCategories } from "@/hooks/useCategories";
@@ -21,6 +22,8 @@ import { formatDateInput, cn } from "@/lib/utils";
 import type { Category, Subcategory, CreateTransactionData } from "@/types";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
+import { useFlaggedWords } from "@/features/flagged-words/hooks";
+import type { FlaggedWordMatch } from "@/features/flagged-words/storage";
 
 // ── Row type ──────────────────────────────────────────────────────────
 
@@ -264,9 +267,11 @@ export function MultiTransactionTable() {
   const { categories, subcategories } = useCategories();
   const { bulkCreateTransactions, checkDuplicates } = useTransactions();
   const { categorize, parseStatement } = useAI();
+  const { findTransactionMatches } = useFlaggedWords();
 
   const [rows, setRows] = useState<TransactionRow[]>(initialRows);
   const [saving, setSaving] = useState(false);
+  const [flaggedWarningMatches, setFlaggedWarningMatches] = useState<FlaggedWordMatch[]>([]);
   const [duplicatesChecked, setDuplicatesChecked] = useState(false);
   const [statementText, setStatementText] = useState("");
   const [statementAccountId, setStatementAccountId] = useState("");
@@ -508,6 +513,11 @@ export function MultiTransactionTable() {
       return;
     }
 
+    const flaggedMatches = findTransactionMatches(filledRows);
+    if (flaggedMatches.length > 0) {
+      setFlaggedWarningMatches(flaggedMatches);
+    }
+
     setSaving(true);
 
     try {
@@ -569,7 +579,7 @@ export function MultiTransactionTable() {
     } finally {
       setSaving(false);
     }
-  }, [filledRows, duplicatesChecked, checkDuplicates, bulkCreateTransactions]);
+  }, [filledRows, findTransactionMatches, duplicatesChecked, checkDuplicates, bulkCreateTransactions]);
 
   useShortcut("transactionInput.addRow", addRow);
   useShortcut("transactionInput.aiCategorize", () => {
@@ -869,6 +879,38 @@ export function MultiTransactionTable() {
         Tip: Paste tab-delimited data (date, name, amount) from a spreadsheet
         into any field to populate multiple rows.
       </p>
+
+      <Modal
+        open={flaggedWarningMatches.length > 0}
+        onOpenChange={(open) => {
+          if (!open) setFlaggedWarningMatches([]);
+        }}
+        title="Flagged transaction warning"
+        description="These transaction names contain flagged words. Saving continues automatically."
+        size="md"
+      >
+        <div className="space-y-3">
+          <div className="flex gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
+            <span>Review these transactions for interest, fees, or other configured flagged words.</span>
+          </div>
+          <ul className="max-h-56 space-y-2 overflow-y-auto text-sm">
+            {flaggedWarningMatches.map((match, index) => (
+              <li key={`${match.name}-${index}`} className="rounded-md border border-border bg-secondary/20 px-3 py-2">
+                <div className="font-medium text-foreground">{match.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  Matched: {match.words.join(", ")}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="flex justify-end">
+            <Button type="button" size="sm" onClick={() => setFlaggedWarningMatches([])}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

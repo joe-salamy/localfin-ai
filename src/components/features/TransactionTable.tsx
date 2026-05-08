@@ -10,6 +10,7 @@ import { DISPLAY_DATE_FORMAT } from '@/config/constants';
 import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
 import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
 import { useAmountGradient } from '@/features/display-settings/hooks';
+import { useFlaggedWords } from '@/features/flagged-words/hooks';
 
 interface TransactionTableProps {
   transactions: TransactionWithDetails[];
@@ -83,6 +84,7 @@ export function TransactionTable({
   const [tableFocused, setTableFocused] = useState(false);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const getGradientStyle = useAmountGradient(transactions.map((transaction) => transaction.amount));
+  const { findMatches } = useFlaggedWords();
 
   const allSelected = transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
   const focusedTransaction = transactions.find((transaction) => transaction.id === focusedId) ?? transactions[0] ?? null;
@@ -294,6 +296,8 @@ export function TransactionTable({
             )}
             {transactions.map((t) => {
               const isEditing = editingId === t.id;
+              const flaggedWords = findMatches(t.name);
+              const isFlagged = flaggedWords.length > 0;
               return (
                 <tr
                   key={t.id}
@@ -306,12 +310,14 @@ export function TransactionTable({
                   }}
                   tabIndex={0}
                   onFocus={() => setFocusedId(t.id)}
+                  title={isFlagged ? `Flagged words: ${flaggedWords.join(', ')}` : undefined}
                   className={cn(
                     'outline-none hover:bg-secondary/30 focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring',
                     selectedIds.has(t.id) && 'bg-secondary/20',
                     focusedId === t.id && 'bg-secondary/30',
+                    isFlagged && 'bg-red-500/15 hover:bg-red-500/20 focus-visible:bg-red-500/20',
                   )}
-                  style={getGradientStyle(t.amount)}
+                  style={isFlagged ? undefined : getGradientStyle(t.amount)}
                 >
                   <td className={cellClass}>
                     <input
