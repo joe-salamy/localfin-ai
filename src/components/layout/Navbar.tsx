@@ -30,17 +30,18 @@ function NavLink({ to, label, icon: Icon, commandId, active }: {
   return (
     <Link
       to={to}
+      aria-label={label}
       aria-keyshortcuts={ariaKeyShortcuts}
       title={`${label} (${shortcutLabel})`}
-      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+      className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors sm:px-3 ${
         active
           ? "bg-secondary text-foreground"
           : "text-muted-foreground hover:text-foreground"
       }`}
     >
       <Icon size={16} />
-      {label}
-      <ShortcutHint commandId={commandId} />
+      <span className="hidden sm:inline">{label}</span>
+      <ShortcutHint commandId={commandId} className="hidden lg:inline" />
     </Link>
   );
 }
