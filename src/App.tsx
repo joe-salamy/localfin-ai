@@ -3,12 +3,15 @@ import { Toaster } from 'sonner';
 import { queryClient } from '@/lib/queryClient';
 import { Router } from '@/Router';
 import { ShortcutProvider } from '@/features/shortcuts/ShortcutProvider';
+import { DisplaySettingsProvider } from '@/features/display-settings/DisplaySettingsProvider';
 
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ShortcutProvider>
-        <Router />
+        <DisplaySettingsProvider>
+          <Router />
+        </DisplaySettingsProvider>
       </ShortcutProvider>
       <Toaster theme="dark" position="bottom-right" />
     </QueryClientProvider>

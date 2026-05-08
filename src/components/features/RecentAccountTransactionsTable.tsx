@@ -1,12 +1,19 @@
 import { format, parseISO } from 'date-fns';
 import { WalletCards } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { EntityLabel } from '@/components/ui/EntityLabel';
 import { DISPLAY_DATE_FORMAT } from '@/config/constants';
 import { useRecentActivity } from '@/hooks/useTransactions';
 import { formatCurrency } from '@/lib/utils';
+import { useAmountGradient } from '@/features/display-settings/hooks';
 
 export function RecentAccountTransactionsTable() {
   const { recentActivity, isLoading } = useRecentActivity();
+  const getGradientStyle = useAmountGradient(
+    recentActivity.flatMap((activity) =>
+      activity.last_transaction_amount == null ? [] : [activity.last_transaction_amount],
+    ),
+  );
 
   return (
     <Card className="p-3">
@@ -47,9 +54,14 @@ export function RecentAccountTransactionsTable() {
                 <tr
                   key={activity.account_id}
                   className="border-b border-border last:border-b-0"
+                  style={
+                    activity.last_transaction_amount == null
+                      ? undefined
+                      : getGradientStyle(activity.last_transaction_amount)
+                  }
                 >
                   <td className="px-2 py-1.5 font-medium text-foreground">
-                    {activity.account_name}
+                    <EntityLabel id={activity.account_id} name={activity.account_name} color={activity.account_color} />
                   </td>
                   <td className="px-2 py-1.5 text-muted-foreground">
                     {activity.last_transaction_date

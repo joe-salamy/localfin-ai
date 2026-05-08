@@ -17,6 +17,7 @@ interface AccountRow {
   id: string;
   name: string;
   type: string;
+  color: string | null;
 }
 
 interface BalanceRow {
@@ -29,15 +30,19 @@ interface TransactionRow {
   name: string;
   amount: number;
   subcategory_name: string | null;
+  subcategory_color: string | null;
   category_name: string | null;
+  category_color: string | null;
 }
 
 interface CategoryGroupRow {
   category_id: string;
   category_name: string;
   category_type: string;
+  category_color: string | null;
   subcategory_id: string;
   subcategory_name: string;
+  subcategory_color: string | null;
   total: number;
   monthly_goal: number | null;
 }
@@ -62,7 +67,7 @@ export function getAccountSummary(
 
   const accounts = db
     .prepare(
-      `SELECT id, name, type FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
+      `SELECT id, name, type, color FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
     )
     .all() as AccountRow[];
 
@@ -83,7 +88,9 @@ export function getAccountSummary(
       .prepare(
         `SELECT t.id, t.date, t.name, t.amount,
               s.name AS subcategory_name,
-              c.name AS category_name
+              s.color AS subcategory_color,
+              c.name AS category_name,
+              c.color AS category_color
        FROM transactions t
        LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
        LEFT JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
@@ -104,7 +111,9 @@ export function getAccountSummary(
           amount: txn.amount,
           running_balance: runningBalance,
           subcategory_name: txn.subcategory_name,
+          subcategory_color: txn.subcategory_color,
           category_name: txn.category_name,
+          category_color: txn.category_color,
         };
       },
     );
@@ -115,6 +124,7 @@ export function getAccountSummary(
       account_id: account.id,
       account_name: account.name,
       account_type: account.type as AccountType,
+      account_color: account.color,
       starting_balance: startingBalance,
       total_change: totalChange,
       ending_balance: startingBalance + totalChange,
@@ -141,8 +151,10 @@ export function getCategorySummary(
        c.id AS category_id,
        c.name AS category_name,
        c.type AS category_type,
+       c.color AS category_color,
        s.id AS subcategory_id,
        s.name AS subcategory_name,
+       s.color AS subcategory_color,
        COALESCE(SUM(t.amount), 0) AS total,
        s.monthly_goal
      FROM categories c
@@ -167,6 +179,7 @@ export function getCategorySummary(
         category_id: row.category_id,
         category_name: row.category_name,
         category_type: row.category_type as CategoryType,
+        category_color: row.category_color,
         total: 0,
         goal: null,
         difference: null,
@@ -181,6 +194,7 @@ export function getCategorySummary(
     const subcategory: SubcategorySummary = {
       subcategory_id: row.subcategory_id,
       subcategory_name: row.subcategory_name,
+      subcategory_color: row.subcategory_color,
       total: row.total,
       goal: scaledGoal,
       difference: scaledGoal != null ? scaledGoal - Math.abs(row.total) : null,

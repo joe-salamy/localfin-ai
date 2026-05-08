@@ -17,23 +17,28 @@ import { finiteNumber, idParamSchema, nonEmptyString, parseRequest } from './val
 export const categoryRouter = Router();
 export const subcategoryRouter = Router();
 const categoryTypeSchema = z.enum(['income', 'expense']);
+const colorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable();
 const createCategorySchema = z.object({
   name: nonEmptyString,
   type: categoryTypeSchema,
+  color: colorSchema.optional(),
 });
 const updateCategorySchema = z.object({
   name: nonEmptyString.optional(),
   type: categoryTypeSchema.optional(),
+  color: colorSchema.optional(),
 }).refine((value) => Object.keys(value).length > 0, 'At least one update field is required');
 const createSubcategorySchema = z.object({
   name: nonEmptyString,
   category_id: nonEmptyString,
   monthly_goal: finiteNumber.nonnegative().nullable().optional(),
+  color: colorSchema.optional(),
 });
 const updateSubcategorySchema = z.object({
   name: nonEmptyString.optional(),
   category_id: nonEmptyString.optional(),
   monthly_goal: finiteNumber.nonnegative().nullable().optional(),
+  color: colorSchema.optional(),
 }).refine((value) => Object.keys(value).length > 0, 'At least one update field is required');
 const categoryIdParamSchema = z.object({ categoryId: nonEmptyString });
 

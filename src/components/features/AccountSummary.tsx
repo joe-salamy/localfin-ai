@@ -2,8 +2,10 @@ import { useState } from 'react';
 import type { AccountSummary as AccountSummaryType, NetWorthSummary } from '@/types';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { EntityLabel } from '@/components/ui/EntityLabel';
 import { formatCurrency, cn } from '@/lib/utils';
 import { DISPLAY_DATE_FORMAT } from '@/config/constants';
+import { useAmountGradient } from '@/features/display-settings/hooks';
 
 interface AccountSummaryProps {
   accounts: AccountSummaryType[];
@@ -78,13 +80,17 @@ function AccountRow({
   isOpen: boolean;
   onToggle: () => void;
 }) {
+  const getGradientStyle = useAmountGradient(account.transactions.map((transaction) => transaction.amount));
+
   return (
     <>
       <tr className="hover:bg-secondary/30 cursor-pointer" onClick={onToggle}>
         <td className={cellClass}>
           {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </td>
-        <td className={cellClass}>{account.account_name}</td>
+        <td className={cellClass}>
+          <EntityLabel id={account.account_id} name={account.account_name} color={account.account_color} />
+        </td>
         <td className={cellClass}>
           <span className={cn(
             'inline-block rounded px-1.5 py-0.5 text-xs font-medium',
@@ -119,7 +125,7 @@ function AccountRow({
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {account.transactions.map((t) => (
-                    <tr key={t.id} className="hover:bg-secondary/20">
+                    <tr key={t.id} className="hover:bg-secondary/20" style={getGradientStyle(t.amount)}>
                       <td className={cn(cellClass, 'text-xs')}>{format(parseISO(t.date), DISPLAY_DATE_FORMAT)}</td>
                       <td className={cn(cellClass, 'text-xs')}>{t.name}</td>
                       <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs', t.amount >= 0 ? 'text-green-400' : 'text-red-400')}>
@@ -129,9 +135,15 @@ function AccountRow({
                         {formatCurrency(t.running_balance)}
                       </td>
                       <td className={cn(cellClass, 'text-xs text-muted-foreground')}>
-                        {t.category_name && t.subcategory_name
-                          ? `${t.category_name} > ${t.subcategory_name}`
-                          : t.subcategory_name ?? '-'}
+                        {t.category_name && t.subcategory_name ? (
+                          <span className="inline-flex items-center gap-1">
+                            <EntityLabel id={t.category_name} name={t.category_name} color={t.category_color} />
+                            <span>&gt;</span>
+                            <EntityLabel id={t.subcategory_name} name={t.subcategory_name} color={t.subcategory_color} />
+                          </span>
+                        ) : (
+                          <EntityLabel id={t.subcategory_name} name={t.subcategory_name} color={t.subcategory_color} />
+                        )}
                       </td>
                     </tr>
                   ))}

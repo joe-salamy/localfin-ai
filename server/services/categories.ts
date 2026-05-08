@@ -10,6 +10,7 @@ interface CategoryRow {
   id: string;
   name: string;
   type: string;
+  color: string | null;
   is_system: number;
   created_at: string;
   updated_at: string | null;
@@ -21,6 +22,7 @@ interface SubcategoryRow {
   category_id: string;
   name: string;
   monthly_goal: number | null;
+  color: string | null;
   is_system: number;
   created_at: string;
   updated_at: string | null;
@@ -32,6 +34,7 @@ function rowToCategory(row: CategoryRow): Category {
     id: row.id,
     name: row.name,
     type: row.type as CategoryType,
+    color: row.color,
     is_system: toBool(row.is_system),
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -45,6 +48,7 @@ function rowToSubcategory(row: SubcategoryRow): Subcategory {
     category_id: row.category_id,
     name: row.name,
     monthly_goal: row.monthly_goal,
+    color: row.color,
     is_system: toBool(row.is_system),
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -116,6 +120,7 @@ function checkNameUniqueness(
 export function createCategory(data: {
   name: string;
   type: CategoryType;
+  color?: string | null;
 }): Category {
   const db = getDb();
   const now = new Date().toISOString();
@@ -124,8 +129,8 @@ export function createCategory(data: {
   checkNameUniqueness(data.name);
 
   db.prepare(
-    "INSERT INTO categories (id, name, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-  ).run(id, data.name, data.type, now, now);
+    "INSERT INTO categories (id, name, type, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+  ).run(id, data.name, data.type, data.color ?? null, now, now);
 
   const row = db
     .prepare("SELECT * FROM categories WHERE id = ?")
@@ -153,7 +158,7 @@ export function getCategoryById(id: string): Category | undefined {
 
 export function updateCategory(
   id: string,
-  updates: { name?: string; type?: CategoryType },
+  updates: { name?: string; type?: CategoryType; color?: string | null },
 ): Category {
   const db = getDb();
   const now = new Date().toISOString();
@@ -165,7 +170,12 @@ export function updateCategory(
     throw new Error(`Category with id "${id}" not found`);
   }
 
-  if (toBool(existing.is_system)) {
+  const onlyColorUpdate =
+    updates.color !== undefined &&
+    updates.name === undefined &&
+    updates.type === undefined;
+
+  if (toBool(existing.is_system) && !onlyColorUpdate) {
     throw new Error("Cannot update system categories");
   }
 
@@ -175,10 +185,11 @@ export function updateCategory(
 
   const name = updates.name ?? existing.name;
   const type = updates.type ?? existing.type;
+  const color = updates.color !== undefined ? updates.color : existing.color;
 
   db.prepare(
-    "UPDATE categories SET name = ?, type = ?, updated_at = ? WHERE id = ?",
-  ).run(name, type, now, id);
+    "UPDATE categories SET name = ?, type = ?, color = ?, updated_at = ? WHERE id = ?",
+  ).run(name, type, color, now, id);
 
   const row = db
     .prepare("SELECT * FROM categories WHERE id = ?")
@@ -222,6 +233,7 @@ export function createSubcategory(data: {
   name: string;
   category_id: string;
   monthly_goal?: number | null;
+  color?: string | null;
 }): Subcategory {
   const db = getDb();
   const now = new Date().toISOString();
@@ -237,8 +249,8 @@ export function createSubcategory(data: {
   }
 
   db.prepare(
-    "INSERT INTO subcategories (id, category_id, name, monthly_goal, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-  ).run(id, data.category_id, data.name, data.monthly_goal ?? null, now, now);
+    "INSERT INTO subcategories (id, category_id, name, monthly_goal, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(id, data.category_id, data.name, data.monthly_goal ?? null, data.color ?? null, now, now);
 
   const row = db
     .prepare("SELECT * FROM subcategories WHERE id = ?")
@@ -280,6 +292,7 @@ export function updateSubcategory(
     name?: string;
     category_id?: string;
     monthly_goal?: number | null;
+    color?: string | null;
   },
 ): Subcategory {
   const db = getDb();
@@ -292,7 +305,13 @@ export function updateSubcategory(
     throw new Error(`Subcategory with id "${id}" not found`);
   }
 
-  if (toBool(existing.is_system)) {
+  const onlyColorUpdate =
+    updates.color !== undefined &&
+    updates.name === undefined &&
+    updates.category_id === undefined &&
+    updates.monthly_goal === undefined;
+
+  if (toBool(existing.is_system) && !onlyColorUpdate) {
     throw new Error("Cannot update system subcategories");
   }
 
@@ -315,10 +334,11 @@ export function updateSubcategory(
     updates.monthly_goal !== undefined
       ? updates.monthly_goal
       : existing.monthly_goal;
+  const color = updates.color !== undefined ? updates.color : existing.color;
 
   db.prepare(
-    "UPDATE subcategories SET name = ?, category_id = ?, monthly_goal = ?, updated_at = ? WHERE id = ?",
-  ).run(name, categoryId, monthlyGoal, now, id);
+    "UPDATE subcategories SET name = ?, category_id = ?, monthly_goal = ?, color = ?, updated_at = ? WHERE id = ?",
+  ).run(name, categoryId, monthlyGoal, color, now, id);
 
   const row = db
     .prepare("SELECT * FROM subcategories WHERE id = ?")

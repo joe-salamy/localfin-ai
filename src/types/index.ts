@@ -9,6 +9,7 @@ export interface Account {
   id: string;
   name: string;
   type: AccountType;
+  color: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -22,6 +23,7 @@ export interface Category {
   id: string;
   name: string;
   type: CategoryType;
+  color: string | null;
   is_system: boolean;
   created_at: string;
   updated_at: string | null;
@@ -33,6 +35,7 @@ export interface Subcategory {
   category_id: string;
   name: string;
   monthly_goal: number | null;
+  color: string | null;
   is_system: boolean;
   created_at: string;
   updated_at: string | null;
@@ -57,10 +60,13 @@ export interface Transaction {
 export interface TransactionWithDetails extends Transaction {
   account_name?: string;
   account_type?: string;
+  account_color?: string | null;
   subcategory_name?: string;
+  subcategory_color?: string | null;
   category_id?: string;
   category_name?: string;
   category_type?: string;
+  category_color?: string | null;
   running_balance?: number;
 }
 
@@ -68,6 +74,7 @@ export interface RecentAccountTransaction {
   account_id: string;
   account_name: string;
   account_type: AccountType;
+  account_color: string | null;
   current_balance: number;
   last_transaction_id: string | null;
   last_transaction_date: string | null;
@@ -99,6 +106,7 @@ export interface AccountSummary {
   account_id: string;
   account_name: string;
   account_type: AccountType;
+  account_color: string | null;
   starting_balance: number;
   total_change: number;
   ending_balance: number;
@@ -113,12 +121,15 @@ export interface AccountTransaction {
   running_balance: number;
   subcategory_name: string | null;
   category_name: string | null;
+  category_color: string | null;
+  subcategory_color: string | null;
 }
 
 export interface CategorySummary {
   category_id: string;
   category_name: string;
   category_type: CategoryType;
+  category_color: string | null;
   total: number;
   goal: number | null;
   difference: number | null;
@@ -128,6 +139,7 @@ export interface CategorySummary {
 export interface SubcategorySummary {
   subcategory_id: string;
   subcategory_name: string;
+  subcategory_color: string | null;
   total: number;
   goal: number | null;
   difference: number | null;
@@ -156,7 +168,8 @@ export interface NetWorthDataPoint {
   date: string;
   formattedDate: string;
   netWorth: number;
-  [accountName: string]: string | number;
+  accountColors?: Record<string, string>;
+  [accountName: string]: string | number | Record<string, string> | undefined;
 }
 
 export interface SankeyNode {
@@ -234,17 +247,20 @@ export interface CreateAccountData {
   name: string;
   type: AccountType;
   initial_balance?: number;
+  color?: string | null;
 }
 
 export interface CreateCategoryData {
   name: string;
   type: CategoryType;
+  color?: string | null;
 }
 
 export interface CreateSubcategoryData {
   name: string;
   category_id: string;
   monthly_goal?: number | null;
+  color?: string | null;
 }
 
 export interface CreateTransactionData {

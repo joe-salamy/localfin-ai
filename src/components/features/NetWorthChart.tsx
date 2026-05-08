@@ -16,23 +16,13 @@ interface NetWorthChartProps {
   data: NetWorthDataPoint[];
 }
 
-const ACCOUNT_COLORS = [
-  '#6b7280', // gray
-  '#8b5cf6', // violet
-  '#f59e0b', // amber
-  '#06b6d4', // cyan
-  '#ec4899', // pink
-  '#14b8a6', // teal
-  '#f97316', // orange
-  '#a78bfa', // light violet
-];
-
 export function NetWorthChart({ data }: NetWorthChartProps) {
   const accountKeys = useMemo(() => {
     if (data.length === 0) return [];
-    const skip = new Set(['date', 'formattedDate', 'netWorth']);
+    const skip = new Set(['date', 'formattedDate', 'netWorth', 'accountColors']);
     return Object.keys(data[0]).filter((k) => !skip.has(k));
   }, [data]);
+  const accountColors = data[0]?.accountColors ?? {};
 
   if (data.length === 0) {
     return <p className="text-sm text-muted-foreground py-4">No chart data available.</p>;
@@ -67,12 +57,12 @@ export function NetWorthChart({ data }: NetWorthChartProps) {
           dot={false}
           name="Net Worth"
         />
-        {accountKeys.map((key, i) => (
+        {accountKeys.map((key) => (
           <Line
             key={key}
             type="monotone"
             dataKey={key}
-            stroke={ACCOUNT_COLORS[i % ACCOUNT_COLORS.length]}
+            stroke={accountColors[key] ?? '#6b7280'}
             strokeWidth={1}
             dot={false}
             name={key}

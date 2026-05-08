@@ -4,10 +4,12 @@ import type { TransactionWithDetails, Subcategory } from '@/types';
 import { format, parseISO } from 'date-fns';
 import { Pencil, Trash2, Check, X, ArrowUp, ArrowDown } from 'lucide-react';
 import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
+import { EntityLabel } from '@/components/ui/EntityLabel';
 import { formatCurrency, cn } from '@/lib/utils';
 import { DISPLAY_DATE_FORMAT } from '@/config/constants';
 import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
 import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
+import { useAmountGradient } from '@/features/display-settings/hooks';
 
 interface TransactionTableProps {
   transactions: TransactionWithDetails[];
@@ -80,6 +82,7 @@ export function TransactionTable({
   const [focusedId, setFocusedId] = useState<string | null>(transactions[0]?.id ?? null);
   const [tableFocused, setTableFocused] = useState(false);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+  const getGradientStyle = useAmountGradient(transactions.map((transaction) => transaction.amount));
 
   const allSelected = transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
   const focusedTransaction = transactions.find((transaction) => transaction.id === focusedId) ?? transactions[0] ?? null;
@@ -308,6 +311,7 @@ export function TransactionTable({
                     selectedIds.has(t.id) && 'bg-secondary/20',
                     focusedId === t.id && 'bg-secondary/30',
                   )}
+                  style={getGradientStyle(t.amount)}
                 >
                   <td className={cellClass}>
                     <input
@@ -374,7 +378,7 @@ export function TransactionTable({
                     {formatCurrency(t.running_balance ?? 0)}
                   </td>
                   <td className={cn(cellClass, 'text-xs')}>
-                    {t.category_name ?? '-'}
+                    <EntityLabel id={t.category_id} name={t.category_name} color={t.category_color} />
                   </td>
                   <td
                     className={cellClass}
@@ -396,11 +400,13 @@ export function TransactionTable({
                       </select>
                     ) : (
                       <span className="text-xs">
-                        {t.subcategory_name ?? '-'}
+                        <EntityLabel id={t.subcategory_id} name={t.subcategory_name} color={t.subcategory_color} />
                       </span>
                     )}
                   </td>
-                  <td className={cn(cellClass, 'text-xs')}>{t.account_name ?? '-'}</td>
+                  <td className={cn(cellClass, 'text-xs')}>
+                    <EntityLabel id={t.account_id} name={t.account_name} color={t.account_color} />
+                  </td>
                   <td className={cellClass}>
                     {isEditing ? (
                       <div className="flex gap-1">
