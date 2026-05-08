@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RotateCcw, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, RotateCcw, Save, Search, Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -11,6 +11,8 @@ import { displayShortcut, isSingleCharacterShortcut, normalizeKeyboardEvent, val
 import { useDisplaySettings } from '@/features/display-settings/hooks';
 import { useAssistantSettings } from '@/features/assistant-settings/hooks';
 import { MAX_MAX_ASSISTANT_TURNS, MIN_MAX_ASSISTANT_TURNS } from '@/features/assistant-settings/storage';
+import { useFlaggedWords } from '@/features/flagged-words/hooks';
+import { DEFAULT_FLAGGED_WORDS, normalizeFlaggedWords } from '@/features/flagged-words/storage';
 
 export function SettingsPage() {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -29,11 +31,14 @@ export function SettingsPage() {
   } = useShortcuts();
   const displaySettings = useDisplaySettings();
   const assistantSettings = useAssistantSettings();
+  const flaggedWords = useFlaggedWords();
 
   const [query, setQuery] = useState('');
   const [selectedCommandId, setSelectedCommandId] = useState<CommandId>('global.dashboard');
   const [capturingCommandId, setCapturingCommandId] = useState<CommandId | null>(null);
   const [message, setMessage] = useState('');
+  const [flaggedWordsDraft, setFlaggedWordsDraft] = useState(() => flaggedWords.words.join('\n'));
+  const [flaggedWordsMessage, setFlaggedWordsMessage] = useState('');
   const [shortcutsTableFocused, setShortcutsTableFocused] = useState(false);
 
   useShortcutScope('settings');
@@ -79,6 +84,20 @@ export function SettingsPage() {
       window.setTimeout(focusSection, 0);
     }
   }, [focusSection]);
+
+  const saveFlaggedWords = useCallback(() => {
+    const normalizedWords = normalizeFlaggedWords(flaggedWordsDraft.split(/\r?\n/));
+    flaggedWords.setFlaggedWords(normalizedWords);
+    setFlaggedWordsDraft(normalizedWords.join('\n'));
+    setFlaggedWordsMessage('Flagged transaction words saved.');
+  }, [flaggedWords, flaggedWordsDraft]);
+
+  const resetFlaggedWords = useCallback(() => {
+    const defaultWords = normalizeFlaggedWords(DEFAULT_FLAGGED_WORDS);
+    flaggedWords.resetFlaggedWords();
+    setFlaggedWordsDraft(defaultWords.join('\n'));
+    setFlaggedWordsMessage('Flagged transaction words reset to defaults.');
+  }, [flaggedWords]);
 
   const clearSelected = useCallback(() => {
     if (!selectedCommand) return;
@@ -162,6 +181,48 @@ export function SettingsPage() {
             <RotateCcw className="mr-1 h-3.5 w-3.5" />
             Reset
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="mb-2">
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-300" />
+            Flagged Transaction Words
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-muted-foreground">Words or phrases</span>
+            <textarea
+              value={flaggedWordsDraft}
+              onChange={(event) => {
+                setFlaggedWordsDraft(event.target.value);
+                setFlaggedWordsMessage('');
+              }}
+              rows={4}
+              placeholder="interest&#10;fee"
+              className="min-h-24 w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </label>
+          <p className="text-sm text-muted-foreground">
+            Save All warns when a transaction name contains one of these entries. Matching rows are highlighted in transaction history.
+          </p>
+          {flaggedWordsMessage && (
+            <p className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground" aria-live="polite">
+              {flaggedWordsMessage}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={saveFlaggedWords}>
+              <Save className="mr-1 h-3.5 w-3.5" />
+              Save Words
+            </Button>
+            <Button type="button" variant="secondary" onClick={resetFlaggedWords}>
+              <RotateCcw className="mr-1 h-3.5 w-3.5" />
+              Reset
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
