@@ -31,6 +31,8 @@ function NavLink({ to, label, icon: Icon, commandId, active }: {
   return (
     <Link
       to={to}
+      aria-label={label}
+      aria-current={active ? 'page' : undefined}
       aria-keyshortcuts={ariaKeyShortcuts}
       title={`${label} (${shortcutLabel})`}
       className={`group flex items-center gap-3 rounded-full px-3 py-2 text-sm transition-colors ${
