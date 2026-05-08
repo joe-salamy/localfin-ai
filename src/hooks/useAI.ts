@@ -167,10 +167,14 @@ export function useAI() {
 
       const response = await queryClient.fetchQuery({
         queryKey: queryKeys.ai.conversationMessages(conversationId),
-        queryFn: () =>
-          apiGet<AgentMessage[]>(`/ai/conversations/${conversationId}/messages`),
+        queryFn: async () => {
+          const response = await apiGet<AgentMessage[]>(
+            `/ai/conversations/${conversationId}/messages`,
+          );
+          return response.data ?? [];
+        },
       });
-      return response.data ?? [];
+      return response;
     },
     [queryClient],
   );
@@ -190,16 +194,15 @@ export function useAI() {
             event.type === "final" &&
             event.data.actions.some((action) => action.status === "success")
           ) {
-              void invalidateFinanceData();
+            void invalidateFinanceData();
           }
           if (event.type === "final") {
             void queryClient.invalidateQueries({
               queryKey: queryKeys.ai.conversations(),
             });
-            queryClient.setQueryData(
-              queryKeys.ai.conversationMessages(event.data.conversationId),
-              undefined,
-            );
+            queryClient.removeQueries({
+              queryKey: queryKeys.ai.conversationMessages(event.data.conversationId),
+            });
           }
         },
         signal,
