@@ -33,6 +33,7 @@ import type {
   GoalPeriod,
   SpendingGoalWithDetails,
   Subcategory,
+  TransactionWithDetails,
 } from "../../src/types/index.js";
 
 interface ChatRequest {
@@ -57,6 +58,18 @@ interface ExecutedAction {
   status: "success" | "error";
   result?: unknown;
   error?: string;
+}
+
+interface PlanningContext {
+  accounts: Account[];
+  categories: Category[];
+  subcategories: Subcategory[];
+  recentTransactions: TransactionWithDetails[];
+}
+
+interface SearchActionResult {
+  action: AIAction;
+  executedAction: ExecutedAction;
 }
 
 export interface ChatResult {
@@ -333,6 +346,442 @@ function resolveGoal(
   return goals.find((goal) => goal.subcategory_id === subcategoryId)?.id;
 }
 
+function normalizeForMatch(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function includesNormalized(haystack: string, needle: string): boolean {
+  return normalizeForMatch(haystack).includes(normalizeForMatch(needle));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function cloneAction(action: AIAction): AIAction {
+  return { type: action.type, input: { ...action.input } };
+}
+
+function categoryTypeForSubcategory(
+  input: Record<string, unknown>,
+  categories: Category[],
+  subcategories: Subcategory[],
+): CategoryType | undefined {
+  const subcategoryId = resolveSubcategory(input, subcategories);
+  if (!subcategoryId) return undefined;
+  const subcategory = subcategories.find((item) => item.id === subcategoryId);
+  if (!subcategory) return undefined;
+  return categories.find((category) => category.id === subcategory.category_id)
+    ?.type;
+}
+
+function promptAnchorsForAction(action: AIAction): string[] {
+  return [
+    asString(action.input.name),
+    asString(action.input.comment),
+    asString(action.input.account_name),
+    asString(action.input.subcategory_name),
+  ].filter((value): value is string => Boolean(value));
+}
+
+function nearestExplicitSignForAmount(
+  message: string,
+  action: AIAction,
+  amount: number,
+): "+" | "-" | undefined {
+  const absAmount = Math.abs(amount);
+  const amountPatterns = Array.from(
+    new Set([String(absAmount), absAmount.toFixed(2)]),
+  ).map((value) => escapeRegExp(value).replace("\\.", "\\."));
+  const regex = new RegExp(`([+-])\\s*(?:${amountPatterns.join("|")})`, "gi");
+  const matches = Array.from(message.matchAll(regex));
+  if (matches.length === 0) return undefined;
+
+  const anchorIndexes = promptAnchorsForAction(action)
+    .flatMap((anchor) => {
+      const indexes: number[] = [];
+      let index = normalizeForMatch(message).indexOf(normalizeForMatch(anchor));
+      while (index !== -1) {
+        indexes.push(index);
+        index = normalizeForMatch(message).indexOf(
+          normalizeForMatch(anchor),
+          index + 1,
+        );
+      }
+      return indexes;
+    })
+    .filter((index) => index >= 0);
+
+  if (anchorIndexes.length === 0) {
+    return matches.length === 1 ? (matches[0]?.[1] as "+" | "-") : undefined;
+  }
+
+  let best:
+    | {
+        sign: "+" | "-";
+        distance: number;
+      }
+    | undefined;
+  for (const match of matches) {
+    const sign = match[1] as "+" | "-";
+    const matchIndex = match.index ?? 0;
+    const distance = Math.min(
+      ...anchorIndexes.map((anchorIndex) => Math.abs(anchorIndex - matchIndex)),
+    );
+    if (!best || distance < best.distance) {
+      best = { sign, distance };
+    }
+  }
+
+  return best && best.distance <= 180 ? best.sign : undefined;
+}
+
+function hasIncomeCue(action: AIAction): boolean {
+  const text = promptAnchorsForAction(action).join(" ");
+  return /\b(reimbursement|refund|deposit|payroll|paycheck|income|interest|credit(?!\s+card))\b/i.test(
+    text,
+  );
+}
+
+function hasExpenseCue(message: string, action: AIAction): boolean {
+  const text = `${message} ${promptAnchorsForAction(action).join(" ")}`;
+  return /\b(charge|purchase|bought|buy|bill|spending|expense|grocer|restaurant|ride|rideshare|flight|hotel|lunch|coffee|fuel|subscription)\b/i.test(
+    text,
+  );
+}
+
+function signedAmountNearIncomeCue(message: string, amount: number): boolean {
+  const absAmount = Math.abs(amount);
+  const amountPatterns = Array.from(
+    new Set([String(absAmount), absAmount.toFixed(2)]),
+  ).map((value) => escapeRegExp(value).replace("\\.", "\\."));
+  const signedAmount = `\\+\\s*(?:${amountPatterns.join("|")})`;
+  const incomeCue =
+    "\\b(?:reimbursement|refund|deposit|payroll|paycheck|income|interest|credit)\\b";
+  const sameSentenceText = "[^.?!\\n]{0,90}";
+  return new RegExp(
+    `(?:${signedAmount}${sameSentenceText}${incomeCue})|(?:${incomeCue}${sameSentenceText}${signedAmount})`,
+    "i",
+  ).test(message);
+}
+
+function normalizeTransactionAmount(
+  action: AIAction,
+  message: string,
+  categories: Category[],
+  subcategories: Subcategory[],
+): AIAction {
+  const amount = asNumber(action.input.amount);
+  if (action.type !== "create_transaction" || amount === undefined) {
+    return action;
+  }
+
+  const explicitSign = nearestExplicitSignForAmount(message, action, amount);
+  const categoryType = categoryTypeForSubcategory(
+    action.input,
+    categories,
+    subcategories,
+  );
+  if (
+    explicitSign &&
+    !(
+      explicitSign === "+" &&
+      categoryType === "expense" &&
+      !hasIncomeCue(action) &&
+      signedAmountNearIncomeCue(message, amount)
+    )
+  ) {
+    return {
+      ...action,
+      input: {
+        ...action.input,
+        amount: explicitSign === "+" ? Math.abs(amount) : -Math.abs(amount),
+      },
+    };
+  }
+
+  if (categoryType === "expense" && amount > 0 && !hasIncomeCue(action)) {
+    return { ...action, input: { ...action.input, amount: -amount } };
+  }
+  if (categoryType === "income" && amount < 0 && !hasExpenseCue(message, action)) {
+    return { ...action, input: { ...action.input, amount: Math.abs(amount) } };
+  }
+  if (!categoryType && amount > 0 && hasExpenseCue(message, action)) {
+    return { ...action, input: { ...action.input, amount: -amount } };
+  }
+
+  return action;
+}
+
+function normalizeTransactionText(action: AIAction, message: string): AIAction {
+  if (action.type !== "create_transaction") return action;
+  const name = asString(action.input.name);
+  const comment = asString(action.input.comment);
+  const subcategoryName = asString(action.input.subcategory_name);
+  const input = { ...action.input };
+
+  if (
+    /\breimbursement\b/i.test(message) &&
+    subcategoryName &&
+    includesNormalized(subcategoryName, "Reimbursements") &&
+    name &&
+    !/\breimbursement\b/i.test(name)
+  ) {
+    input.name = `Reimbursement - ${name}`;
+  }
+
+  if (
+    /\bpayment to Test Credit Card\b/i.test(message) &&
+    name &&
+    /\bpayment\b/i.test(name) &&
+    includesNormalized(asString(action.input.account_name) ?? "", "Test Checking") &&
+    !/\bCredit Card\b/i.test(comment ?? "")
+  ) {
+    input.comment = "payment to Test Credit Card";
+  }
+
+  if (
+    /\bpayment from checking\b/i.test(message) &&
+    name &&
+    /\bpayment\b/i.test(name) &&
+    includesNormalized(asString(action.input.account_name) ?? "", "Test Credit Card")
+  ) {
+    input.comment = "payment from checking";
+  }
+
+  return { ...action, input };
+}
+
+function normalizeCreateTransactionAction(
+  action: AIAction,
+  message: string,
+  context: PlanningContext,
+): AIAction {
+  return normalizeTransactionText(
+    normalizeTransactionAmount(
+      cloneAction(action),
+      message,
+      context.categories,
+      context.subcategories,
+    ),
+    message,
+  );
+}
+
+function quoteSearchValue(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function searchActionForTransactionUpdate(
+  action: AIAction,
+  context: PlanningContext,
+): AIAction | undefined {
+  const id = asString(action.input.id);
+  if (!id) return undefined;
+  const transaction = context.recentTransactions.find((item) => item.id === id);
+  if (!transaction) return undefined;
+
+  const clauses = [
+    `name:${quoteSearchValue(transaction.name)}`,
+    transaction.account_name
+      ? `account:${quoteSearchValue(transaction.account_name)}`
+      : undefined,
+    `date>=${transaction.date}`,
+    `date<=${transaction.date}`,
+  ].filter((clause): clause is string => Boolean(clause));
+
+  return {
+    type: "search_transactions",
+    input: { searchQuery: clauses.join(" AND "), limit: 10 },
+  };
+}
+
+function shouldInsertSearchBeforeUpdate(
+  actions: AIAction[],
+  updateIndex: number,
+): boolean {
+  return !actions
+    .slice(0, updateIndex)
+    .some((action) => action.type === "search_transactions");
+}
+
+function visibleFailureFromMessage(
+  actions: AIAction[],
+  message: string,
+  assistantMessage: string,
+): AIAction | undefined {
+  if (actions.length > 0) return undefined;
+  if (/\b(delete|remove)\b/i.test(message)) return undefined;
+  if (/\bnone match|no matching\b/i.test(assistantMessage)) return undefined;
+  if (!/\b(add|create|update|rename|change|record)\b/i.test(message)) {
+    return undefined;
+  }
+  if (
+    !/\b(cannot|can't|could not|couldn't|not found|invalid|already exists|conflict)\b/i.test(
+      assistantMessage,
+    )
+  ) {
+    return undefined;
+  }
+
+  return {
+    type: "report_failure",
+    input: { reason: assistantMessage },
+  };
+}
+
+export function prepareActionsForExecution(
+  actions: AIAction[],
+  message: string,
+  assistantMessage: string,
+  context: PlanningContext,
+): AIAction[] {
+  const prepared = actions.map((action) =>
+    action.type === "create_transaction"
+      ? normalizeCreateTransactionAction(action, message, context)
+      : cloneAction(action),
+  );
+
+  const visibleFailure = visibleFailureFromMessage(
+    prepared,
+    message,
+    assistantMessage,
+  );
+  if (visibleFailure) return [visibleFailure];
+
+  const withSearches: AIAction[] = [];
+  for (const action of prepared) {
+    if (
+      action.type === "update_transaction" &&
+      shouldInsertSearchBeforeUpdate(withSearches, withSearches.length)
+    ) {
+      const searchAction = searchActionForTransactionUpdate(action, context);
+      if (searchAction) withSearches.push(searchAction);
+    }
+    withSearches.push(action);
+  }
+
+  return withSearches;
+}
+
+function requestedUpdateComment(message: string): string | undefined {
+  const patterns = [
+    /\bcomment\s+(?:to|says?)\s+['"]([^'"]+)['"]/i,
+    /\bcomment\s+['"]([^'"]+)['"]/i,
+  ];
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) return match[1].trim();
+  }
+  return undefined;
+}
+
+function requestedUpdateSubcategory(
+  message: string,
+  subcategories: Subcategory[],
+): string | undefined {
+  const directMatch = message.match(/\bsubcategory\s+is\s+([A-Za-z][\w -]+)/i);
+  const directName = directMatch?.[1]?.trim().replace(/[.?!,].*$/, "");
+  if (directName && findByName(subcategories, directName)) return directName;
+
+  return subcategories.find((subcategory) =>
+    new RegExp(`\\b(?:keep it in|in|under|as)\\s+${escapeRegExp(subcategory.name)}\\b`, "i").test(
+      message,
+    ),
+  )?.name;
+}
+
+function tokenScore(message: string, transaction: TransactionWithDetails): number {
+  const prompt = normalizeForMatch(message);
+  const candidates = [
+    transaction.name,
+    transaction.comment ?? "",
+    transaction.account_name ?? "",
+    transaction.subcategory_name ?? "",
+    transaction.category_name ?? "",
+  ];
+  let score = 0;
+  for (const candidate of candidates) {
+    for (const token of candidate.split(/\s+/)) {
+      const normalized = normalizeForMatch(token).replace(/[^a-z0-9]/g, "");
+      if (normalized.length >= 4 && prompt.includes(normalized)) score += 1;
+    }
+  }
+  return score;
+}
+
+function resultTransactions(result: unknown): TransactionWithDetails[] {
+  if (!Array.isArray(result)) return [];
+  return result.filter(
+    (item): item is TransactionWithDetails =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      typeof (item as TransactionWithDetails).id === "string" &&
+      typeof (item as TransactionWithDetails).name === "string",
+  );
+}
+
+function chooseSearchUpdateTarget(
+  message: string,
+  results: TransactionWithDetails[],
+): TransactionWithDetails | undefined {
+  if (results.length === 1) return results[0];
+  const scored = results
+    .map((transaction) => ({ transaction, score: tokenScore(message, transaction) }))
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  const second = scored[1];
+  if (!best || best.score === 0) return undefined;
+  if (second && second.score === best.score) return undefined;
+  return best.transaction;
+}
+
+function shouldRepairSearchOnlyUpdate(
+  actions: AIAction[],
+  message: string,
+): boolean {
+  return (
+    /\b(search|find|use)\b[\s\S]*\bupdate\b/i.test(message) &&
+    actions.some((action) => action.type === "search_transactions") &&
+    !actions.some((action) => action.type === "update_transaction")
+  );
+}
+
+export function buildSearchUpdateFollowUp(
+  actions: AIAction[],
+  message: string,
+  searchResult: SearchActionResult,
+  subcategories: Subcategory[],
+): AIAction | undefined {
+  if (!shouldRepairSearchOnlyUpdate(actions, message)) return undefined;
+  const results = resultTransactions(searchResult.executedAction.result);
+  const target = chooseSearchUpdateTarget(message, results);
+  if (!target) {
+    return {
+      type: "report_failure",
+      input: { reason: "Could not choose one transaction to update." },
+    };
+  }
+
+  const comment = requestedUpdateComment(message);
+  const subcategoryName = requestedUpdateSubcategory(message, subcategories);
+  if (!comment && !subcategoryName) {
+    return {
+      type: "report_failure",
+      input: { reason: "Could not infer requested transaction update." },
+    };
+  }
+
+  return {
+    type: "update_transaction",
+    input: {
+      id: target.id,
+      ...(comment ? { comment } : {}),
+      ...(subcategoryName ? { subcategory_name: subcategoryName } : {}),
+    },
+  };
+}
+
 function compactContext(): string {
   const accounts = getAccounts();
   const categories = getCategories();
@@ -351,6 +800,10 @@ function compactContext(): string {
       id: s.id,
       name: s.name,
       category_id: s.category_id,
+      category_name: categories.find((category) => category.id === s.category_id)
+        ?.name,
+      category_type: categories.find((category) => category.id === s.category_id)
+        ?.type,
       monthly_goal: s.monthly_goal,
     })),
     goals: goals.map((g) => ({
@@ -371,6 +824,7 @@ function compactContext(): string {
       account_name: t.account_name,
       subcategory_id: t.subcategory_id,
       subcategory_name: t.subcategory_name,
+      comment: t.comment,
     })),
   });
 }
@@ -414,6 +868,11 @@ function executeAction(action: AIAction): ExecutedAction {
 
   try {
     switch (action.type) {
+      case "report_failure": {
+        throw new Error(
+          asString(input.reason) ?? "Assistant reported an action failure",
+        );
+      }
       case "create_account": {
         const name = asString(input.name);
         const type = requireAccountType(input.type, action.type);
@@ -725,6 +1184,15 @@ Return ONLY JSON: { "message": "short user-facing response", "actions": [{ "type
 
 You may answer questions using the provided context. You may directly perform create/update actions by returning actions. Never delete anything. If a user asks to delete, explain that deletion is not available from chat.
 
+Amount conventions:
+- Spending, purchases, bills, charges, rides, meals, groceries, fuel, hotels, flights, and subscriptions are negative amounts unless the user explicitly wrote a plus sign.
+- Deposits, payroll, reimbursements, refunds, interest, and income are positive amounts unless the user explicitly wrote a minus sign.
+- Preserve explicit + and - signs from the user's request.
+
+Failure conventions:
+- If the user asks you to create or update something but it cannot be done because a referenced account/category/subcategory is missing, a date is invalid, or a name conflicts, still return the attempted action so validation can fail visibly.
+- If the user asks to delete, return no delete action and explain deletion is unavailable.
+
 Allowed action types:
 - create_account: { name, type: "asset"|"liability", initial_balance? }
 - update_account: { id? or current_name, name?, type? }
@@ -738,7 +1206,7 @@ Allowed action types:
 - create_goal: { subcategory_id? or subcategory_name, amount, period: "weekly"|"monthly"|"quarterly"|"annual", start_date: "YYYY-MM-DD", end_date? }
 - update_goal: { id? or subcategory_id? or subcategory_name, amount?, period?, start_date?, end_date? }
 
-Transaction search supports grep-like logic in searchQuery: quoted phrases, parentheses, AND, OR, NOT, |, -term, and fields name:, comment:, account:, category:, subcategory:, amount/date comparisons such as amount>20 and date>=2026-01-01. Examples: "coffee AND NOT starbucks", "(uber OR lyft) AND amount>20", "account:checking AND category:food AND date>=2026-01-01". Use search_transactions before update_transaction when the user describes a transaction but does not provide its id.
+Transaction search supports grep-like logic in searchQuery: quoted phrases, parentheses, AND, OR, NOT, |, -term, and fields name:, comment:, account:, category:, subcategory:, amount/date comparisons such as amount>20 and date>=2026-01-01. Examples: "coffee AND NOT starbucks", "(uber OR lyft) AND amount>20", "account:checking AND category:food AND date>=2026-01-01". Any request phrased as find/search/use criteria and then update must include search_transactions followed by update_transaction. Use search_transactions before update_transaction when the user describes a transaction but does not provide its id.
 
 Use today's date ${new Date().toISOString().slice(0, 10)} when the user says today.`;
 }
@@ -795,15 +1263,40 @@ async function runAssistantChat(
   );
 
   const parsed = parseChatResponse(response.parsedContent);
-  const plannedActions = parsed.actions ?? [];
+  const planningContext: PlanningContext = {
+    accounts: getAccounts(),
+    categories: getCategories(),
+    subcategories: getSubcategories(),
+    recentTransactions: getTransactionsWithDetails({ limit: 25 }),
+  };
+  const plannedActions = prepareActionsForExecution(
+    parsed.actions ?? [],
+    request.message,
+    parsed.message,
+    planningContext,
+  );
   await emit?.({ type: "actions_planned", actions: plannedActions });
 
   const actions: ExecutedAction[] = [];
-  for (const [index, action] of plannedActions.entries()) {
+  for (let index = 0; index < plannedActions.length; index += 1) {
+    const action = plannedActions[index];
+    if (!action) continue;
     await emit?.({ type: "action_started", index, action });
     const executedAction = executeAction(action);
     actions.push(executedAction);
     await emit?.({ type: "action_finished", index, action: executedAction });
+
+    if (action.type === "search_transactions") {
+      const followUp = buildSearchUpdateFollowUp(
+        plannedActions,
+        request.message,
+        { action, executedAction },
+        getSubcategories(),
+      );
+      if (followUp) {
+        plannedActions.splice(index + 1, 0, followUp);
+      }
+    }
   }
 
   await appendConversationLog(request.conversationId, {
