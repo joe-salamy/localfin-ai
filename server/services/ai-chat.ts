@@ -67,6 +67,36 @@ interface PlanningContext {
   recentTransactions: TransactionWithDetails[];
 }
 
+interface AssistantContext {
+  accounts: Array<{
+    id: string;
+    name: string;
+    type: AccountType;
+  }>;
+  categories: Array<{
+    id: string;
+    name: string;
+    type: CategoryType;
+  }>;
+  subcategories: Array<{
+    id: string;
+    name: string;
+    category_id: string;
+    category_name: string | undefined;
+    category_type: CategoryType | undefined;
+    monthly_goal: number | null;
+  }>;
+  goals: Array<{
+    id: string;
+    subcategory_id: string;
+    subcategory_name: string;
+    amount: number;
+    period: GoalPeriod;
+    start_date: string;
+    end_date: string | null;
+  }>;
+}
+
 interface SearchActionResult {
   action: AIAction;
   executedAction: ExecutedAction;
@@ -503,7 +533,11 @@ function normalizeTransactionAmount(
   if (categoryType === "expense" && amount > 0 && !hasIncomeCue(action)) {
     return { ...action, input: { ...action.input, amount: -amount } };
   }
-  if (categoryType === "income" && amount < 0 && !hasExpenseCue(message, action)) {
+  if (
+    categoryType === "income" &&
+    amount < 0 &&
+    !hasExpenseCue(message, action)
+  ) {
     return { ...action, input: { ...action.input, amount: Math.abs(amount) } };
   }
   if (!categoryType && amount > 0 && hasExpenseCue(message, action)) {
@@ -534,7 +568,10 @@ function normalizeTransactionText(action: AIAction, message: string): AIAction {
     /\bpayment to Test Credit Card\b/i.test(message) &&
     name &&
     /\bpayment\b/i.test(name) &&
-    includesNormalized(asString(action.input.account_name) ?? "", "Test Checking") &&
+    includesNormalized(
+      asString(action.input.account_name) ?? "",
+      "Test Checking",
+    ) &&
     !/\bCredit Card\b/i.test(comment ?? "")
   ) {
     input.comment = "payment to Test Credit Card";
@@ -544,7 +581,10 @@ function normalizeTransactionText(action: AIAction, message: string): AIAction {
     /\bpayment from checking\b/i.test(message) &&
     name &&
     /\bpayment\b/i.test(name) &&
-    includesNormalized(asString(action.input.account_name) ?? "", "Test Credit Card")
+    includesNormalized(
+      asString(action.input.account_name) ?? "",
+      "Test Credit Card",
+    )
   ) {
     input.comment = "payment from checking";
   }
@@ -685,13 +725,17 @@ function requestedUpdateSubcategory(
   if (directName && findByName(subcategories, directName)) return directName;
 
   return subcategories.find((subcategory) =>
-    new RegExp(`\\b(?:keep it in|in|under|as)\\s+${escapeRegExp(subcategory.name)}\\b`, "i").test(
-      message,
-    ),
+    new RegExp(
+      `\\b(?:keep it in|in|under|as)\\s+${escapeRegExp(subcategory.name)}\\b`,
+      "i",
+    ).test(message),
   )?.name;
 }
 
-function tokenScore(message: string, transaction: TransactionWithDetails): number {
+function tokenScore(
+  message: string,
+  transaction: TransactionWithDetails,
+): number {
   const prompt = normalizeForMatch(message);
   const candidates = [
     transaction.name,
@@ -727,7 +771,10 @@ function chooseSearchUpdateTarget(
 ): TransactionWithDetails | undefined {
   if (results.length === 1) return results[0];
   const scored = results
-    .map((transaction) => ({ transaction, score: tokenScore(message, transaction) }))
+    .map((transaction) => ({
+      transaction,
+      score: tokenScore(message, transaction),
+    }))
     .sort((a, b) => b.score - a.score);
   const best = scored[0];
   const second = scored[1];
@@ -782,14 +829,13 @@ export function buildSearchUpdateFollowUp(
   };
 }
 
-function compactContext(): string {
+function compactContext(): AssistantContext {
   const accounts = getAccounts();
   const categories = getCategories();
   const subcategories = getSubcategories();
   const goals = getSpendingGoalsWithDetails();
-  const recentTransactions = getTransactionsWithDetails({ limit: 25 });
 
-  return JSON.stringify({
+  return {
     accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })),
     categories: categories.map((c) => ({
       id: c.id,
@@ -800,10 +846,12 @@ function compactContext(): string {
       id: s.id,
       name: s.name,
       category_id: s.category_id,
-      category_name: categories.find((category) => category.id === s.category_id)
-        ?.name,
-      category_type: categories.find((category) => category.id === s.category_id)
-        ?.type,
+      category_name: categories.find(
+        (category) => category.id === s.category_id,
+      )?.name,
+      category_type: categories.find(
+        (category) => category.id === s.category_id,
+      )?.type,
       monthly_goal: s.monthly_goal,
     })),
     goals: goals.map((g) => ({
@@ -815,18 +863,7 @@ function compactContext(): string {
       start_date: g.start_date,
       end_date: g.end_date,
     })),
-    recentTransactions: recentTransactions.map((t) => ({
-      id: t.id,
-      date: t.date,
-      name: t.name,
-      amount: t.amount,
-      account_id: t.account_id,
-      account_name: t.account_name,
-      subcategory_id: t.subcategory_id,
-      subcategory_name: t.subcategory_name,
-      comment: t.comment,
-    })),
-  });
+  };
 }
 
 function parseChatResponse(parsed: unknown): AIChatResponse {
