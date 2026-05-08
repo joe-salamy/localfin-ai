@@ -96,6 +96,14 @@ test("prepareSankeyData keeps all subcategories while using clean display labels
   assert.ok(
     data.links.some(
       (link) =>
+        link.source === "Consulting (income)" &&
+        link.target === "income-category:income-cat" &&
+        link.value === 1200,
+    ),
+  );
+  assert.ok(
+    data.links.some(
+      (link) =>
         link.source === "expense-category:expense-cat" &&
         link.target === "Consulting (expense)" &&
         link.value === 300,
