@@ -36,6 +36,8 @@ export const DATE_CONFIG = {
 export const ENV_KEYS = {
   corsOrigin: 'CORS_ORIGIN',
   openRouterApiKey: 'OPENROUTER_API_KEY',
+  localfinDataDirectory: 'LOCALFIN_DATA_DIR',
+  localfinDatabasePath: 'LOCALFIN_DB_PATH',
 } as const;
 
 export const DATABASE_CONFIG = {

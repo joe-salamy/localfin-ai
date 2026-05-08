@@ -9,15 +9,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let db: Database.Database | null = null;
 
+export function resolveDatabasePath(): string {
+  const explicitPath = process.env.LOCALFIN_DB_PATH?.trim();
+  if (explicitPath) {
+    return path.resolve(explicitPath);
+  }
+
+  const configuredDataDir = process.env.LOCALFIN_DATA_DIR?.trim();
+  const dataDir = configuredDataDir
+    ? path.resolve(configuredDataDir)
+    : DATABASE_CONFIG.dataDirectory;
+  return path.join(dataDir, DATABASE_CONFIG.fileName);
+}
+
 export function getDb(): Database.Database {
   if (db) return db;
 
-  const dataDir = DATABASE_CONFIG.dataDirectory;
+  const dbPath = resolveDatabasePath();
+  const dataDir = path.dirname(dbPath);
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  const dbPath = path.join(dataDir, DATABASE_CONFIG.fileName);
   db = new Database(dbPath);
 
   // Enable WAL mode and foreign keys
@@ -33,6 +46,12 @@ export function getDb(): Database.Database {
 
   console.log(`Database initialized at ${dbPath}`);
   return db;
+}
+
+export function closeDbForTests(): void {
+  if (!db) return;
+  db.close();
+  db = null;
 }
 
 // SQLite boolean helpers
