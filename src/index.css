@@ -1,42 +1,155 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: oklch(0.145 0 0);
-  --color-foreground: oklch(0.985 0 0);
-  --color-card: oklch(0.205 0 0);
-  --color-card-foreground: oklch(0.985 0 0);
-  --color-border: oklch(0.3 0 0);
-  --color-input: oklch(0.3 0 0);
-  --color-primary: oklch(0.985 0 0);
-  --color-primary-foreground: oklch(0.145 0 0);
-  --color-secondary: oklch(0.269 0 0);
-  --color-secondary-foreground: oklch(0.985 0 0);
-  --color-muted: oklch(0.269 0 0);
-  --color-muted-foreground: oklch(0.708 0 0);
-  --color-accent: oklch(0.269 0 0);
-  --color-accent-foreground: oklch(0.985 0 0);
-  --color-destructive: oklch(0.396 0.141 25.723);
-  --color-destructive-foreground: oklch(0.985 0 0);
-  --color-ring: oklch(0.556 0 0);
-  --color-income: oklch(0.627 0.194 149.214);
-  --color-expense: oklch(0.577 0.245 27.325);
-  --color-savings: oklch(0.488 0.243 264.376);
+  --color-background: #121212;
+  --color-foreground: #ffffff;
+  --color-card: #181818;
+  --color-card-foreground: #ffffff;
+  --color-border: #333333;
+  --color-input: #1f1f1f;
+  --color-primary: #1ed760;
+  --color-primary-foreground: #000000;
+  --color-secondary: #1f1f1f;
+  --color-secondary-foreground: #ffffff;
+  --color-muted: #252525;
+  --color-muted-foreground: #b3b3b3;
+  --color-accent: #1ed760;
+  --color-accent-foreground: #000000;
+  --color-destructive: #f3727f;
+  --color-destructive-foreground: #000000;
+  --color-ring: #1ed760;
+  --color-income: #1ed760;
+  --color-expense: #f3727f;
+  --color-savings: #539df5;
+  --color-warning: #ffa42b;
+  --color-info: #539df5;
   --radius-sm: 0.25rem;
-  --radius-md: 0.375rem;
+  --radius-md: 0.5rem;
   --radius-lg: 0.5rem;
+  --shadow-elevated: rgba(0, 0, 0, 0.3) 0px 8px 8px;
+  --shadow-dialog: rgba(0, 0, 0, 0.5) 0px 8px 24px;
+  --shadow-inset-border: rgb(18, 18, 18) 0px 1px 0px, rgb(124, 124, 124) 0px 0px 0px 1px inset;
 }
 
 * {
   border-color: var(--color-border);
 }
 
+html {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   background-color: var(--color-background);
   color: var(--color-foreground);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    "SpotifyMixUI",
+    "CircularSp",
+    "Helvetica Neue",
+    helvetica,
+    arial,
+    "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN",
+    Meiryo,
+    "MS Gothic",
+    system-ui,
+    sans-serif;
+  font-size: 16px;
 }
 
 #root {
   min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-primary) 35%, transparent);
+  color: var(--color-foreground);
+}
+
+@layer base {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+  select,
+  textarea {
+    border-color: transparent;
+    box-shadow: var(--shadow-inset-border);
+  }
+
+  input[type="checkbox"] {
+    accent-color: var(--color-primary);
+  }
+
+  table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  th {
+    color: var(--color-muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+}
+
+@layer components {
+  .lf-page-title {
+    color: var(--color-foreground);
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.15;
+  }
+
+  .lf-panel {
+    background: var(--color-card);
+    border: 0;
+    border-radius: var(--radius-lg);
+    box-shadow: none;
+  }
+
+  .lf-panel-hover {
+    transition: background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+
+  .lf-panel-hover:hover {
+    background: #1f1f1f;
+    box-shadow: var(--shadow-elevated);
+  }
+
+  .lf-pill-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .lf-table-wrap {
+    overflow: hidden;
+    border: 0;
+    border-radius: var(--radius-lg);
+    background: var(--color-card);
+  }
+
+  .lf-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    color: var(--color-muted-foreground);
+    transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+  }
+
+  .lf-icon-button:hover {
+    background: var(--color-secondary);
+    color: var(--color-foreground);
+  }
 }
