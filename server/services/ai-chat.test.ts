@@ -4,10 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import test, { afterEach } from "node:test";
 import {
+  actionFailureCanBeRetried,
   buildSearchUpdateFollowUp,
   executeAction,
   normalizeMaxAssistantTurns,
   prepareActionsForExecution,
+  shouldContinueToolLoop,
 } from "./ai-chat.js";
 import { createAccount } from "./accounts.js";
 import { createCategory, createSubcategory } from "./categories.js";
@@ -394,6 +396,148 @@ test("assistant max turn setting defaults and clamps", () => {
   assert.equal(normalizeMaxAssistantTurns(0), 1);
   assert.equal(normalizeMaxAssistantTurns(99), 10);
   assert.equal(normalizeMaxAssistantTurns(4.8), 4);
+});
+
+test("assistant action execution resolves unique subcategory names passed as ids", async () => {
+  await useTempDatabase();
+  const testAccount = createAccount({ name: "Resolver Checking", type: "asset" });
+  const category = createCategory({
+    name: "Resolver Essentials",
+    type: "expense",
+  });
+  const rent = createSubcategory({
+    name: "Resolver Rent",
+    category_id: category.id,
+  });
+  const other = createSubcategory({
+    name: "Resolver Other",
+    category_id: category.id,
+  });
+  createTransaction({
+    account_id: testAccount.id,
+    date: "2026-05-01",
+    name: "Resolver ZELLE INSTANT PMT",
+    amount: -1561,
+    subcategory_id: other.id,
+  });
+
+  const result = executeAction({
+    type: "bulk_update_transactions",
+    input: {
+      account_name: "Resolver Checking",
+      searchQuery: 'name:"Resolver ZELLE INSTANT PMT"',
+      updates: { subcategory_id: "Resolver Rent" },
+    },
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal((result.result as { updated_count: number }).updated_count, 1);
+  const transactions = getTransactionsWithDetails({
+    searchQuery: 'name:"Resolver ZELLE INSTANT PMT"',
+    accountId: testAccount.id,
+  });
+  assert.equal(transactions[0]?.subcategory_id, rent.id);
+});
+
+test("assistant action execution rejects unknown ids instead of passing them through", async () => {
+  await useTempDatabase();
+  const testAccount = createAccount({
+    name: "Unknown Id Checking",
+    type: "asset",
+  });
+  const category = createCategory({
+    name: "Unknown Id Essentials",
+    type: "expense",
+  });
+  const other = createSubcategory({
+    name: "Unknown Id Other",
+    category_id: category.id,
+  });
+  createTransaction({
+    account_id: testAccount.id,
+    date: "2026-05-01",
+    name: "Unknown Id Coffee",
+    amount: -5,
+    subcategory_id: other.id,
+  });
+
+  const result = executeAction({
+    type: "bulk_update_transactions",
+    input: {
+      account_name: "Unknown Id Checking",
+      searchQuery: 'name:"Unknown Id Coffee"',
+      updates: { subcategory_id: "not-a-real-subcategory-id" },
+    },
+  });
+
+  assert.equal(result.status, "error");
+  assert.match(result.error ?? "", /unknown subcategory/i);
+  assert.equal(actionFailureCanBeRetried(result), true);
+});
+
+test("assistant action execution reports ambiguous name-in-id references", async () => {
+  await useTempDatabase();
+  const testAccount = createAccount({
+    name: "Ambiguous Ref Checking",
+    type: "asset",
+  });
+
+  const result = executeAction({
+    type: "create_transaction",
+    input: {
+      account_id: testAccount.id,
+      date: "2026-05-01",
+      name: "Ambiguous Ref Fee",
+      amount: -5,
+      subcategory_id: "Unassigned",
+    },
+  });
+
+  assert.equal(result.status, "error");
+  assert.match(result.error ?? "", /ambiguous subcategory "Unassigned"/i);
+  assert.match(result.error ?? "", /Candidates:/);
+  assert.equal(actionFailureCanBeRetried(result), true);
+});
+
+test("assistant tool loop continues only for recoverable failed actions", () => {
+  assert.equal(
+    shouldContinueToolLoop("Change the coffee transaction to Groceries.", [
+      {
+        type: "update_transaction",
+        input: { id: "coffee", subcategory_id: "Groceries" },
+        status: "error",
+        error: 'update_transaction references an unknown subcategory',
+      },
+    ]),
+    true,
+  );
+  assert.equal(
+    shouldContinueToolLoop("Add a transaction dated 2026-02-31.", [
+      {
+        type: "create_transaction",
+        input: { date: "2026-02-31" },
+        status: "error",
+        error: "create_transaction requires date to be a valid YYYY-MM-DD date",
+      },
+    ]),
+    false,
+  );
+  assert.equal(
+    shouldContinueToolLoop("Create this and change that.", [
+      {
+        type: "create_transaction",
+        input: { id: "created" },
+        status: "success",
+      },
+      {
+        type: "update_transaction",
+        input: { id: "target", subcategory_id: "Missing" },
+        status: "error",
+        error: 'update_transaction references an unknown subcategory',
+      },
+    ]),
+    false,
+  );
 });
 
 test("assistant bulk update action updates every matching transaction", async () => {

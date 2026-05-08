@@ -1484,7 +1484,7 @@ Failure conventions:
 - If the user asks to delete, return no delete action and explain deletion is unavailable.
 - User-provided names are not IDs. For account/category/subcategory references, use ids only when they are present in the provided context. If the user provided a name, use account_name, category_name, subcategory_name, or current_name so the app can resolve it.
 - The account/category/subcategory lists are already in context. Do not invent ids, and do not treat a user phrase as an id unless it exactly matches an id in context.
-- After a failed action, inspect previousTurns.errors and return only the remaining corrective actions. Do not repeat actions that already succeeded.
+- After a failed action, inspect previousTurns action errors and return only the remaining corrective actions. Do not repeat actions that already succeeded.
 
 Allowed action types:
 - create_account: { name, type: "asset"|"liability", initial_balance? }
