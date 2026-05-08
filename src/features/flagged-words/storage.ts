@@ -3,6 +3,11 @@ const STORAGE_VERSION = 1;
 
 export const DEFAULT_FLAGGED_WORDS = ['interest', 'fee'] as const;
 
+interface BrowserStorage {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+}
+
 export interface FlaggedWordsSettings {
   version: number;
   updatedAt: string;
@@ -31,20 +36,32 @@ export function normalizeFlaggedWords(words: Iterable<string>): string[] {
 export function findFlaggedWords(name: string, words: string[]): string[] {
   const normalizedName = name.toLowerCase();
   if (!normalizedName) return [];
-  return words.filter((word) => normalizedName.includes(word));
+  return normalizeFlaggedWords(words).filter((word) => normalizedName.includes(word));
 }
 
-export function defaultFlaggedWordsSettings(): FlaggedWordsSettings {
+export function buildFlaggedWordsSettings(
+  words: Iterable<string>,
+  updatedAt = new Date().toISOString(),
+): FlaggedWordsSettings {
   return {
     version: STORAGE_VERSION,
-    updatedAt: new Date().toISOString(),
-    words: normalizeFlaggedWords(DEFAULT_FLAGGED_WORDS),
+    updatedAt,
+    words: normalizeFlaggedWords(words),
   };
 }
 
+export function defaultFlaggedWordsSettings(): FlaggedWordsSettings {
+  return buildFlaggedWordsSettings(DEFAULT_FLAGGED_WORDS);
+}
+
+function getFlaggedWordsStorage(): BrowserStorage | null {
+  return (globalThis as { localStorage?: BrowserStorage }).localStorage ?? null;
+}
+
 export function readFlaggedWordsSettings(): FlaggedWordsSettings {
-  if (typeof window === 'undefined') return defaultFlaggedWordsSettings();
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  const storage = getFlaggedWordsStorage();
+  if (!storage) return defaultFlaggedWordsSettings();
+  const raw = storage.getItem(STORAGE_KEY);
   if (!raw) return defaultFlaggedWordsSettings();
 
   try {
@@ -63,13 +80,13 @@ export function readFlaggedWordsSettings(): FlaggedWordsSettings {
 }
 
 export function writeFlaggedWordsSettings(settings: FlaggedWordsSettings): void {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(
+  const storage = getFlaggedWordsStorage();
+  if (!storage) return;
+  storage.setItem(
     STORAGE_KEY,
     JSON.stringify({
       ...settings,
       version: STORAGE_VERSION,
-      updatedAt: new Date().toISOString(),
       words: normalizeFlaggedWords(settings.words),
     }),
   );

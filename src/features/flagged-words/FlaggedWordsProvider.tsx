@@ -2,9 +2,9 @@ import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { FlaggedWordsContext } from './FlaggedWordsContext';
 import {
+  buildFlaggedWordsSettings,
   defaultFlaggedWordsSettings,
   findFlaggedWords,
-  normalizeFlaggedWords,
   readFlaggedWordsSettings,
   writeFlaggedWordsSettings,
 } from './storage';
@@ -19,11 +19,8 @@ export function FlaggedWordsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setFlaggedWords = useCallback((words: string[]) => {
-    updateSettings({
-      ...settings,
-      words: normalizeFlaggedWords(words),
-    });
-  }, [settings, updateSettings]);
+    updateSettings(buildFlaggedWordsSettings(words));
+  }, [updateSettings]);
 
   const resetFlaggedWords = useCallback(() => {
     updateSettings(defaultFlaggedWordsSettings());
