@@ -27,6 +27,10 @@ interface SubcategoryRow {
   category_type: string;
 }
 
+interface AvailableSubcategoryChoice extends SubcategoryRow {
+  number: number;
+}
+
 interface PastExampleRow {
   name: string;
   amount: number;
@@ -43,7 +47,7 @@ interface PastTxRow {
 
 interface AIResultItem {
   index: number;
-  subcategory_name: string | null;
+  subcategory?: number | null;
 }
 
 interface ResolvedAIResultItem {
@@ -252,55 +256,12 @@ async function callOpenRouterForCategorization(
     batchCount: number;
   },
 ): Promise<ResolvedAIResultItem[]> {
-  // Build subcategory list grouped by type
-  const incomeSubcategories = subcategories
-    .filter((s) => s.category_type === "income")
-    .map((s) => `  - ${s.category_name} > ${s.name}`)
-    .join("\n");
-
-  const expenseSubcategories = subcategories
-    .filter((s) => s.category_type === "expense")
-    .map((s) => `  - ${s.category_name} > ${s.name}`)
-    .join("\n");
-
-  // Build past examples context
-  const exampleLines = pastExamples.map(
-    (e) =>
-      `"${e.name}" ($${e.amount}) on "${e.account_name}" -> "${e.category_name} > ${e.subcategory_name}"`,
+  const availableSubcategories = buildAvailableSubcategoryChoices(subcategories);
+  const { systemMessage, userMessage } = buildCategorizationMessages(
+    batch,
+    availableSubcategories,
+    pastExamples,
   );
-
-  const systemMessage = `You are a transaction categorizer for a personal budget app. Categorize each transaction into the most appropriate subcategory.
-
-RULES:
-- Positive amounts are income, negative amounts are expenses
-- Match the subcategory type to the transaction direction (income subcategories for positive, expense for negative)
-- If unsure, use "Unassigned" for the appropriate type
-- For subcategory_name, return only the subcategory text after ">", not the category
-- Return ONLY the JSON, no explanation
-AVAILABLE SUBCATEGORIES:
-Income:
-${incomeSubcategories}
-Expense:
-${expenseSubcategories}
-${
-  exampleLines.length > 0
-    ? `
-PAST EXAMPLES:
-${exampleLines.join("\n")}
-`
-    : ""
-}`;
-
-  const transactionLines = batch.map(
-    (tx, i) =>
-      `- index ${i}: "${tx.name}" ($${tx.amount}) on account "${tx.account_name}"`,
-  );
-
-  const userMessage = `Categorize these transactions:
-${transactionLines.join("\n")}
-
-Return exactly one result per transaction using the same zero-based index values shown above.
-Return JSON: { "results": [{ "index": 0, "subcategory_name": "..." }] }`;
 
   const response = await callOpenRouter(
     [
@@ -319,10 +280,102 @@ Return JSON: { "results": [{ "index": 0, "subcategory_name": "..." }] }`;
     },
   );
 
-  // Parse response
-  const parsed = response.parsedContent as { results: AIResultItem[] } | null;
+  return resolveAIResults(
+    response.parsedContent as { results: AIResultItem[] } | null,
+    response.content,
+    batch,
+    availableSubcategories,
+  );
+}
+
+export function buildAvailableSubcategoryChoices(
+  subcategories: SubcategoryRow[],
+): AvailableSubcategoryChoice[] {
+  return subcategories.map((subcategory, index) => ({
+    ...subcategory,
+    number: index,
+  }));
+}
+
+export function formatAvailableSubcategories(
+  availableSubcategories: AvailableSubcategoryChoice[],
+): string {
+  return availableSubcategories
+    .map(
+      (subcategory) =>
+        `${subcategory.number}. [${subcategory.category_type}] ${subcategory.category_name} > ${subcategory.name}`,
+    )
+    .join("\n");
+}
+
+export function buildCategorizationMessages(
+  batch: UnknownTransaction[],
+  availableSubcategories: AvailableSubcategoryChoice[],
+  pastExamples: PastExampleRow[],
+): { systemMessage: string; userMessage: string } {
+  // Build past examples context
+  const exampleLines = pastExamples.map(
+    (e) =>
+      `"${e.name}" ($${e.amount}) on "${e.account_name}" -> "${e.category_name} > ${e.subcategory_name}"`,
+  );
+
+  const systemMessage = `You are a transaction categorizer for a personal budget app. Categorize each transaction into the most appropriate subcategory.
+
+RULES:
+- Positive amounts are income, negative amounts are expenses
+- Match the subcategory number to the transaction direction (income subcategories for positive, expense for negative)
+- If unsure, use the "Unassigned" subcategory number for the appropriate type
+- Return the numeric subcategory value only; do not return category or subcategory names
+- Return ONLY the JSON, no explanation
+AVAILABLE SUBCATEGORIES:
+${formatAvailableSubcategories(availableSubcategories)}
+${
+  exampleLines.length > 0
+    ? `
+PAST EXAMPLES:
+${exampleLines.join("\n")}
+`
+    : ""
+}`;
+
+  const transactionLines = batch.map(
+    (tx, i) =>
+      `- index ${i}: "${tx.name}" ($${tx.amount}) on account "${tx.account_name}"`,
+  );
+
+  const userMessage = `Categorize these transactions:
+${transactionLines.join("\n")}
+
+Return exactly one result per transaction using the same zero-based index values shown above.
+Return JSON: { "results": [{ "index": 0, "subcategory": 0 }] }`;
+
+  return { systemMessage, userMessage };
+}
+
+export function resolveSubcategoryChoice(
+  choice: unknown,
+  transactionAmount: number,
+  availableSubcategories: AvailableSubcategoryChoice[],
+): AvailableSubcategoryChoice | null {
+  const type = getTransactionCategoryType(transactionAmount);
+  if (typeof choice === "number" && Number.isInteger(choice)) {
+    const subcategory = availableSubcategories[choice];
+    if (subcategory?.category_type === type) {
+      return subcategory;
+    }
+  }
+
+  return findUnassignedSubcategory(availableSubcategories, type);
+}
+
+function resolveAIResults(
+  parsed: { results: AIResultItem[] } | null,
+  responseContent: string,
+  batch: UnknownTransaction[],
+  availableSubcategories: AvailableSubcategoryChoice[],
+): ResolvedAIResultItem[] {
   if (!parsed) {
-    console.error("Failed to parse AI response:", response.content);
+    console.error("Failed to parse AI response:", responseContent);
     return [];
   }
 
@@ -331,8 +384,6 @@ Return JSON: { "results": [{ "index": 0, "subcategory_name": "..." }] }`;
     return [];
   }
 
-  // Validate subcategory names and build indexed results
-  const subcategoriesByName = createUniqueSubcategoryNameMap(subcategories);
   const indexedResults: ResolvedAIResultItem[] = [];
   const resultIndexes = parsed.results
     .map((result) => result.index)
@@ -350,9 +401,10 @@ Return JSON: { "results": [{ "index": 0, "subcategory_name": "..." }] }`;
     );
     if (batchIndex === null) continue;
 
-    const subcategory = findSubcategoryByName(
-      result.subcategory_name,
-      subcategoriesByName,
+    const subcategory = resolveSubcategoryChoice(
+      result.subcategory,
+      batch[batchIndex].amount,
+      availableSubcategories,
     );
     if (subcategory) {
       indexedResults[batchIndex] = {
@@ -361,38 +413,23 @@ Return JSON: { "results": [{ "index": 0, "subcategory_name": "..." }] }`;
         subcategory_name: subcategory.name,
         category_name: subcategory.category_name,
       };
-    } else {
-      // Fall back to Unassigned
-      const tx = batch[batchIndex];
-      const type = tx.amount >= 0 ? "income" : "expense";
-      const unassigned = subcategories.find(
-        (s) => s.name === "Unassigned" && s.category_type === type,
-      );
-      if (unassigned) {
-        indexedResults[batchIndex] = {
-          index: batchIndex,
-          subcategory_id: unassigned.id,
-          subcategory_name: unassigned.name,
-          category_name: unassigned.category_name,
-        };
-      }
     }
   }
 
   for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
     if (indexedResults[batchIndex]) continue;
 
-    const tx = batch[batchIndex];
-    const type = tx.amount >= 0 ? "income" : "expense";
-    const unassigned = subcategories.find(
-      (s) => s.name === "Unassigned" && s.category_type === type,
+    const subcategory = resolveSubcategoryChoice(
+      null,
+      batch[batchIndex].amount,
+      availableSubcategories,
     );
-    if (unassigned) {
+    if (subcategory) {
       indexedResults[batchIndex] = {
         index: batchIndex,
-        subcategory_id: unassigned.id,
-        subcategory_name: unassigned.name,
-        category_name: unassigned.category_name,
+        subcategory_id: subcategory.id,
+        subcategory_name: subcategory.name,
+        category_name: subcategory.category_name,
       };
     }
   }
@@ -400,42 +437,18 @@ Return JSON: { "results": [{ "index": 0, "subcategory_name": "..." }] }`;
   return indexedResults;
 }
 
-function normalizeSubcategoryName(name: unknown): string | null {
-  if (typeof name !== "string") return null;
-
-  const trimmed = name.trim();
-  return trimmed.length > 0 ? trimmed.toLowerCase() : null;
+function getTransactionCategoryType(amount: number): "income" | "expense" {
+  return amount >= 0 ? "income" : "expense";
 }
 
-export function createUniqueSubcategoryNameMap(
-  subcategories: SubcategoryRow[],
-): Map<string, SubcategoryRow> {
-  const subcategoryCounts = new Map<string, number>();
-  for (const subcategory of subcategories) {
-    const normalizedName = normalizeSubcategoryName(subcategory.name);
-    if (!normalizedName) continue;
-    subcategoryCounts.set(
-      normalizedName,
-      (subcategoryCounts.get(normalizedName) ?? 0) + 1,
-    );
-  }
-
-  const subcategoriesByName = new Map<string, SubcategoryRow>();
-  for (const subcategory of subcategories) {
-    const normalizedName = normalizeSubcategoryName(subcategory.name);
-    if (!normalizedName || subcategoryCounts.get(normalizedName) !== 1) continue;
-    subcategoriesByName.set(normalizedName, subcategory);
-  }
-
-  return subcategoriesByName;
-}
-
-function findSubcategoryByName(
-  name: unknown,
-  subcategoriesByName: Map<string, SubcategoryRow>,
-): SubcategoryRow | null {
-  const normalizedName = normalizeSubcategoryName(name);
-  if (!normalizedName) return null;
-
-  return subcategoriesByName.get(normalizedName) ?? null;
+function findUnassignedSubcategory(
+  availableSubcategories: AvailableSubcategoryChoice[],
+  type: "income" | "expense",
+): AvailableSubcategoryChoice | null {
+  return (
+    availableSubcategories.find(
+      (subcategory) =>
+        subcategory.name === "Unassigned" && subcategory.category_type === type,
+    ) ?? null
+  );
 }
