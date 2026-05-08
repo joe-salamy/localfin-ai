@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  createUniqueSubcategoryNameMap,
+  buildAvailableSubcategoryChoices,
+  buildCategorizationMessages,
   normalizeAIResultIndex,
+  resolveSubcategoryChoice,
 } from "./ai.js";
 
 test("AI categorization accepts zero-based result indexes", () => {
@@ -21,28 +23,114 @@ test("AI categorization rejects indexes outside the batch", () => {
   assert.equal(normalizeAIResultIndex("1", 25, true), null);
 });
 
-test("AI categorization maps only globally unique subcategory names", () => {
-  const map = createUniqueSubcategoryNameMap([
-    {
-      id: "groceries",
-      name: "Groceries",
-      category_name: "Food",
-      category_type: "expense",
-    },
-    {
-      id: "income-unassigned",
-      name: "Unassigned",
-      category_name: "Income",
-      category_type: "income",
-    },
-    {
-      id: "expense-unassigned",
-      name: "Unassigned",
-      category_name: "Expense",
-      category_type: "expense",
-    },
-  ]);
+const availableSubcategories = buildAvailableSubcategoryChoices([
+  {
+    id: "income-unassigned",
+    name: "Unassigned",
+    category_name: "Unassigned",
+    category_type: "income",
+  },
+  {
+    id: "cash-back",
+    name: "Cash back",
+    category_name: "Other income",
+    category_type: "income",
+  },
+  {
+    id: "expense-unassigned",
+    name: "Unassigned",
+    category_name: "Unassigned",
+    category_type: "expense",
+  },
+  {
+    id: "groceries",
+    name: "Groceries",
+    category_name: "Essentials",
+    category_type: "expense",
+  },
+  {
+    id: "duplicate-groceries",
+    name: "Groceries",
+    category_name: "Travel",
+    category_type: "expense",
+  },
+]);
 
-  assert.equal(map.get("groceries")?.id, "groceries");
-  assert.equal(map.has("unassigned"), false);
+test("AI categorization resolves numeric subcategory choices", () => {
+  assert.equal(
+    resolveSubcategoryChoice(0, 100, availableSubcategories)?.id,
+    "income-unassigned",
+  );
+  assert.equal(
+    resolveSubcategoryChoice(1, 100, availableSubcategories)?.id,
+    "cash-back",
+  );
+  assert.equal(
+    resolveSubcategoryChoice(3, -25, availableSubcategories)?.id,
+    "groceries",
+  );
+});
+
+test("AI categorization falls back to direction-correct Unassigned for invalid choices", () => {
+  const invalidChoices: unknown[] = [null, undefined, "3", 3.5, -1, 99];
+
+  for (const choice of invalidChoices) {
+    assert.equal(
+      resolveSubcategoryChoice(choice, 100, availableSubcategories)?.id,
+      "income-unassigned",
+    );
+    assert.equal(
+      resolveSubcategoryChoice(choice, -100, availableSubcategories)?.id,
+      "expense-unassigned",
+    );
+  }
+});
+
+test("AI categorization rejects wrong-direction subcategory choices", () => {
+  assert.equal(
+    resolveSubcategoryChoice(3, 100, availableSubcategories)?.id,
+    "income-unassigned",
+  );
+  assert.equal(
+    resolveSubcategoryChoice(1, -100, availableSubcategories)?.id,
+    "expense-unassigned",
+  );
+});
+
+test("AI categorization resolves duplicate names deterministically by number", () => {
+  assert.equal(
+    resolveSubcategoryChoice(3, -25, availableSubcategories)?.id,
+    "groceries",
+  );
+  assert.equal(
+    resolveSubcategoryChoice(4, -25, availableSubcategories)?.id,
+    "duplicate-groceries",
+  );
+});
+
+test("AI categorization prompt asks for numeric subcategory choices", () => {
+  const messages = buildCategorizationMessages(
+    [
+      {
+        index: 0,
+        name: "Grocery Store",
+        account_id: "checking",
+        account_name: "Checking",
+        amount: -25,
+      },
+    ],
+    availableSubcategories,
+    [],
+  );
+
+  assert.match(
+    messages.systemMessage,
+    /0\. \[income\] Unassigned > Unassigned/,
+  );
+  assert.match(messages.systemMessage, /3\. \[expense\] Essentials > Groceries/);
+  assert.match(
+    messages.userMessage,
+    /"results": \[\{ "index": 0, "subcategory": 0 \}\]/,
+  );
+  assert.doesNotMatch(messages.userMessage, /subcategory_name/);
 });
