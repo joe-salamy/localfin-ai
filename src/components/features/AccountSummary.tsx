@@ -26,7 +26,7 @@ export function AccountSummaryTable({ accounts, netWorth }: AccountSummaryProps)
   };
 
   return (
-    <div className="overflow-x-auto border border-border rounded-md">
+    <div className="lf-table-wrap overflow-x-auto">
       <table className="w-full">
         <thead className="bg-secondary/50">
           <tr>
@@ -53,15 +53,15 @@ export function AccountSummaryTable({ accounts, netWorth }: AccountSummaryProps)
           <tr className="bg-secondary/30 font-semibold">
             <td className={cellClass} />
             <td className={cellClass} colSpan={2}>Net Worth</td>
-            <td className={cn(cellClass, 'text-right text-green-400')}>
+            <td className={cn(cellClass, 'text-right text-income')}>
               {formatCurrency(netWorth.total_assets)}
               <span className="text-xs text-muted-foreground ml-1">assets</span>
             </td>
-            <td className={cn(cellClass, 'text-right text-red-400')}>
+            <td className={cn(cellClass, 'text-right text-expense')}>
               {formatCurrency(netWorth.total_liabilities)}
               <span className="text-xs text-muted-foreground ml-1">liab.</span>
             </td>
-            <td className={cn(cellClass, 'text-right', netWorth.net_worth >= 0 ? 'text-green-400' : 'text-red-400')}>
+            <td className={cn(cellClass, 'text-right', netWorth.net_worth >= 0 ? 'text-income' : 'text-expense')}>
               {formatCurrency(netWorth.net_worth)}
             </td>
           </tr>
@@ -93,8 +93,8 @@ function AccountRow({
         </td>
         <td className={cellClass}>
           <span className={cn(
-            'inline-block rounded px-1.5 py-0.5 text-xs font-medium',
-            account.account_type === 'asset' ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'
+            'inline-block rounded-full px-2 py-0.5 text-[0.66rem] font-bold uppercase tracking-[0.08em]',
+            account.account_type === 'asset' ? 'bg-primary/10 text-income' : 'bg-destructive/10 text-expense'
           )}>
             {account.account_type}
           </span>
@@ -102,7 +102,7 @@ function AccountRow({
         <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
           {formatCurrency(account.starting_balance)}
         </td>
-        <td className={cn(cellClass, 'text-right font-mono tabular-nums', account.total_change >= 0 ? 'text-green-400' : 'text-red-400')}>
+        <td className={cn(cellClass, 'text-right font-mono tabular-nums', account.total_change >= 0 ? 'text-income' : 'text-expense')}>
           {formatCurrency(account.total_change)}
         </td>
         <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
@@ -128,7 +128,7 @@ function AccountRow({
                     <tr key={t.id} className="hover:bg-secondary/20" style={getGradientStyle(t.amount)}>
                       <td className={cn(cellClass, 'text-xs')}>{format(parseISO(t.date), DISPLAY_DATE_FORMAT)}</td>
                       <td className={cn(cellClass, 'text-xs')}>{t.name}</td>
-                      <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs', t.amount >= 0 ? 'text-green-400' : 'text-red-400')}>
+                      <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs', t.amount >= 0 ? 'text-income' : 'text-expense')}>
                         {formatCurrency(t.amount)}
                       </td>
                       <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs')}>

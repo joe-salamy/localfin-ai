@@ -23,7 +23,7 @@ export function SankeyDiagram({ data }: SankeyDiagramProps) {
         nodeSpacing={16}
         nodeBorderWidth={0}
         nodeBorderRadius={2}
-        linkOpacity={0.3}
+        linkOpacity={0.36}
         linkHoverOthersOpacity={0.1}
         linkContract={1}
         enableLinkGradient
@@ -34,17 +34,19 @@ export function SankeyDiagram({ data }: SankeyDiagramProps) {
         theme={{
           tooltip: {
             container: {
-              background: '#1f1f1f',
-              color: '#ddd',
+              background: '#181818',
+              color: '#ffffff',
               fontSize: 12,
-              borderRadius: 6,
-              border: '1px solid #333',
+              borderRadius: 8,
+              border: '0',
+              boxShadow: 'rgba(0,0,0,0.5) 0px 8px 24px',
             },
           },
           labels: {
             text: {
               fill: '#ffffff',
               fontSize: 11,
+              fontWeight: 700,
             },
           },
         }}

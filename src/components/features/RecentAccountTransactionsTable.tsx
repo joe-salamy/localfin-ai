@@ -24,7 +24,7 @@ export function RecentAccountTransactionsTable() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto rounded-md border border-border">
+        <div className="lf-table-wrap overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border bg-card text-left text-muted-foreground">
@@ -75,7 +75,7 @@ export function RecentAccountTransactionsTable() {
                     {activity.last_transaction_amount == null
                       ? '-'
                       : (
-                        <span className={activity.last_transaction_amount >= 0 ? 'text-green-400' : 'text-red-400'}>
+                        <span className={activity.last_transaction_amount >= 0 ? 'text-income' : 'text-expense'}>
                           {formatCurrency(activity.last_transaction_amount)}
                         </span>
                       )}

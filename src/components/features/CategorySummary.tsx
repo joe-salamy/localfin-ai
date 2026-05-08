@@ -22,7 +22,7 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
   };
 
   return (
-    <div className="overflow-x-auto border border-border rounded-md">
+    <div className="lf-table-wrap overflow-x-auto">
       <table className="w-full">
         <thead className="bg-secondary/50">
           <tr>
@@ -62,7 +62,7 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
 function DifferenceCell({ value }: { value: number | null }) {
   if (value == null) return <span className="text-muted-foreground">-</span>;
   // Positive difference = under budget (good), negative = over budget (bad)
-  const color = value >= 0 ? 'text-green-400' : 'text-red-400';
+  const color = value >= 0 ? 'text-income' : 'text-expense';
   return <span className={cn('font-mono tabular-nums', color)}>{formatCurrency(value)}</span>;
 }
 
@@ -86,8 +86,8 @@ function CategoryRow({
         </td>
         <td className={cellClass}>
           <span className={cn(
-            'inline-block rounded px-1.5 py-0.5 text-xs font-medium',
-            category.category_type === 'income' ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'
+            'inline-block rounded-full px-2 py-0.5 text-[0.66rem] font-bold uppercase tracking-[0.08em]',
+            category.category_type === 'income' ? 'bg-primary/10 text-income' : 'bg-destructive/10 text-expense'
           )}>
             {category.category_type}
           </span>

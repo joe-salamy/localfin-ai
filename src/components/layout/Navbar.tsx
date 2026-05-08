@@ -5,6 +5,7 @@ import {
   History,
   Settings,
   SlidersHorizontal,
+  WalletCards,
 } from "lucide-react";
 import type { CommandId } from "@/features/shortcuts/commands";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
@@ -32,15 +33,21 @@ function NavLink({ to, label, icon: Icon, commandId, active }: {
       to={to}
       aria-keyshortcuts={ariaKeyShortcuts}
       title={`${label} (${shortcutLabel})`}
-      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+      className={`group flex items-center gap-3 rounded-full px-3 py-2 text-sm transition-colors ${
         active
-          ? "bg-secondary text-foreground"
-          : "text-muted-foreground hover:text-foreground"
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
       }`}
     >
-      <Icon size={16} />
-      {label}
-      <ShortcutHint commandId={commandId} />
+      <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${
+        active ? "bg-black/15" : "bg-secondary group-hover:bg-muted"
+      }`}>
+        <Icon size={16} />
+      </span>
+      <span className="hidden font-bold md:inline">{label}</span>
+      <span className="hidden md:inline">
+        <ShortcutHint commandId={commandId} />
+      </span>
     </Link>
   );
 }
@@ -49,12 +56,16 @@ export function Navbar() {
   const { pathname } = useLocation();
 
   return (
-    <nav className="h-14 border-b border-border bg-card px-4">
-      <div className="mx-auto flex h-full max-w-7xl items-center justify-between">
-        <Link to="/" className="text-lg font-bold text-foreground">
-          Budget
+    <>
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-card/95 px-3 py-2 shadow-[rgba(0,0,0,0.5)_0px_-8px_24px] backdrop-blur md:inset-y-0 md:left-0 md:right-auto md:w-60 md:border-r md:border-t-0 md:px-3 md:py-4 md:shadow-none">
+      <div className="flex h-full items-center justify-between gap-2 md:flex-col md:items-stretch md:justify-start md:gap-4">
+        <Link to="/" className="hidden items-center gap-3 px-3 py-2 text-lg font-bold text-foreground md:flex">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-black">
+            <WalletCards size={19} />
+          </span>
+          <span>LocalFin AI</span>
         </Link>
-        <div className="flex gap-1">
+        <div className="flex flex-1 justify-around gap-1 md:flex-none md:flex-col md:justify-start">
           {links.map(({ to, label, icon, commandId }) => (
             <NavLink
               key={to}
@@ -68,5 +79,6 @@ export function Navbar() {
         </div>
       </div>
     </nav>
+    </>
   );
 }

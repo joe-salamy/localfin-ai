@@ -245,7 +245,7 @@ export function TransactionTable({
   return (
     <>
       <div
-        className="overflow-x-auto border border-border rounded-md"
+        className="lf-table-wrap overflow-x-auto"
         onFocus={() => setTableFocused(true)}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -327,7 +327,7 @@ export function TransactionTable({
                         type="date"
                         value={editState.date}
                         onChange={(e) => setEditState({ ...editState, date: e.target.value })}
-                        className="h-7 w-32 rounded border border-border bg-input px-1.5 text-xs text-foreground"
+                        className="h-7 w-32 rounded-full border-0 bg-input px-1.5 text-xs text-foreground"
                       />
                     ) : (
                       format(parseISO(t.date), DISPLAY_DATE_FORMAT)
@@ -340,14 +340,14 @@ export function TransactionTable({
                           type="text"
                           value={editState.name}
                           onChange={(e) => setEditState({ ...editState, name: e.target.value })}
-                          className="h-7 w-40 rounded border border-border bg-input px-1.5 text-xs text-foreground"
+                          className="h-7 w-40 rounded-full border-0 bg-input px-1.5 text-xs text-foreground"
                         />
                         <input
                           type="text"
                           value={editState.comment}
                           onChange={(e) => setEditState({ ...editState, comment: e.target.value })}
                           placeholder="Comment..."
-                          className="h-7 w-40 rounded border border-border bg-input px-1.5 text-xs text-muted-foreground"
+                          className="h-7 w-40 rounded-full border-0 bg-input px-1.5 text-xs text-muted-foreground"
                         />
                       </div>
                     ) : (
@@ -366,10 +366,10 @@ export function TransactionTable({
                         step="0.01"
                         value={editState.amount}
                         onChange={(e) => setEditState({ ...editState, amount: e.target.value })}
-                        className="h-7 w-24 rounded border border-border bg-input px-1.5 text-xs text-foreground"
+                        className="h-7 w-24 rounded-full border-0 bg-input px-1.5 text-xs text-foreground"
                       />
                     ) : (
-                      <span className={t.amount >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      <span className={t.amount >= 0 ? 'text-income' : 'text-expense'}>
                         {formatCurrency(t.amount)}
                       </span>
                     )}
@@ -391,7 +391,7 @@ export function TransactionTable({
                         value={editState.subcategory_id}
                         onChange={(e) => setEditState({ ...editState, subcategory_id: e.target.value })}
                         onPaste={(e) => void applySubcategoryPaste(e, t)}
-                        className="h-7 w-36 rounded border border-border bg-input px-1.5 text-xs text-foreground"
+                        className="h-7 w-36 rounded-full border-0 bg-input px-1.5 text-xs text-foreground"
                       >
                         <option value="">None</option>
                         {subcategories.map((s) => (
@@ -413,7 +413,7 @@ export function TransactionTable({
                         <button
                           onClick={saveEdit}
                           disabled={saving}
-                          className="p-1 rounded hover:bg-secondary text-green-400"
+                          className="p-1 rounded hover:bg-secondary text-income"
                           title="Save"
                         >
                           <Check className="h-3.5 w-3.5" />
@@ -440,7 +440,7 @@ export function TransactionTable({
                         </button>
                         <button
                           onClick={() => setDeleteTarget(t)}
-                          className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-red-400"
+                          className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-expense"
                           title="Delete"
                         >
                           <Trash2 className="h-3.5 w-3.5" />

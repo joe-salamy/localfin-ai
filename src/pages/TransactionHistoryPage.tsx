@@ -181,7 +181,7 @@ export function TransactionHistoryPage() {
 
   return (
     <div className="space-y-3">
-      <h1 className="text-lg font-bold">Transaction History</h1>
+      <h1 className="lf-page-title">Transaction History</h1>
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-2">
@@ -192,7 +192,7 @@ export function TransactionHistoryPage() {
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="h-8 rounded border border-border bg-input px-2 text-xs text-foreground"
+            className="h-8 rounded-full border-0 bg-input px-2 text-xs text-foreground"
           />
         </div>
         <div>
@@ -202,7 +202,7 @@ export function TransactionHistoryPage() {
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="h-8 rounded border border-border bg-input px-2 text-xs text-foreground"
+            className="h-8 rounded-full border-0 bg-input px-2 text-xs text-foreground"
           />
         </div>
         <div className="w-40">

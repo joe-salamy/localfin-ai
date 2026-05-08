@@ -33,13 +33,13 @@ function formatCurrency(amount: number) {
 
 function TypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
-    asset: 'bg-emerald-900/50 text-emerald-400',
-    liability: 'bg-red-900/50 text-red-400',
-    income: 'bg-blue-900/50 text-blue-400',
-    expense: 'bg-orange-900/50 text-orange-400',
+    asset: 'bg-primary/10 text-income',
+    liability: 'bg-destructive/10 text-expense',
+    income: 'bg-info/10 text-info',
+    expense: 'bg-warning/10 text-warning',
   };
   return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${colors[type] ?? 'bg-secondary text-foreground'}`}>
+    <span className={`inline-block rounded-full px-2 py-0.5 text-[0.66rem] font-bold uppercase tracking-[0.08em] ${colors[type] ?? 'bg-secondary text-foreground'}`}>
       {type}
     </span>
   );
@@ -121,7 +121,7 @@ function CollapsibleSection({
         className="flex w-full items-center justify-between p-4"
         onClick={() => onOpenChange(!open)}
       >
-        <span className="text-lg font-semibold text-foreground">
+        <span className="text-lg font-bold text-foreground">
           {title}
           <span className="ml-2 text-sm font-normal text-muted-foreground">({count})</span>
         </span>
@@ -347,7 +347,7 @@ function AccountsSection() {
       }}
     >
       {selectedCount > 0 && (
-        <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
+        <div className="mb-2 flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
             {selectedCount} account{selectedCount === 1 ? '' : 's'} selected
           </span>
@@ -476,7 +476,7 @@ function AccountsSection() {
                       <button type="button" onClick={() => startEdit(a)} className="p-1 text-muted-foreground hover:text-foreground">
                         <Pencil size={14} />
                       </button>
-                      <button type="button" onClick={() => setDeleteTarget(a)} className="p-1 text-muted-foreground hover:text-red-400">
+                      <button type="button" onClick={() => setDeleteTarget(a)} className="p-1 text-muted-foreground hover:text-expense">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -753,7 +753,7 @@ function CategoriesSection() {
       }}
     >
       {selectedCount > 0 && (
-        <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
+        <div className="mb-2 flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
             {selectedCount} categor{selectedCount === 1 ? 'y' : 'ies'} selected
           </span>
@@ -874,7 +874,7 @@ function CategoriesSection() {
                         <button type="button" onClick={() => startEdit(c)} className="p-1 text-muted-foreground hover:text-foreground">
                           <Pencil size={14} />
                         </button>
-                        <button type="button" onClick={() => setDeleteTarget(c)} className="p-1 text-muted-foreground hover:text-red-400">
+                        <button type="button" onClick={() => setDeleteTarget(c)} className="p-1 text-muted-foreground hover:text-expense">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -1184,7 +1184,7 @@ function SubcategoriesSection() {
       }}
     >
       {selectedCount > 0 && (
-        <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
+        <div className="mb-2 flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
             {selectedCount} subcategor{selectedCount === 1 ? 'y' : 'ies'} selected
           </span>
@@ -1334,7 +1334,7 @@ function SubcategoriesSection() {
                           <button type="button" onClick={() => startEdit(s)} className="p-1 text-muted-foreground hover:text-foreground">
                             <Pencil size={14} />
                           </button>
-                          <button type="button" onClick={() => setDeleteTarget(s)} className="p-1 text-muted-foreground hover:text-red-400">
+                          <button type="button" onClick={() => setDeleteTarget(s)} className="p-1 text-muted-foreground hover:text-expense">
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -1423,7 +1423,7 @@ export function SetupPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Setup</h1>
+      <h1 className="lf-page-title">Setup</h1>
 
       <CollapsibleSection title="Accounts" count={accounts?.length ?? 0} open={accountsOpen} onOpenChange={setAccountsOpen}>
         <AccountsSection />
