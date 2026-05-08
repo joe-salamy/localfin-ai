@@ -53,7 +53,7 @@ export function TransactionHistoryPage() {
   // Data hooks
   const { transactions, isLoading, error, updateTransaction, deleteTransaction, bulkUpdateTransactions, bulkDeleteTransactions } = useTransactions(appliedFilters);
   const { accounts } = useAccounts();
-  const { subcategories } = useCategories();
+  const { categories, subcategories } = useCategories();
 
   const applyFilters = useCallback(() => {
     setSelectedIds(new Set());
@@ -284,6 +284,7 @@ export function TransactionHistoryPage() {
           onSort={handleSort}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          categories={categories}
           subcategories={subcategories}
         />
       )}
@@ -298,6 +299,7 @@ export function TransactionHistoryPage() {
         onClose={() => setBulkEditOpen(false)}
         onConfirm={handleBulkEdit}
         selectedCount={selectedIds.size}
+        categories={categories}
         subcategories={subcategories}
         isLoading={bulkUpdateTransactions.isPending}
       />

@@ -3,14 +3,17 @@ import type { Subcategory } from '@/types';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { SimpleSelect } from '@/components/ui/SimpleSelect';
+import { buildCategoryLookup, formatSubcategoryLabel } from '@/lib/categoryLabels';
 import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
 import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
+import type { Category } from '@/types';
 
 interface BulkEditModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (subcategoryId: string) => void;
   selectedCount: number;
+  categories: Category[];
   subcategories: Subcategory[];
   isLoading?: boolean;
 }
@@ -20,10 +23,12 @@ export function BulkEditModal({
   onClose,
   onConfirm,
   selectedCount,
+  categories,
   subcategories,
   isLoading,
 }: BulkEditModalProps) {
   const [subcategoryId, setSubcategoryId] = useState('');
+  const categoryLookup = buildCategoryLookup(categories);
 
   const handleConfirm = () => {
     if (subcategoryId) {
@@ -53,7 +58,10 @@ export function BulkEditModal({
       <SimpleSelect
         value={subcategoryId}
         onChange={(e) => setSubcategoryId(e.target.value)}
-        options={subcategories.map((s) => ({ value: s.id, label: s.name }))}
+        options={subcategories.map((s) => ({
+          value: s.id,
+          label: formatSubcategoryLabel(s, categoryLookup),
+        }))}
         placeholder="Select subcategory..."
       />
       <div className="mt-4 flex justify-end gap-2">

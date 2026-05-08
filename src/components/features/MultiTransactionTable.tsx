@@ -24,6 +24,11 @@ import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
 import type { FlaggedWordMatch } from "@/features/flagged-words/storage";
+import {
+  buildCategoryLookup,
+  formatCategoryLabel,
+  formatSubcategoryLabel,
+} from "@/lib/categoryLabels";
 
 // ── Row type ──────────────────────────────────────────────────────────
 
@@ -229,6 +234,7 @@ function GroupedSubcategorySelect({
       }))
       .filter((g) => g.subs.length > 0);
   }, [categories, subcategories]);
+  const categoryLookup = useMemo(() => buildCategoryLookup(categories), [categories]);
 
   return (
     <select
@@ -248,10 +254,10 @@ function GroupedSubcategorySelect({
     >
       <option value="">--</option>
       {filtered.map((group) => (
-        <optgroup key={group.category.id} label={group.category.name}>
+        <optgroup key={group.category.id} label={formatCategoryLabel(group.category)}>
           {group.subs.map((sub) => (
             <option key={sub.id} value={sub.id}>
-              {sub.name}
+              {formatSubcategoryLabel(sub, categoryLookup)}
             </option>
           ))}
         </optgroup>

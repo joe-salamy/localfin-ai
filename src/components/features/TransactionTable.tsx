@@ -7,10 +7,12 @@ import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
 import { EntityLabel } from '@/components/ui/EntityLabel';
 import { formatCurrency, cn } from '@/lib/utils';
 import { DISPLAY_DATE_FORMAT } from '@/config/constants';
+import { buildCategoryLookup, formatSubcategoryLabel, formatNullableSubcategoryLabel } from '@/lib/categoryLabels';
 import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
 import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
 import { useAmountGradient } from '@/features/display-settings/hooks';
 import { useFlaggedWords } from '@/features/flagged-words/hooks';
+import type { Category } from '@/types';
 
 interface TransactionTableProps {
   transactions: TransactionWithDetails[];
@@ -21,6 +23,7 @@ interface TransactionTableProps {
   onSort: (column: string) => void;
   onEdit: (id: string, updates: Record<string, unknown>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  categories: Category[];
   subcategories: Subcategory[];
 }
 
@@ -73,6 +76,7 @@ export function TransactionTable({
   onSort,
   onEdit,
   onDelete,
+  categories,
   subcategories,
 }: TransactionTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -85,6 +89,7 @@ export function TransactionTable({
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const getGradientStyle = useAmountGradient(transactions.map((transaction) => transaction.amount));
   const { findMatches } = useFlaggedWords();
+  const categoryLookup = buildCategoryLookup(categories);
 
   const allSelected = transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
   const focusedTransaction = transactions.find((transaction) => transaction.id === focusedId) ?? transactions[0] ?? null;
@@ -401,12 +406,18 @@ export function TransactionTable({
                       >
                         <option value="">None</option>
                         {subcategories.map((s) => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
+                          <option key={s.id} value={s.id}>
+                            {formatSubcategoryLabel(s, categoryLookup)}
+                          </option>
                         ))}
                       </select>
                     ) : (
                       <span className="text-xs">
-                        <EntityLabel id={t.subcategory_id} name={t.subcategory_name} color={t.subcategory_color} />
+                        <EntityLabel
+                          id={t.subcategory_id}
+                          name={formatNullableSubcategoryLabel(t.subcategory_name, t.category_type)}
+                          color={t.subcategory_color}
+                        />
                       </span>
                     )}
                   </td>
