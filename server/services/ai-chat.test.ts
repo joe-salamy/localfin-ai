@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test, { afterEach } from "node:test";
 import {
   buildSearchUpdateFollowUp,
+  executeAction,
+  normalizeMaxAssistantTurns,
   prepareActionsForExecution,
 } from "./ai-chat.js";
+import { createAccount } from "./accounts.js";
+import { createCategory, createSubcategory } from "./categories.js";
+import { createTransaction, getTransactionsWithDetails } from "./transactions.js";
+import { closeDbForTests } from "../db/index.js";
 import type {
   Account,
   Category,
@@ -82,8 +91,34 @@ const context = {
   accounts: [account, creditCard],
   categories: [food, income],
   subcategories: [groceries, reimbursements, hotels, flights],
+  goals: [],
   recentTransactions: [],
 };
+
+const originalDbPath = process.env.LOCALFIN_DB_PATH;
+const tempRoots: string[] = [];
+
+function restoreEnvironment(): void {
+  if (originalDbPath === undefined) {
+    delete process.env.LOCALFIN_DB_PATH;
+  } else {
+    process.env.LOCALFIN_DB_PATH = originalDbPath;
+  }
+}
+
+async function useTempDatabase(): Promise<void> {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-ai-chat-test-"));
+  tempRoots.push(tempDir);
+  process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
+}
+
+afterEach(async () => {
+  closeDbForTests();
+  restoreEnvironment();
+  await Promise.all(
+    tempRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
+});
 
 function transaction(
   overrides: Partial<TransactionWithDetails>,
@@ -315,4 +350,137 @@ test("assistant action planning builds search-only update follow-up", () => {
   assert.equal(followUp?.input.id, "marriott");
   assert.equal(followUp?.input.comment, "work trip reimbursable");
   assert.equal(followUp?.input.subcategory_name, "Hotels");
+});
+
+test("assistant action planning pairs subcategory monthly goal updates with existing goals", () => {
+  const actions = prepareActionsForExecution(
+    [
+      {
+        type: "update_subcategory",
+        input: { id: "groceries", name: "Groceries", monthly_goal: 700 },
+      },
+    ],
+    "Increase the Groceries monthly goal to 700.",
+    "Done.",
+    {
+      ...context,
+      goals: [
+        {
+          id: "groceries-goal",
+          subcategory_id: "groceries",
+          subcategory_name: "Groceries",
+          amount: 650,
+          period: "monthly",
+          start_date: "2026-04-01",
+          end_date: null,
+          category_name: "Food",
+          category_type: "expense",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+          deleted_at: null,
+        },
+      ],
+    },
+  );
+
+  assert.equal(actions[0]?.type, "update_subcategory");
+  assert.equal(actions[1]?.type, "update_goal");
+  assert.equal(actions[1]?.input.id, "groceries-goal");
+  assert.equal(actions[1]?.input.amount, 700);
+});
+
+test("assistant max turn setting defaults and clamps", () => {
+  assert.equal(normalizeMaxAssistantTurns(undefined), 5);
+  assert.equal(normalizeMaxAssistantTurns(0), 1);
+  assert.equal(normalizeMaxAssistantTurns(99), 10);
+  assert.equal(normalizeMaxAssistantTurns(4.8), 4);
+});
+
+test("assistant bulk update action updates every matching transaction", async () => {
+  await useTempDatabase();
+  const testAccount = createAccount({ name: "Bulk Checking", type: "asset" });
+  const category = createCategory({ name: "Bulk Essentials", type: "expense" });
+  createSubcategory({
+    name: "Bulk Rent",
+    category_id: category.id,
+  });
+  const other = createSubcategory({
+    name: "Bulk Other",
+    category_id: category.id,
+  });
+
+  createTransaction({
+    account_id: testAccount.id,
+    date: "2026-05-01",
+    name: "ZELLE INSTANT PMT TO Nick",
+    amount: -1561,
+    subcategory_id: other.id,
+  });
+  createTransaction({
+    account_id: testAccount.id,
+    date: "2026-04-01",
+    name: "ZELLE INSTANT PMT TO Nick",
+    amount: -1561,
+    subcategory_id: other.id,
+  });
+  createTransaction({
+    account_id: testAccount.id,
+    date: "2026-04-02",
+    name: "MONTHLY MAINTENANCE FEE",
+    amount: -12,
+    subcategory_id: other.id,
+  });
+
+  const result = executeAction({
+    type: "bulk_update_transactions",
+    input: {
+      account_name: "Bulk Checking",
+      searchQuery: 'name:"ZELLE INSTANT PMT"',
+      updates: { subcategory_name: "Bulk Rent" },
+    },
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal((result.result as { matched_count: number }).matched_count, 2);
+  assert.equal((result.result as { updated_count: number }).updated_count, 2);
+
+  const zelleTransactions = getTransactionsWithDetails({
+    searchQuery: 'name:"ZELLE INSTANT PMT"',
+    accountId: testAccount.id,
+  });
+  assert.equal(zelleTransactions.length, 2);
+  assert.ok(
+    zelleTransactions.every(
+      (transaction) => transaction.subcategory_name === "Bulk Rent",
+    ),
+  );
+
+  const feeTransactions = getTransactionsWithDetails({
+    searchQuery: 'name:"MONTHLY MAINTENANCE FEE"',
+    accountId: testAccount.id,
+  });
+  assert.equal(feeTransactions[0]?.subcategory_name, "Bulk Other");
+});
+
+test("assistant bulk update action returns zero counts for no matches", async () => {
+  await useTempDatabase();
+  const testAccount = createAccount({ name: "Empty Bulk Checking", type: "asset" });
+  const category = createCategory({ name: "Empty Bulk Essentials", type: "expense" });
+  createSubcategory({
+    name: "Empty Bulk Rent",
+    category_id: category.id,
+  });
+
+  const result = executeAction({
+    type: "bulk_update_transactions",
+    input: {
+      account_name: testAccount.name,
+      searchQuery: 'name:"NO MATCH"',
+      updates: { subcategory_name: "Empty Bulk Rent" },
+    },
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal((result.result as { matched_count: number }).matched_count, 0);
+  assert.equal((result.result as { updated_count: number }).updated_count, 0);
 });
