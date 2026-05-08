@@ -1,11 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { Bot, MessageSquare, Send, X, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  History,
+  Loader2,
+  MessageSquare,
+  Plus,
+  Send,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { useAI } from '@/hooks/useAI';
-import type { ChatActionResult, ChatStreamEvent, PlannedChatAction } from '@/hooks/useAI';
+import type {
+  AgentConversation,
+  AgentMessage,
+  ChatActionResult,
+  ChatStreamEvent,
+  PlannedChatAction,
+} from '@/hooks/useAI';
 import { cn } from '@/lib/utils';
 import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
 import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
@@ -71,16 +88,44 @@ function actionStatusText(action: StreamAction | ChatActionResult) {
   return action.status === 'success' ? 'Succeeded' : 'Failed';
 }
 
+function messageFromPersisted(message: AgentMessage): ChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    actions: message.actions ?? undefined,
+  };
+}
+
+function formatConversationTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 export function ChatSidePanel({ open, onOpenChange, inputRef }: ChatSidePanelProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamState, setStreamState] = useState<StreamState | null>(null);
-  const [conversationId] = useState(() => crypto.randomUUID());
+  const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID());
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamStateRef = useRef<StreamState | null>(null);
   const { pathname } = useLocation();
-  const { streamChat } = useAI();
+  const {
+    conversations,
+    createConversation,
+    deleteConversation,
+    loadConversationMessages,
+    streamChat,
+  } = useAI();
 
+  const conversationList = conversations.data ?? [];
+  const selectedConversation = conversationList.find((item) => item.id === conversationId);
   const logHint = useMemo(() => `logs/*-${conversationId}.jsonl`, [conversationId]);
   const isStreaming = streamState !== null;
 
@@ -214,6 +259,50 @@ export function ChatSidePanel({ open, onOpenChange, inputRef }: ChatSidePanelPro
     }
   }, [updateStreamState]);
 
+  const startNewConversation = useCallback(async () => {
+    if (isStreaming) return;
+    try {
+      const response = await createConversation.mutateAsync({ currentPage: pathname });
+      if (!response.data) throw new Error('Assistant conversation was not created.');
+      setConversationId(response.data.id);
+      setMessages([]);
+      setInput('');
+      setHistoryOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not create conversation.');
+    }
+  }, [createConversation, isStreaming, pathname]);
+
+  const selectConversation = useCallback(async (conversation: AgentConversation) => {
+    if (isStreaming) return;
+    setLoadingConversationId(conversation.id);
+    try {
+      const loaded = await loadConversationMessages(conversation.id);
+      setConversationId(conversation.id);
+      setMessages(loaded.map(messageFromPersisted));
+      setInput('');
+      setHistoryOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not load conversation.');
+    } finally {
+      setLoadingConversationId(null);
+    }
+  }, [isStreaming, loadConversationMessages]);
+
+  const removeConversation = useCallback(async (conversation: AgentConversation) => {
+    if (isStreaming) return;
+    try {
+      await deleteConversation.mutateAsync(conversation.id);
+      if (conversation.id === conversationId) {
+        setConversationId(crypto.randomUUID());
+        setMessages([]);
+        setInput('');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not delete conversation.');
+    }
+  }, [conversationId, deleteConversation, isStreaming]);
+
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || isStreaming) return;
@@ -283,9 +372,30 @@ export function ChatSidePanel({ open, onOpenChange, inputRef }: ChatSidePanelPro
           <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4">
             <Bot className="h-5 w-5" />
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold">LocalFin AI</div>
+              <div className="truncate text-sm font-semibold">{selectedConversation?.title ?? 'LocalFin AI'}</div>
               <div className="truncate text-xs text-muted-foreground">{logHint}</div>
             </div>
+            <button
+              type="button"
+              onClick={() => setHistoryOpen((value) => !value)}
+              className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              aria-label="Conversation history"
+              title="Conversation history"
+            >
+              <History className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void startNewConversation();
+              }}
+              className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              aria-label="New conversation"
+              title="New conversation"
+              disabled={isStreaming}
+            >
+              <Plus className="h-4 w-4" />
+            </button>
             <button
               type="button"
               onClick={() => onOpenChange(false)}
@@ -295,6 +405,57 @@ export function ChatSidePanel({ open, onOpenChange, inputRef }: ChatSidePanelPro
               <X className="h-4 w-4" />
             </button>
           </div>
+
+          {historyOpen && (
+            <div className="max-h-72 shrink-0 overflow-y-auto border-b border-border bg-card px-3 py-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-xs font-medium uppercase text-muted-foreground">Conversations</div>
+                {conversations.isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+              </div>
+              {conversationList.length === 0 && (
+                <div className="rounded border border-border bg-background p-2 text-xs text-muted-foreground">
+                  No saved conversations yet.
+                </div>
+              )}
+              <div className="space-y-1">
+                {conversationList.map((conversation) => (
+                  <div
+                    key={conversation.id}
+                    className={cn(
+                      'flex items-start gap-1 rounded border border-transparent p-1',
+                      conversation.id === conversationId && 'border-border bg-background',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void selectConversation(conversation);
+                      }}
+                      disabled={isStreaming || loadingConversationId === conversation.id}
+                      className="min-w-0 flex-1 rounded px-2 py-1 text-left hover:bg-secondary disabled:opacity-60"
+                    >
+                      <div className="truncate text-sm font-medium">{conversation.title}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {formatConversationTime(conversation.updated_at)}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void removeConversation(conversation);
+                      }}
+                      disabled={isStreaming || deleteConversation.isPending}
+                      className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-60"
+                      aria-label={`Delete ${conversation.title}`}
+                      title="Delete conversation"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
             {messages.length === 0 && (

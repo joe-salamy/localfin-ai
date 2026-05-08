@@ -3,6 +3,12 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { categorizeTransactions } from '../services/ai.js';
 import { chatWithAssistant, streamChatWithAssistant } from '../services/ai-chat.js';
+import {
+  createAgentConversation,
+  getAgentMessages,
+  listAgentConversations,
+  softDeleteAgentConversation,
+} from '../services/agent-conversations.js';
 import { finiteNumber, nonEmptyString, parseRequest } from './validation.js';
 import { HTTP_HEADERS } from '../config/app.js';
 
@@ -21,6 +27,12 @@ const chatSchema = z.object({
   message: nonEmptyString.max(10_000),
   currentPage: z.string().optional(),
 });
+const createConversationSchema = z.object({
+  currentPage: z.string().optional(),
+});
+const conversationParamsSchema = z.object({
+  id: nonEmptyString,
+});
 
 router.post('/categorize', async (req: Request, res: Response) => {
   try {
@@ -31,6 +43,51 @@ router.post('/categorize', async (req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.get('/conversations', (_req: Request, res: Response) => {
+  try {
+    res.json({ success: true, data: listAgentConversations() });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.post('/conversations', (req: Request, res: Response) => {
+  try {
+    const body = parseRequest(createConversationSchema, req.body, res);
+    if (!body) return;
+    const data = createAgentConversation({ currentPage: body.currentPage ?? null });
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.get('/conversations/:id/messages', (req: Request, res: Response) => {
+  try {
+    const params = parseRequest(conversationParamsSchema, req.params, res);
+    if (!params) return;
+    const data = getAgentMessages(params.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(404).json({ success: false, error: message });
+  }
+});
+
+router.delete('/conversations/:id', (req: Request, res: Response) => {
+  try {
+    const params = parseRequest(conversationParamsSchema, req.params, res);
+    if (!params) return;
+    softDeleteAgentConversation(params.id);
+    res.json({ success: true, data: { id: params.id } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(404).json({ success: false, error: message });
   }
 });
 
