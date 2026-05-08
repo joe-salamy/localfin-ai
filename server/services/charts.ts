@@ -228,7 +228,11 @@ export function prepareSankeyData(
   for (const row of incomeRows) {
     const subId = `${row.subcategory_name} (income)`;
     const categoryId = `income-category:${row.category_id}`;
-    addNode(subId, resolveEntityColor(row.subcategory_id, row.subcategory_color));
+    addLabeledNode(
+      subId,
+      row.subcategory_name,
+      resolveEntityColor(row.subcategory_id, row.subcategory_color),
+    );
     addLabeledNode(
       categoryId,
       row.category_name,
@@ -278,7 +282,11 @@ export function prepareSankeyData(
   for (const row of expenseRows) {
     const subId = `${row.subcategory_name} (expense)`;
     const categoryId = `expense-category:${row.category_id}`;
-    addNode(subId, resolveEntityColor(row.subcategory_id, row.subcategory_color));
+    addLabeledNode(
+      subId,
+      row.subcategory_name,
+      resolveEntityColor(row.subcategory_id, row.subcategory_color),
+    );
     links.push({ source: categoryId, target: subId, value: row.total });
   }
 
