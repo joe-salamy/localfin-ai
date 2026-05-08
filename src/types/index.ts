@@ -174,6 +174,7 @@ export interface NetWorthDataPoint {
 
 export interface SankeyNode {
   id: string;
+  displayName?: string;
   nodeColor?: string;
 }
 

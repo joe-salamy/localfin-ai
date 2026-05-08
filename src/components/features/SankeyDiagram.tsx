@@ -16,6 +16,7 @@ export function SankeyDiagram({ data }: SankeyDiagramProps) {
         data={data}
         margin={{ top: 20, right: 120, bottom: 20, left: 120 }}
         align="justify"
+        label={(node) => (node as { displayName?: string }).displayName ?? node.id}
         colors={(node) => (node as { nodeColor?: string }).nodeColor ?? '#888'}
         nodeOpacity={1}
         nodeHoverOthersOpacity={0.35}

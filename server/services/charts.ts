@@ -187,26 +187,37 @@ export function prepareSankeyData(
     }
   }
 
+  function addLabeledNode(id: string, displayName: string, color: string): void {
+    if (!nodeSet.has(id)) {
+      nodeSet.add(id);
+      nodes.push({ id, displayName, nodeColor: color });
+    }
+  }
+
   // Calculate totals
   let totalIncome = 0;
   let totalExpenses = 0;
 
-  const incomeCategoryTotals = new Map<string, number>();
+  const incomeCategoryTotals = new Map<string, { name: string; total: number }>();
   for (const row of incomeRows) {
     totalIncome += row.total;
-    incomeCategoryTotals.set(
-      row.category_name,
-      (incomeCategoryTotals.get(row.category_name) ?? 0) + row.total,
-    );
+    const categoryId = `income-category:${row.category_id}`;
+    const previous = incomeCategoryTotals.get(categoryId);
+    incomeCategoryTotals.set(categoryId, {
+      name: row.category_name,
+      total: (previous?.total ?? 0) + row.total,
+    });
   }
 
-  const expenseCategoryTotals = new Map<string, number>();
+  const expenseCategoryTotals = new Map<string, { name: string; total: number }>();
   for (const row of expenseRows) {
     totalExpenses += row.total;
-    expenseCategoryTotals.set(
-      row.category_name,
-      (expenseCategoryTotals.get(row.category_name) ?? 0) + row.total,
-    );
+    const categoryId = `expense-category:${row.category_id}`;
+    const previous = expenseCategoryTotals.get(categoryId);
+    expenseCategoryTotals.set(categoryId, {
+      name: row.category_name,
+      total: (previous?.total ?? 0) + row.total,
+    });
   }
 
   // Add center nodes
@@ -216,13 +227,18 @@ export function prepareSankeyData(
   // Income subcategories -> Income categories -> Total Income
   for (const row of incomeRows) {
     const subId = `${row.subcategory_name} (income)`;
+    const categoryId = `income-category:${row.category_id}`;
     addNode(subId, resolveEntityColor(row.subcategory_id, row.subcategory_color));
-    addNode(row.category_name, resolveEntityColor(row.category_id, row.category_color));
-    links.push({ source: subId, target: row.category_name, value: row.total });
+    addLabeledNode(
+      categoryId,
+      row.category_name,
+      resolveEntityColor(row.category_id, row.category_color),
+    );
+    links.push({ source: subId, target: categoryId, value: row.total });
   }
 
-  for (const [categoryName, total] of incomeCategoryTotals) {
-    links.push({ source: categoryName, target: "Total Income", value: total });
+  for (const [categoryId, category] of incomeCategoryTotals) {
+    links.push({ source: categoryId, target: "Total Income", value: category.total });
   }
 
   // Total Income -> Total Expenses
@@ -243,25 +259,27 @@ export function prepareSankeyData(
   }
 
   // Total Expenses -> Expense categories -> Expense subcategories
-  for (const [categoryName, total] of expenseCategoryTotals) {
-    const categoryRow = expenseRows.find((row) => row.category_name === categoryName);
-    addNode(
-      categoryName,
+  for (const [categoryId, category] of expenseCategoryTotals) {
+    const categoryRow = expenseRows.find((row) => `expense-category:${row.category_id}` === categoryId);
+    addLabeledNode(
+      categoryId,
+      category.name,
       categoryRow
         ? resolveEntityColor(categoryRow.category_id, categoryRow.category_color)
         : "#6b3434",
     );
     links.push({
       source: "Total Expenses",
-      target: categoryName,
-      value: total,
+      target: categoryId,
+      value: category.total,
     });
   }
 
   for (const row of expenseRows) {
     const subId = `${row.subcategory_name} (expense)`;
+    const categoryId = `expense-category:${row.category_id}`;
     addNode(subId, resolveEntityColor(row.subcategory_id, row.subcategory_color));
-    links.push({ source: row.category_name, target: subId, value: row.total });
+    links.push({ source: categoryId, target: subId, value: row.total });
   }
 
   return { nodes, links };
