@@ -5,7 +5,10 @@ import path from "node:path";
 import process from "node:process";
 import dotenv from "dotenv";
 import type Database from "better-sqlite3";
-import type { ChatResult, ChatStreamEvent } from "../server/services/ai-chat.js";
+import type {
+  ChatResult,
+  ChatStreamEvent,
+} from "../server/services/ai-chat.js";
 import type {
   Account,
   CategoryType,
@@ -235,7 +238,10 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function includesText(actual: string | null | undefined, expected: string): boolean {
+function includesText(
+  actual: string | null | undefined,
+  expected: string,
+): boolean {
   return normalize(actual ?? "").includes(normalize(expected));
 }
 
@@ -282,7 +288,9 @@ function assertAllActionsSucceeded(): EvalAssertion {
         ? pass("all actions succeeded")
         : fail(
             "all actions succeeded",
-            failed.map((action) => `${action.type}: ${action.error}`).join("; "),
+            failed
+              .map((action) => `${action.type}: ${action.error}`)
+              .join("; "),
           );
     },
   };
@@ -302,9 +310,15 @@ function assertSearchBeforeUpdate(): EvalAssertion {
   return {
     name: "search happens before transaction update",
     check: ({ actions }) => {
-      const searchIndex = actions.findIndex((action) => action.type === "search_transactions");
-      const updateIndex = actions.findIndex((action) => action.type === "update_transaction");
-      return searchIndex !== -1 && updateIndex !== -1 && searchIndex < updateIndex
+      const searchIndex = actions.findIndex(
+        (action) => action.type === "search_transactions",
+      );
+      const updateIndex = actions.findIndex(
+        (action) => action.type === "update_transaction",
+      );
+      return searchIndex !== -1 &&
+        updateIndex !== -1 &&
+        searchIndex < updateIndex
         ? pass("search happens before transaction update")
         : fail(
             "search happens before transaction update",
@@ -314,17 +328,29 @@ function assertSearchBeforeUpdate(): EvalAssertion {
   };
 }
 
-function assertAccount(name: string, type?: string, balance?: number): EvalAssertion {
+function assertAccount(
+  name: string,
+  type?: string,
+  balance?: number,
+): EvalAssertion {
   return {
     name: `account exists: ${name}`,
     check: ({ snapshot }) => {
-      const account = snapshot.accounts.find((item) => normalize(item.name) === normalize(name));
+      const account = snapshot.accounts.find(
+        (item) => normalize(item.name) === normalize(name),
+      );
       if (!account) return fail(`account exists: ${name}`, "account not found");
       if (type && account.type !== type) {
         return fail(`account exists: ${name}`, `type was ${account.type}`);
       }
-      if (balance !== undefined && !numberEquals(account.current_balance, balance)) {
-        return fail(`account exists: ${name}`, `balance was ${account.current_balance}`);
+      if (
+        balance !== undefined &&
+        !numberEquals(account.current_balance, balance)
+      ) {
+        return fail(
+          `account exists: ${name}`,
+          `balance was ${account.current_balance}`,
+        );
       }
       return pass(`account exists: ${name}`);
     },
@@ -336,7 +362,8 @@ function assertCategory(name: string, type: string): EvalAssertion {
     name: `category exists: ${name}`,
     check: ({ snapshot }) => {
       const category = snapshot.categories.find(
-        (item) => normalize(item.name) === normalize(name) && item.type === type,
+        (item) =>
+          normalize(item.name) === normalize(name) && item.type === type,
       );
       return category
         ? pass(`category exists: ${name}`)
@@ -356,8 +383,12 @@ function assertSubcategory(
       const subcategory = snapshot.subcategories.find(
         (item) => normalize(item.name) === normalize(name),
       );
-      if (!subcategory) return fail(`subcategory exists: ${name}`, "subcategory not found");
-      if (categoryName && normalize(subcategory.category_name) !== normalize(categoryName)) {
+      if (!subcategory)
+        return fail(`subcategory exists: ${name}`, "subcategory not found");
+      if (
+        categoryName &&
+        normalize(subcategory.category_name) !== normalize(categoryName)
+      ) {
         return fail(
           `subcategory exists: ${name}`,
           `category was ${subcategory.category_name}`,
@@ -365,7 +396,8 @@ function assertSubcategory(
       }
       if (
         monthlyGoal !== undefined &&
-        (subcategory.monthly_goal === null || !numberEquals(subcategory.monthly_goal, monthlyGoal ?? 0))
+        (subcategory.monthly_goal === null ||
+          !numberEquals(subcategory.monthly_goal, monthlyGoal ?? 0))
       ) {
         return fail(
           `subcategory exists: ${name}`,
@@ -386,14 +418,22 @@ function assertGoal(
     name: `goal exists: ${subcategoryName}`,
     check: ({ snapshot }) => {
       const goal = snapshot.goals.find(
-        (item) => normalize(item.subcategory_name) === normalize(subcategoryName),
+        (item) =>
+          normalize(item.subcategory_name) === normalize(subcategoryName),
       );
-      if (!goal) return fail(`goal exists: ${subcategoryName}`, "goal not found");
+      if (!goal)
+        return fail(`goal exists: ${subcategoryName}`, "goal not found");
       if (!numberEquals(goal.amount, amount)) {
-        return fail(`goal exists: ${subcategoryName}`, `amount was ${goal.amount}`);
+        return fail(
+          `goal exists: ${subcategoryName}`,
+          `amount was ${goal.amount}`,
+        );
       }
       if (goal.period !== period) {
-        return fail(`goal exists: ${subcategoryName}`, `period was ${goal.period}`);
+        return fail(
+          `goal exists: ${subcategoryName}`,
+          `period was ${goal.period}`,
+        );
       }
       return pass(`goal exists: ${subcategoryName}`);
     },
@@ -412,15 +452,20 @@ function assertTransaction(expected: {
     name: `transaction exists: ${expected.nameIncludes}`,
     check: ({ snapshot }) => {
       const transaction = snapshot.transactions.find((item) => {
-        if (normalize(item.account_name) !== normalize(expected.account)) return false;
+        if (normalize(item.account_name) !== normalize(expected.account))
+          return false;
         if (!includesText(item.name, expected.nameIncludes)) return false;
         if (expected.date && item.date !== expected.date) return false;
-        if (expected.amount !== undefined && !numberEquals(item.amount, expected.amount)) {
+        if (
+          expected.amount !== undefined &&
+          !numberEquals(item.amount, expected.amount)
+        ) {
           return false;
         }
         if (
           expected.subcategory &&
-          normalize(item.subcategory_name ?? "") !== normalize(expected.subcategory)
+          normalize(item.subcategory_name ?? "") !==
+            normalize(expected.subcategory)
         ) {
           return false;
         }
@@ -434,7 +479,10 @@ function assertTransaction(expected: {
       });
       return transaction
         ? pass(`transaction exists: ${expected.nameIncludes}`)
-        : fail(`transaction exists: ${expected.nameIncludes}`, "transaction not found");
+        : fail(
+            `transaction exists: ${expected.nameIncludes}`,
+            "transaction not found",
+          );
     },
   };
 }
@@ -443,7 +491,10 @@ function assertNoDeletedRows(): EvalAssertion {
   return {
     name: "no rows were soft-deleted",
     check: ({ snapshot }) => {
-      const total = Object.values(snapshot.deletedRows).reduce((sum, value) => sum + value, 0);
+      const total = Object.values(snapshot.deletedRows).reduce(
+        (sum, value) => sum + value,
+        0,
+      );
       return total === 0
         ? pass("no rows were soft-deleted")
         : fail("no rows were soft-deleted", `${total} deleted rows found`);
@@ -457,7 +508,9 @@ function assertStreamLifecycle(): EvalAssertion {
     check: ({ streamEvents }) => {
       const types = streamEvents.map((event) => event.type);
       const required = ["started", "thinking", "actions_planned", "final"];
-      const missing = required.filter((type) => !types.includes(type as ChatStreamEvent["type"]));
+      const missing = required.filter(
+        (type) => !types.includes(type as ChatStreamEvent["type"]),
+      );
       return missing.length === 0
         ? pass("stream lifecycle completed")
         : fail("stream lifecycle completed", `missing ${missing.join(", ")}`);
@@ -580,9 +633,24 @@ const baseSeed: ScenarioSeed = {
     },
   ],
   goals: [
-    { subcategory: "Groceries", amount: 650, period: "monthly", start_date: "2026-04-01" },
-    { subcategory: "Restaurants", amount: 300, period: "monthly", start_date: "2026-04-01" },
-    { subcategory: "Rideshare", amount: 120, period: "monthly", start_date: "2026-04-01" },
+    {
+      subcategory: "Groceries",
+      amount: 650,
+      period: "monthly",
+      start_date: "2026-04-01",
+    },
+    {
+      subcategory: "Restaurants",
+      amount: 300,
+      period: "monthly",
+      start_date: "2026-04-01",
+    },
+    {
+      subcategory: "Rideshare",
+      amount: 120,
+      period: "monthly",
+      start_date: "2026-04-01",
+    },
   ],
 };
 
@@ -619,10 +687,36 @@ const scenarios: LiveAgentScenario[] = [
       "Add these to Test Credit Card: May 1 Whole Foods 76.44 groceries, May 2 Uber ride 21.90 rideshare for airport, May 3 Delta flight 318.20 flights for work trip. Also add a +318.20 reimbursement on Test Checking dated May 7 in Reimbursements with comment Delta flight refund.",
     assertions: [
       assertActionCount("create_transaction", 4),
-      assertTransaction({ account: "Test Credit Card", date: "2026-05-01", nameIncludes: "Whole Foods", amount: -76.44, subcategory: "Groceries" }),
-      assertTransaction({ account: "Test Credit Card", date: "2026-05-02", nameIncludes: "Uber", amount: -21.9, subcategory: "Rideshare", commentIncludes: "airport" }),
-      assertTransaction({ account: "Test Credit Card", date: "2026-05-03", nameIncludes: "Delta", amount: -318.2, subcategory: "Flights" }),
-      assertTransaction({ account: "Test Checking", date: "2026-05-07", nameIncludes: "reimbursement", amount: 318.2, subcategory: "Reimbursements", commentIncludes: "Delta" }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-05-01",
+        nameIncludes: "Whole Foods",
+        amount: -76.44,
+        subcategory: "Groceries",
+      }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-05-02",
+        nameIncludes: "Uber",
+        amount: -21.9,
+        subcategory: "Rideshare",
+        commentIncludes: "airport",
+      }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-05-03",
+        nameIncludes: "Delta",
+        amount: -318.2,
+        subcategory: "Flights",
+      }),
+      assertTransaction({
+        account: "Test Checking",
+        date: "2026-05-07",
+        nameIncludes: "reimbursement",
+        amount: 318.2,
+        subcategory: "Reimbursements",
+        commentIncludes: "Delta",
+      }),
       assertAllActionsSucceeded(),
     ],
   },
@@ -634,8 +728,22 @@ const scenarios: LiveAgentScenario[] = [
       "Record two Target trips on Test Checking: 2026-05-04 Target groceries 48.13 and 2026-05-05 Target household snacks 19.26 restaurants. Add comments that the first was weekly groceries and the second was lunch supplies.",
     assertions: [
       assertActionCount("create_transaction", 2),
-      assertTransaction({ account: "Test Checking", date: "2026-05-04", nameIncludes: "Target", amount: -48.13, subcategory: "Groceries", commentIncludes: "weekly" }),
-      assertTransaction({ account: "Test Checking", date: "2026-05-05", nameIncludes: "Target", amount: -19.26, subcategory: "Restaurants", commentIncludes: "lunch" }),
+      assertTransaction({
+        account: "Test Checking",
+        date: "2026-05-04",
+        nameIncludes: "Target",
+        amount: -48.13,
+        subcategory: "Groceries",
+        commentIncludes: "weekly",
+      }),
+      assertTransaction({
+        account: "Test Checking",
+        date: "2026-05-05",
+        nameIncludes: "Target",
+        amount: -19.26,
+        subcategory: "Restaurants",
+        commentIncludes: "lunch",
+      }),
       assertAllActionsSucceeded(),
     ],
   },
@@ -647,9 +755,27 @@ const scenarios: LiveAgentScenario[] = [
       "Add my 2026-05-15 Acme Payroll deposit of 2750 to Test Checking as Paycheck. Also add a Test Checking card payment of -400 with comment payment to Test Credit Card, and a matching +400 on Test Credit Card with comment payment from checking, both dated 2026-05-16.",
     assertions: [
       assertActionCount("create_transaction", 3),
-      assertTransaction({ account: "Test Checking", date: "2026-05-15", nameIncludes: "Acme", amount: 2750, subcategory: "Paycheck" }),
-      assertTransaction({ account: "Test Checking", date: "2026-05-16", nameIncludes: "payment", amount: -400, commentIncludes: "Credit Card" }),
-      assertTransaction({ account: "Test Credit Card", date: "2026-05-16", nameIncludes: "payment", amount: 400, commentIncludes: "checking" }),
+      assertTransaction({
+        account: "Test Checking",
+        date: "2026-05-15",
+        nameIncludes: "Acme",
+        amount: 2750,
+        subcategory: "Paycheck",
+      }),
+      assertTransaction({
+        account: "Test Checking",
+        date: "2026-05-16",
+        nameIncludes: "payment",
+        amount: -400,
+        commentIncludes: "Credit Card",
+      }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-05-16",
+        nameIncludes: "payment",
+        amount: 400,
+        commentIncludes: "checking",
+      }),
       assertAllActionsSucceeded(),
     ],
   },
@@ -661,7 +787,14 @@ const scenarios: LiveAgentScenario[] = [
       "Find the rideshare transaction matching (uber OR lyft) AND amount<0 AND date>=2026-04-01 AND NOT eats. Update the matching airport/work-trip ride to comment 'airport transfer - reimbursable' and keep it in Rideshare.",
     assertions: [
       assertSearchBeforeUpdate(),
-      assertTransaction({ account: "Test Credit Card", date: "2026-04-10", nameIncludes: "Lyft", amount: -42.75, subcategory: "Rideshare", commentIncludes: "reimbursable" }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-04-10",
+        nameIncludes: "Lyft",
+        amount: -42.75,
+        subcategory: "Rideshare",
+        commentIncludes: "reimbursable",
+      }),
     ],
   },
   {
@@ -669,10 +802,17 @@ const scenarios: LiveAgentScenario[] = [
     name: "hotel reimbursement classification",
     seed: baseSeed,
     prompt:
-      "Search comment:\"work trip\" OR name:\"hotel\" -reimbursed, then update the hotel transaction so its comment says 'work trip reimbursable' and the subcategory is Hotels.",
+      'Search comment:"work trip" OR name:"hotel" -reimbursed, then update the hotel transaction so its comment says \'work trip reimbursable\' and the subcategory is Hotels.',
     assertions: [
       assertSearchBeforeUpdate(),
-      assertTransaction({ account: "Test Credit Card", date: "2026-04-11", nameIncludes: "Marriott", amount: -215.4, subcategory: "Hotels", commentIncludes: "reimbursable" }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-04-11",
+        nameIncludes: "Marriott",
+        amount: -215.4,
+        subcategory: "Hotels",
+        commentIncludes: "reimbursable",
+      }),
     ],
   },
   {
@@ -683,7 +823,14 @@ const scenarios: LiveAgentScenario[] = [
       "Use account:\"Test Checking\" category:Food subcategory:Groceries amount<-40 to find the April Whole Foods transaction. Update its comment to 'bulk grocery run'.",
     assertions: [
       assertSearchBeforeUpdate(),
-      assertTransaction({ account: "Test Checking", date: "2026-04-03", nameIncludes: "Whole Foods", amount: -84.32, subcategory: "Groceries", commentIncludes: "bulk" }),
+      assertTransaction({
+        account: "Test Checking",
+        date: "2026-04-03",
+        nameIncludes: "Whole Foods",
+        amount: -84.32,
+        subcategory: "Groceries",
+        commentIncludes: "bulk",
+      }),
     ],
   },
   {
@@ -691,7 +838,7 @@ const scenarios: LiveAgentScenario[] = [
     name: "exclude payroll",
     seed: baseSeed,
     prompt:
-      "Find positive transactions in Test Checking that are not payroll using account:\"Test Checking\" amount>0 NOT payroll. If none match, do not create or update anything; just explain that no matching non-payroll income exists.",
+      'Find positive transactions in Test Checking that are not payroll using account:"Test Checking" amount>0 NOT payroll. If none match, do not create or update anything; just explain that no matching non-payroll income exists.',
     assertions: [
       assertActionCount("search_transactions", 1),
       assertNoAction("create_transaction"),
@@ -710,7 +857,14 @@ const scenarios: LiveAgentScenario[] = [
       assertActionCount("update_goal", 1),
       assertAccount("Household Checking", "asset"),
       assertGoal("Groceries", 700, "monthly"),
-      assertTransaction({ account: "Household Checking", date: "2026-05-20", nameIncludes: "Costco", amount: -145.27, subcategory: "Groceries", commentIncludes: "pantry" }),
+      assertTransaction({
+        account: "Household Checking",
+        date: "2026-05-20",
+        nameIncludes: "Costco",
+        amount: -145.27,
+        subcategory: "Groceries",
+        commentIncludes: "pantry",
+      }),
     ],
   },
   {
@@ -722,7 +876,13 @@ const scenarios: LiveAgentScenario[] = [
     assertions: [
       assertCategory("Household", "expense"),
       assertSubcategory("Utilities", "Household", 250),
-      assertTransaction({ account: "Test Checking", date: "2026-05-06", nameIncludes: "Electric", amount: -121.88, subcategory: "Utilities" }),
+      assertTransaction({
+        account: "Test Checking",
+        date: "2026-05-06",
+        nameIncludes: "Electric",
+        amount: -121.88,
+        subcategory: "Utilities",
+      }),
     ],
   },
   {
@@ -733,7 +893,14 @@ const scenarios: LiveAgentScenario[] = [
       "Set Flights to a quarterly goal of 900 starting 2026-04-01, then add a 2026-05-12 United flight for 287.64 to Test Credit Card in Flights with comment family visit.",
     assertions: [
       assertGoal("Flights", 900, "quarterly"),
-      assertTransaction({ account: "Test Credit Card", date: "2026-05-12", nameIncludes: "United", amount: -287.64, subcategory: "Flights", commentIncludes: "family" }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-05-12",
+        nameIncludes: "United",
+        amount: -287.64,
+        subcategory: "Flights",
+        commentIncludes: "family",
+      }),
     ],
   },
   {
@@ -746,7 +913,13 @@ const scenarios: LiveAgentScenario[] = [
       assertNoAction("delete_transaction"),
       assertNoAction("delete_category"),
       assertNoDeletedRows(),
-      assertTransaction({ account: "Test Credit Card", date: "2026-04-11", nameIncludes: "Marriott", amount: -215.4, subcategory: "Hotels" }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-04-11",
+        nameIncludes: "Marriott",
+        amount: -215.4,
+        subcategory: "Hotels",
+      }),
     ],
   },
   {
@@ -755,10 +928,7 @@ const scenarios: LiveAgentScenario[] = [
     seed: baseSeed,
     prompt:
       "Add a 2026-05-09 Mystery Shop charge for 22.22 to account Vacation Wallet in Groceries. If that account does not exist, report that it could not be added.",
-    assertions: [
-      assertAnyActionFailed(),
-      assertNoDeletedRows(),
-    ],
+    assertions: [assertAnyActionFailed(), assertNoDeletedRows()],
   },
   {
     suite: "robustness and refusal",
@@ -766,10 +936,7 @@ const scenarios: LiveAgentScenario[] = [
     seed: baseSeed,
     prompt:
       "Add a Test Checking transaction dated 2026-02-31 named Bad Date Cafe for 18.00 in Restaurants. Use that exact date if possible.",
-    assertions: [
-      assertAnyActionFailed(),
-      assertNoDeletedRows(),
-    ],
+    assertions: [assertAnyActionFailed(), assertNoDeletedRows()],
   },
   {
     suite: "robustness and refusal",
@@ -793,7 +960,14 @@ const scenarios: LiveAgentScenario[] = [
     assertions: [
       assertStreamLifecycle(),
       assertActionCount("create_transaction", 1),
-      assertTransaction({ account: "Test Checking", date: "2026-05-22", nameIncludes: "Trader", amount: -63.19, subcategory: "Groceries", commentIncludes: "weekly" }),
+      assertTransaction({
+        account: "Test Checking",
+        date: "2026-05-22",
+        nameIncludes: "Trader",
+        amount: -63.19,
+        subcategory: "Groceries",
+        commentIncludes: "weekly",
+      }),
     ],
   },
   {
@@ -802,11 +976,18 @@ const scenarios: LiveAgentScenario[] = [
     mode: "stream",
     seed: baseSeed,
     prompt:
-      "Search name:\"Uber Trip\" AND comment:\"client\" and update that transaction's comment to 'client meeting rideshare - reimbursable'.",
+      'Search name:"Uber Trip" AND comment:"client" and update that transaction\'s comment to \'client meeting rideshare - reimbursable\'.',
     assertions: [
       assertStreamLifecycle(),
       assertSearchBeforeUpdate(),
-      assertTransaction({ account: "Test Credit Card", date: "2026-04-04", nameIncludes: "Uber Trip", amount: -18.45, subcategory: "Rideshare", commentIncludes: "reimbursable" }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-04-04",
+        nameIncludes: "Uber Trip",
+        amount: -18.45,
+        subcategory: "Rideshare",
+        commentIncludes: "reimbursable",
+      }),
     ],
   },
   {
@@ -839,11 +1020,17 @@ const scenarios: LiveAgentScenario[] = [
     name: "income search",
     seed: baseSeed,
     prompt:
-      "Search for type:income account:\"Test Checking\" amount>1000 and summarize the matching paycheck. Do not update anything.",
+      'Search for type:income account:"Test Checking" amount>1000 and summarize the matching paycheck. Do not update anything.',
     assertions: [
       assertActionCount("search_transactions", 1),
       assertNoAction("update_transaction"),
-      assertTransaction({ account: "Test Checking", date: "2026-04-15", nameIncludes: "Acme", amount: 2750, subcategory: "Paycheck" }),
+      assertTransaction({
+        account: "Test Checking",
+        date: "2026-04-15",
+        nameIncludes: "Acme",
+        amount: 2750,
+        subcategory: "Paycheck",
+      }),
     ],
   },
   {
@@ -854,7 +1041,13 @@ const scenarios: LiveAgentScenario[] = [
       "Create an annual goal of 960 for Subscriptions starting 2026-01-01, and add a 2026-05-01 Netflix subscription charge of 15.49 on Test Credit Card.",
     assertions: [
       assertGoal("Subscriptions", 960, "annual"),
-      assertTransaction({ account: "Test Credit Card", date: "2026-05-01", nameIncludes: "Netflix", amount: -15.49, subcategory: "Subscriptions" }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-05-01",
+        nameIncludes: "Netflix",
+        amount: -15.49,
+        subcategory: "Subscriptions",
+      }),
     ],
   },
   {
@@ -865,7 +1058,13 @@ const scenarios: LiveAgentScenario[] = [
       "Change Restaurants to a weekly goal of 90 starting 2026-05-03, then add a 2026-05-04 Sweetgreen lunch for 14.72 to Test Credit Card in Restaurants.",
     assertions: [
       assertGoal("Restaurants", 90, "weekly"),
-      assertTransaction({ account: "Test Credit Card", date: "2026-05-04", nameIncludes: "Sweetgreen", amount: -14.72, subcategory: "Restaurants" }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-05-04",
+        nameIncludes: "Sweetgreen",
+        amount: -14.72,
+        subcategory: "Restaurants",
+      }),
     ],
   },
   {
@@ -876,7 +1075,13 @@ const scenarios: LiveAgentScenario[] = [
       "Rename Test Credit Card to Rewards Visa and add a 2026-05-08 Shell fuel charge for 52.61 on Rewards Visa in Fuel.",
     assertions: [
       assertAccount("Rewards Visa", "liability"),
-      assertTransaction({ account: "Rewards Visa", date: "2026-05-08", nameIncludes: "Shell", amount: -52.61, subcategory: "Fuel" }),
+      assertTransaction({
+        account: "Rewards Visa",
+        date: "2026-05-08",
+        nameIncludes: "Shell",
+        amount: -52.61,
+        subcategory: "Fuel",
+      }),
     ],
   },
   {
@@ -888,7 +1093,13 @@ const scenarios: LiveAgentScenario[] = [
     assertions: [
       assertCategory("Interest", "income"),
       assertSubcategory("Bank Interest", "Interest"),
-      assertTransaction({ account: "Test Savings", date: "2026-05-31", nameIncludes: "interest", amount: 8.42, subcategory: "Bank Interest" }),
+      assertTransaction({
+        account: "Test Savings",
+        date: "2026-05-31",
+        nameIncludes: "interest",
+        amount: 8.42,
+        subcategory: "Bank Interest",
+      }),
     ],
   },
   {
@@ -898,7 +1109,13 @@ const scenarios: LiveAgentScenario[] = [
     prompt:
       "Add a valid 2026-05-18 H Mart grocery charge for 39.81 on Test Checking in Groceries. Also add a transaction to Missing Account for 10.00. Do the valid one even if the missing account fails.",
     assertions: [
-      assertTransaction({ account: "Test Checking", date: "2026-05-18", nameIncludes: "H Mart", amount: -39.81, subcategory: "Groceries" }),
+      assertTransaction({
+        account: "Test Checking",
+        date: "2026-05-18",
+        nameIncludes: "H Mart",
+        amount: -39.81,
+        subcategory: "Groceries",
+      }),
       assertAnyActionFailed(),
     ],
   },
@@ -909,7 +1126,13 @@ const scenarios: LiveAgentScenario[] = [
     prompt:
       "Create category Food again, and also add 2026-05-19 Chipotle 13.55 on Test Credit Card in Restaurants. The transaction should still be recorded even if Food already exists.",
     assertions: [
-      assertTransaction({ account: "Test Credit Card", date: "2026-05-19", nameIncludes: "Chipotle", amount: -13.55, subcategory: "Restaurants" }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-05-19",
+        nameIncludes: "Chipotle",
+        amount: -13.55,
+        subcategory: "Restaurants",
+      }),
       assertAnyActionFailed(),
     ],
   },
@@ -921,7 +1144,14 @@ const scenarios: LiveAgentScenario[] = [
       "Today I bought coffee at Blue Bottle for 5.75 on Test Checking. Put it under Restaurants with comment morning coffee.",
     assertions: [
       assertActionCount("create_transaction", 1),
-      assertTransaction({ account: "Test Checking", date: new Date().toISOString().slice(0, 10), nameIncludes: "Blue Bottle", amount: -5.75, subcategory: "Restaurants", commentIncludes: "morning" }),
+      assertTransaction({
+        account: "Test Checking",
+        date: new Date().toISOString().slice(0, 10),
+        nameIncludes: "Blue Bottle",
+        amount: -5.75,
+        subcategory: "Restaurants",
+        commentIncludes: "morning",
+      }),
     ],
   },
   {
@@ -931,13 +1161,24 @@ const scenarios: LiveAgentScenario[] = [
     prompt:
       "I said groceries but this was actually a restaurant: add 2026-05-21 Shake Shack 18.04 on Test Credit Card as Restaurants, comment corrected from groceries.",
     assertions: [
-      assertTransaction({ account: "Test Credit Card", date: "2026-05-21", nameIncludes: "Shake Shack", amount: -18.04, subcategory: "Restaurants", commentIncludes: "corrected" }),
+      assertTransaction({
+        account: "Test Credit Card",
+        date: "2026-05-21",
+        nameIncludes: "Shake Shack",
+        amount: -18.04,
+        subcategory: "Restaurants",
+        commentIncludes: "corrected",
+      }),
     ],
   },
 ];
 
 function countRows(db: Database.Database, table: string): number {
-  const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE deleted_at IS NOT NULL`).get() as {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM ${table} WHERE deleted_at IS NOT NULL`,
+    )
+    .get() as {
     count: number;
   };
   return row.count;
@@ -958,7 +1199,9 @@ function readSnapshot(db: Database.Database): EvalSnapshot {
       )
       .all() as SnapshotAccount[],
     categories: db
-      .prepare("SELECT id, name, type, is_system, deleted_at FROM categories WHERE deleted_at IS NULL ORDER BY name")
+      .prepare(
+        "SELECT id, name, type, is_system, deleted_at FROM categories WHERE deleted_at IS NULL ORDER BY name",
+      )
       .all() as SnapshotCategory[],
     subcategories: db
       .prepare(
@@ -1011,7 +1254,9 @@ function readSnapshot(db: Database.Database): EvalSnapshot {
 }
 
 function byName<T extends { name: string }>(items: T[], name: string): T {
-  const item = items.find((candidate) => normalize(candidate.name) === normalize(name));
+  const item = items.find(
+    (candidate) => normalize(candidate.name) === normalize(name),
+  );
   if (!item) throw new Error(`Seed item "${name}" was not created`);
   return item;
 }
@@ -1112,8 +1357,12 @@ async function runScenario(
     const snapshot = readSnapshot(services.getDb());
     const actions = result.actions as EvalAction[];
     const context: EvalContext = { result, actions, snapshot, streamEvents };
-    const assertions = scenario.assertions.map((assertion) => assertion.check(context));
-    const failedAssertions = assertions.filter((assertion) => assertion.status === "fail");
+    const assertions = scenario.assertions.map((assertion) =>
+      assertion.check(context),
+    );
+    const failedAssertions = assertions.filter(
+      (assertion) => assertion.status === "fail",
+    );
 
     return {
       suite: scenario.suite,
@@ -1194,11 +1443,18 @@ function printReport(report: EvalReport): void {
       `- ${suite.suite}: ${suite.passed}/${suite.total} passed, ${suite.failed} failed, ${suite.infrastructureFailures} infrastructure failures`,
     );
   }
-  for (const item of report.cases.filter((caseReport) => caseReport.status !== "pass")) {
+  for (const item of report.cases.filter(
+    (caseReport) => caseReport.status !== "pass",
+  )) {
     const failures = item.failedAssertions
-      .map((assertion) => `${assertion.name}${assertion.details ? ` (${assertion.details})` : ""}`)
+      .map(
+        (assertion) =>
+          `${assertion.name}${assertion.details ? ` (${assertion.details})` : ""}`,
+      )
       .join("; ");
-    console.log(`  FAIL ${item.suite} / ${item.name}: ${item.error ?? failures}`);
+    console.log(
+      `  FAIL ${item.suite} / ${item.name}: ${item.error ?? failures}`,
+    );
   }
 }
 
@@ -1207,7 +1463,9 @@ async function main(): Promise<void> {
     throw new Error("Set RUN_LIVE_AGENT_EVAL=1 to run live agent evaluation.");
   }
   if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error("OPENROUTER_API_KEY is required for live agent evaluation.");
+    throw new Error(
+      "OPENROUTER_API_KEY is required for live agent evaluation.",
+    );
   }
 
   const services = await loadServices();
@@ -1223,8 +1481,9 @@ async function main(): Promise<void> {
     total: cases.length,
     passed: cases.filter((item) => item.status === "pass").length,
     failed: cases.filter((item) => item.status === "fail").length,
-    infrastructureFailures: cases.filter((item) => item.status === "infrastructure_failure")
-      .length,
+    infrastructureFailures: cases.filter(
+      (item) => item.status === "infrastructure_failure",
+    ).length,
     suites: summarize(cases),
     cases,
   };
