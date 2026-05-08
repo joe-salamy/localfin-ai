@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { categorizeTransactions } from '../services/ai.js';
-import { chatWithAssistant, streamChatWithAssistant } from '../services/ai-chat.js';
+import { chatWithAssistant, normalizeMaxAssistantTurns, streamChatWithAssistant } from '../services/ai-chat.js';
 import { finiteNumber, nonEmptyString, parseRequest } from './validation.js';
 import { HTTP_HEADERS } from '../config/app.js';
 
@@ -16,11 +16,16 @@ const categorizeSchema = z.object({
   })).min(1).max(500),
   conversationId: nonEmptyString.optional(),
 });
-const chatSchema = z.object({
+const maxAssistantTurnsSchema = z.preprocess(
+  normalizeMaxAssistantTurns,
+  z.number().int().min(1).max(10),
+);
+
+export const chatSchema = z.object({
   conversationId: nonEmptyString,
   message: nonEmptyString.max(10_000),
   currentPage: z.string().optional(),
-  maxAssistantTurns: z.coerce.number().int().min(1).max(10).optional(),
+  maxAssistantTurns: maxAssistantTurnsSchema.optional(),
 });
 
 router.post('/categorize', async (req: Request, res: Response) => {
