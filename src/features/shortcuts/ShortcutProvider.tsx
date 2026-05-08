@@ -55,6 +55,7 @@ function isUnmodifiedNativeControlKey(binding: ShortcutBinding): boolean {
 export function ShortcutProvider({ children }: { children: ReactNode }) {
   const initialSettings = useMemo(() => readShortcutSettings(), []);
   const [overrides, setOverrides] = useState<ShortcutOverrides>(() => toShortcutOverrides(initialSettings));
+  const [showShortcutHints, setShowShortcutHintsState] = useState(initialSettings.showShortcutHints);
   const [disableSingleKeyShortcuts, setDisableSingleKeyShortcutsState] = useState(initialSettings.disableSingleKeyShortcuts);
   const handlersRef = useRef<RegisteredHandler[]>([]);
   const scopesRef = useRef<Array<{ id: number; scope: CommandScope }>>([]);
@@ -69,8 +70,8 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     return resolved;
   }, [overrides]);
 
-  const persist = useCallback((nextOverrides: ShortcutOverrides, disableSingleKeys: boolean) => {
-    writeShortcutSettings(buildShortcutSettings(nextOverrides, disableSingleKeys));
+  const persist = useCallback((nextOverrides: ShortcutOverrides, showHints: boolean, disableSingleKeys: boolean) => {
+    writeShortcutSettings(buildShortcutSettings(nextOverrides, showHints, disableSingleKeys));
   }, []);
 
   const getShortcut = useCallback((commandId: CommandId) => shortcuts.get(commandId) ?? null, [shortcuts]);
@@ -78,30 +79,36 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
   const setShortcut = useCallback((commandId: CommandId, binding: ShortcutBinding | null) => {
     setOverrides((current) => {
       const next = { ...current, [commandId]: binding };
-      persist(next, disableSingleKeyShortcuts);
+      persist(next, showShortcutHints, disableSingleKeyShortcuts);
       return next;
     });
-  }, [disableSingleKeyShortcuts, persist]);
+  }, [disableSingleKeyShortcuts, persist, showShortcutHints]);
 
   const resetShortcut = useCallback((commandId: CommandId) => {
     setOverrides((current) => {
       const next = { ...current };
       delete next[commandId];
-      persist(next, disableSingleKeyShortcuts);
+      persist(next, showShortcutHints, disableSingleKeyShortcuts);
       return next;
     });
-  }, [disableSingleKeyShortcuts, persist]);
+  }, [disableSingleKeyShortcuts, persist, showShortcutHints]);
 
   const resetAllShortcuts = useCallback(() => {
     setOverrides({});
+    setShowShortcutHintsState(true);
     setDisableSingleKeyShortcutsState(false);
-    persist({}, false);
+    persist({}, true, false);
   }, [persist]);
 
   const setDisableSingleKeyShortcuts = useCallback((disabled: boolean) => {
     setDisableSingleKeyShortcutsState(disabled);
-    persist(overrides, disabled);
-  }, [overrides, persist]);
+    persist(overrides, showShortcutHints, disabled);
+  }, [overrides, persist, showShortcutHints]);
+
+  const setShowShortcutHints = useCallback((shown: boolean) => {
+    setShowShortcutHintsState(shown);
+    persist(overrides, shown, disableSingleKeyShortcuts);
+  }, [disableSingleKeyShortcuts, overrides, persist]);
 
   const getConflicts = useCallback((commandId: CommandId, binding: ShortcutBinding | null) => {
     if (!binding) return [];
@@ -191,6 +198,8 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     getConflicts,
     registerShortcutHandler,
     pushScope,
+    showShortcutHints,
+    setShowShortcutHints,
     disableSingleKeyShortcuts,
     setDisableSingleKeyShortcuts,
   }), [
@@ -202,7 +211,9 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     resetAllShortcuts,
     resetShortcut,
     setDisableSingleKeyShortcuts,
+    setShowShortcutHints,
     setShortcut,
+    showShortcutHints,
   ]);
 
   return (

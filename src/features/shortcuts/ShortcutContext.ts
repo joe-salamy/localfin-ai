@@ -19,6 +19,8 @@ export interface ShortcutContextValue {
     options?: { enabled?: boolean; scope?: CommandScope },
   ) => () => void;
   pushScope: (scope: CommandScope) => () => void;
+  showShortcutHints: boolean;
+  setShowShortcutHints: (shown: boolean) => void;
   disableSingleKeyShortcuts: boolean;
   setDisableSingleKeyShortcuts: (disabled: boolean) => void;
 }

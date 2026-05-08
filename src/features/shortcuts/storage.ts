@@ -8,6 +8,7 @@ export interface StoredShortcutSettings {
   version: number;
   updatedAt: string;
   overrides: Partial<Record<CommandId, string | null>>;
+  showShortcutHints: boolean;
   disableSingleKeyShortcuts: boolean;
 }
 
@@ -18,6 +19,7 @@ export function defaultStoredShortcutSettings(): StoredShortcutSettings {
     version: STORAGE_VERSION,
     updatedAt: new Date().toISOString(),
     overrides: {},
+    showShortcutHints: true,
     disableSingleKeyShortcuts: false,
   };
 }
@@ -45,6 +47,7 @@ export function readShortcutSettings(): StoredShortcutSettings {
       version: STORAGE_VERSION,
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
       overrides,
+      showShortcutHints: parsed.showShortcutHints !== false,
       disableSingleKeyShortcuts: Boolean(parsed.disableSingleKeyShortcuts),
     };
   } catch {
@@ -76,6 +79,7 @@ export function toShortcutOverrides(settings: StoredShortcutSettings): ShortcutO
 
 export function buildShortcutSettings(
   overrides: ShortcutOverrides,
+  showShortcutHints: boolean,
   disableSingleKeyShortcuts: boolean,
 ): StoredShortcutSettings {
   const storedOverrides: StoredShortcutSettings['overrides'] = {};
@@ -88,6 +92,7 @@ export function buildShortcutSettings(
     version: STORAGE_VERSION,
     updatedAt: new Date().toISOString(),
     overrides: storedOverrides,
+    showShortcutHints,
     disableSingleKeyShortcuts,
   };
 }

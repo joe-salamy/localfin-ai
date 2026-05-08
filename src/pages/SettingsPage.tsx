@@ -3,7 +3,7 @@ import { RotateCcw, Search, Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import type { CommandId, ShortcutBinding } from '@/features/shortcuts/commands';
+import type { CommandDefinition, CommandId, ShortcutBinding } from '@/features/shortcuts/commands';
 import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
 import { useShortcut, useShortcutScope, useShortcuts } from '@/features/shortcuts/hooks';
 import { displayShortcut, isSingleCharacterShortcut, normalizeKeyboardEvent, validateShortcut } from '@/features/shortcuts/normalize';
@@ -18,6 +18,8 @@ export function SettingsPage() {
     resetShortcut,
     resetAllShortcuts,
     getConflicts,
+    showShortcutHints,
+    setShowShortcutHints,
     disableSingleKeyShortcuts,
     setDisableSingleKeyShortcuts,
   } = useShortcuts();
@@ -48,6 +50,18 @@ export function SettingsPage() {
   }, [commands, getShortcut, query]);
 
   const selectedCommand = commands.find((command) => command.id === selectedCommandId) ?? commands[0];
+  const groupedCommands = useMemo(() => {
+    return filteredCommands.reduce<Array<{ category: string; commands: CommandDefinition[] }>>((groups, command) => {
+      const existing = groups.find((group) => group.category === command.category);
+      if (existing) {
+        existing.commands.push(command);
+        return groups;
+      }
+
+      groups.push({ category: command.category, commands: [command] });
+      return groups;
+    }, []);
+  }, [filteredCommands]);
 
   const focusSection = useCallback(() => {
     sectionRef.current?.focus();
@@ -153,6 +167,15 @@ export function SettingsPage() {
             <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
               <input
                 type="checkbox"
+                checked={showShortcutHints}
+                onChange={(event) => setShowShortcutHints(event.target.checked)}
+                className="h-4 w-4 rounded border-border bg-background"
+              />
+              Show shortcut hints
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
                 checked={disableSingleKeyShortcuts}
                 onChange={(event) => setDisableSingleKeyShortcuts(event.target.checked)}
                 className="h-4 w-4 rounded border-border bg-background"
@@ -191,103 +214,114 @@ export function SettingsPage() {
                   <th className="px-3 py-2 text-right font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
-                {filteredCommands.map((command) => {
-                  const current = getShortcut(command.id);
-                  const conflicts = getConflicts(command.id, current);
-                  const isCapturing = capturingCommandId === command.id;
-
-                  return (
-                    <tr
-                      key={command.id}
-                      tabIndex={0}
-                      onFocus={() => setSelectedCommandId(command.id)}
-                      className={`outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
-                        selectedCommandId === command.id ? 'bg-secondary/20' : ''
-                      }`}
-                    >
-                      <td className="px-3 py-2">
-                        <div className="font-medium text-foreground">{command.label}</div>
-                        <div className="max-w-md text-xs text-muted-foreground">{command.description}</div>
-                        {conflicts.length > 0 && (
-                          <div className="mt-1 text-xs text-destructive">
-                            Conflicts with {conflicts.map((conflict) => conflict.command.label).join(', ')}
-                          </div>
-                        )}
-                        {current && isSingleCharacterShortcut(current) && (
-                          <div className="mt-1 text-xs text-muted-foreground">Single-key scoped shortcut</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{command.category} / {command.scope}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{displayShortcut(command.defaultBinding)}</td>
-                      <td className="px-3 py-2 font-mono text-xs">
-                        {isCapturing ? (
-                          <button
-                            type="button"
-                            autoFocus
-                            className="rounded border border-ring bg-input px-2 py-1 text-foreground"
-                            onKeyDown={(event) => {
-                              event.preventDefault();
-                              if (event.key === 'Escape') {
-                                setCapturingCommandId(null);
-                                setMessage('Shortcut edit canceled.');
-                                return;
-                              }
-                              commitCapturedShortcut(command.id, normalizeKeyboardEvent(event));
-                            }}
-                          >
-                            Press keys...
-                          </button>
-                        ) : (
-                          displayShortcut(current)
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              setSelectedCommandId(command.id);
-                              setCapturingCommandId(command.id);
-                              setMessage(`Editing ${command.label}. Press Escape to cancel.`);
-                            }}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setSelectedCommandId(command.id);
-                              setShortcut(command.id, null);
-                              setMessage(`${command.label} cleared.`);
-                            }}
-                            aria-label={`Clear ${command.label}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setSelectedCommandId(command.id);
-                              resetShortcut(command.id);
-                              setMessage(`${command.label} reset to default.`);
-                            }}
-                            aria-label={`Reset ${command.label}`}
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </td>
+              {groupedCommands.map((group) => (
+                <tbody key={group.category} className="divide-y divide-border">
+                    <tr>
+                      <th
+                        colSpan={5}
+                        scope="colgroup"
+                        className="bg-secondary/30 px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground"
+                      >
+                        {group.category}
+                      </th>
                     </tr>
-                  );
-                })}
-              </tbody>
+                    {group.commands.map((command) => {
+                      const current = getShortcut(command.id);
+                      const conflicts = getConflicts(command.id, current);
+                      const isCapturing = capturingCommandId === command.id;
+
+                      return (
+                        <tr
+                          key={command.id}
+                          tabIndex={0}
+                          onFocus={() => setSelectedCommandId(command.id)}
+                          className={`outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
+                            selectedCommandId === command.id ? 'bg-secondary/20' : ''
+                          }`}
+                        >
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-foreground">{command.label}</div>
+                            <div className="max-w-md text-xs text-muted-foreground">{command.description}</div>
+                            {conflicts.length > 0 && (
+                              <div className="mt-1 text-xs text-destructive">
+                                Conflicts with {conflicts.map((conflict) => conflict.command.label).join(', ')}
+                              </div>
+                            )}
+                            {current && isSingleCharacterShortcut(current) && (
+                              <div className="mt-1 text-xs text-muted-foreground">Single-key scoped shortcut</div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">{command.scope}</td>
+                          <td className="px-3 py-2 font-mono text-xs">{displayShortcut(command.defaultBinding)}</td>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {isCapturing ? (
+                              <button
+                                type="button"
+                                autoFocus
+                                className="rounded border border-ring bg-input px-2 py-1 text-foreground"
+                                onKeyDown={(event) => {
+                                  event.preventDefault();
+                                  if (event.key === 'Escape') {
+                                    setCapturingCommandId(null);
+                                    setMessage('Shortcut edit canceled.');
+                                    return;
+                                  }
+                                  commitCapturedShortcut(command.id, normalizeKeyboardEvent(event));
+                                }}
+                              >
+                                Press keys...
+                              </button>
+                            ) : (
+                              displayShortcut(current)
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  setSelectedCommandId(command.id);
+                                  setCapturingCommandId(command.id);
+                                  setMessage(`Editing ${command.label}. Press Escape to cancel.`);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setSelectedCommandId(command.id);
+                                  setShortcut(command.id, null);
+                                  setMessage(`${command.label} cleared.`);
+                                }}
+                                aria-label={`Clear ${command.label}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setSelectedCommandId(command.id);
+                                  resetShortcut(command.id);
+                                  setMessage(`${command.label} reset to default.`);
+                                }}
+                                aria-label={`Reset ${command.label}`}
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              ))}
             </table>
           </div>
         </CardContent>

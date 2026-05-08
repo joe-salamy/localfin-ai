@@ -10,7 +10,9 @@ export function ShortcutHint({
   commandId: CommandId;
   className?: string;
 }) {
-  const { getShortcut } = useShortcuts();
+  const { getShortcut, showShortcutHints } = useShortcuts();
+  if (!showShortcutHints) return null;
+
   const binding = getShortcut(commandId);
   if (!binding) return null;
 
