@@ -177,6 +177,28 @@ test("assistant action planning does not apply reimbursement sign to nearby expe
   assert.equal(actions[0]?.input.amount, -318.2);
 });
 
+test("assistant action planning preserves explicit positive expense adjustment near unrelated reimbursement", () => {
+  const actions = prepareActionsForExecution(
+    [
+      {
+        type: "create_transaction",
+        input: {
+          account_name: "Test Checking",
+          date: "2026-05-04",
+          name: "Grocery correction",
+          amount: 12,
+          subcategory_name: "Groceries",
+        },
+      },
+    ],
+    "Add a +12 grocery correction on Test Checking dated May 4 in Groceries. Also remember the separate reimbursement from work.",
+    "Done.",
+    context,
+  );
+
+  assert.equal(actions[0]?.input.amount, 12);
+});
+
 test("assistant action planning preserves both card payment comments", () => {
   const actions = prepareActionsForExecution(
     [

@@ -458,8 +458,9 @@ function signedAmountNearIncomeCue(message: string, amount: number): boolean {
   const signedAmount = `\\+\\s*(?:${amountPatterns.join("|")})`;
   const incomeCue =
     "\\b(?:reimbursement|refund|deposit|payroll|paycheck|income|interest|credit)\\b";
+  const sameSentenceText = "[^.?!\\n]{0,90}";
   return new RegExp(
-    `(?:${signedAmount}[\\s\\S]{0,90}${incomeCue})|(?:${incomeCue}[\\s\\S]{0,90}${signedAmount})`,
+    `(?:${signedAmount}${sameSentenceText}${incomeCue})|(?:${incomeCue}${sameSentenceText}${signedAmount})`,
     "i",
   ).test(message);
 }
@@ -487,10 +488,7 @@ function normalizeTransactionAmount(
       explicitSign === "+" &&
       categoryType === "expense" &&
       !hasIncomeCue(action) &&
-      (/\b(reimbursement|refund|deposit|payroll|paycheck|income|interest|credit)\b/i.test(
-        message,
-      ) ||
-        signedAmountNearIncomeCue(message, amount))
+      signedAmountNearIncomeCue(message, amount)
     )
   ) {
     return {
