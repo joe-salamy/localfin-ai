@@ -20,6 +20,17 @@ test("flagged word matching is case-insensitive and ignores invalid entries", ()
   );
 });
 
+test("flagged word matching does not match inside a larger word", () => {
+  assert.deepEqual(
+    findFlaggedWords("Coffee shop", ["fee"]),
+    [],
+  );
+  assert.deepEqual(
+    findFlaggedWords("Coffee shop fee", ["fee"]),
+    ["fee"],
+  );
+});
+
 test("flagged word settings keep a consistent timestamp for state and storage", () => {
   assert.deepEqual(
     buildFlaggedWordsSettings([" Fee "], "2026-05-08T12:00:00.000Z"),

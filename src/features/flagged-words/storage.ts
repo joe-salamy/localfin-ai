@@ -33,10 +33,17 @@ export function normalizeFlaggedWords(words: Iterable<string>): string[] {
   return normalized;
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function includesFlaggedWord(name: string, word: string): boolean {
+  return new RegExp(`(^|[^a-z0-9])${escapeRegex(word)}(?=$|[^a-z0-9])`, 'i').test(name);
+}
+
 export function findFlaggedWords(name: string, words: string[]): string[] {
-  const normalizedName = name.toLowerCase();
-  if (!normalizedName) return [];
-  return normalizeFlaggedWords(words).filter((word) => normalizedName.includes(word));
+  if (!name.trim()) return [];
+  return normalizeFlaggedWords(words).filter((word) => includesFlaggedWord(name, word));
 }
 
 export function buildFlaggedWordsSettings(

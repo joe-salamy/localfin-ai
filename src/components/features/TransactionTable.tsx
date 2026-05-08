@@ -315,7 +315,7 @@ export function TransactionTable({
                     'outline-none hover:bg-secondary/30 focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring',
                     selectedIds.has(t.id) && 'bg-secondary/20',
                     focusedId === t.id && 'bg-secondary/30',
-                    isFlagged && 'bg-red-500/15 hover:bg-red-500/20 focus-visible:bg-red-500/20',
+                    isFlagged && 'bg-red-500/25 hover:bg-red-500/30 focus-visible:bg-red-500/30',
                   )}
                   style={isFlagged ? undefined : getGradientStyle(t.amount)}
                 >
