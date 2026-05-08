@@ -9,6 +9,7 @@ import {
 } from "date-fns";
 import { getDb } from "../db/index.js";
 import { DATE_CONFIG } from "../config/app.js";
+import { resolveEntityColor } from "../../src/lib/colors.js";
 import type {
   NetWorthDataPoint,
   SankeyData,
@@ -22,11 +23,16 @@ interface AccountRow {
   id: string;
   name: string;
   type: string;
+  color: string | null;
 }
 
 interface CategoryFlowRow {
+  category_id: string;
   category_name: string;
+  category_color: string | null;
+  subcategory_id: string;
   subcategory_name: string;
+  subcategory_color: string | null;
   total: number;
 }
 
@@ -59,7 +65,7 @@ export function prepareNetWorthData(
   // Get all non-deleted accounts
   const accounts = db
     .prepare(
-      `SELECT id, name, type FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
+      `SELECT id, name, type, color FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
     )
     .all() as AccountRow[];
 
@@ -85,6 +91,9 @@ export function prepareNetWorthData(
       date: dateStr,
       formattedDate,
       netWorth: 0,
+      accountColors: Object.fromEntries(
+        accounts.map((account) => [account.name, resolveEntityColor(account.id, account.color)]),
+      ),
     };
 
     let netWorth = 0;
@@ -132,7 +141,8 @@ export function prepareSankeyData(
   // Get income flows (positive amounts in income categories)
   const incomeRows = db
     .prepare(
-      `SELECT c.name AS category_name, s.name AS subcategory_name,
+      `SELECT c.id AS category_id, c.name AS category_name, c.color AS category_color,
+            s.id AS subcategory_id, s.name AS subcategory_name, s.color AS subcategory_color,
             COALESCE(SUM(t.amount), 0) AS total
      FROM transactions t
      JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
@@ -150,7 +160,8 @@ export function prepareSankeyData(
   // Get expense flows (negative amounts in expense categories)
   const expenseRows = db
     .prepare(
-      `SELECT c.name AS category_name, s.name AS subcategory_name,
+      `SELECT c.id AS category_id, c.name AS category_name, c.color AS category_color,
+            s.id AS subcategory_id, s.name AS subcategory_name, s.color AS subcategory_color,
             COALESCE(SUM(ABS(t.amount)), 0) AS total
      FROM transactions t
      JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
@@ -205,8 +216,8 @@ export function prepareSankeyData(
   // Income subcategories -> Income categories -> Total Income
   for (const row of incomeRows) {
     const subId = `${row.subcategory_name} (income)`;
-    addNode(subId, "#003804");
-    addNode(row.category_name, "#334f35");
+    addNode(subId, resolveEntityColor(row.subcategory_id, row.subcategory_color));
+    addNode(row.category_name, resolveEntityColor(row.category_id, row.category_color));
     links.push({ source: subId, target: row.category_name, value: row.total });
   }
 
@@ -233,7 +244,13 @@ export function prepareSankeyData(
 
   // Total Expenses -> Expense categories -> Expense subcategories
   for (const [categoryName, total] of expenseCategoryTotals) {
-    addNode(categoryName, "#6b3434");
+    const categoryRow = expenseRows.find((row) => row.category_name === categoryName);
+    addNode(
+      categoryName,
+      categoryRow
+        ? resolveEntityColor(categoryRow.category_id, categoryRow.category_color)
+        : "#6b3434",
+    );
     links.push({
       source: "Total Expenses",
       target: categoryName,
@@ -243,7 +260,7 @@ export function prepareSankeyData(
 
   for (const row of expenseRows) {
     const subId = `${row.subcategory_name} (expense)`;
-    addNode(subId, "#6f0000");
+    addNode(subId, resolveEntityColor(row.subcategory_id, row.subcategory_color));
     links.push({ source: row.category_name, target: subId, value: row.total });
   }
 

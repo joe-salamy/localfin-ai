@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT NOT NULL CHECK(type IN ('asset', 'liability')),
+  color TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   deleted_at TEXT
@@ -14,6 +15,7 @@ CREATE TABLE IF NOT EXISTS categories (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
+  color TEXT,
   is_system INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT,
@@ -27,6 +29,7 @@ CREATE TABLE IF NOT EXISTS subcategories (
   category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   monthly_goal REAL,
+  color TEXT,
   is_system INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT,

@@ -3,10 +3,12 @@ import { RotateCcw, Search, Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { ColorPicker } from '@/components/ui/ColorPicker';
 import type { CommandDefinition, CommandId, ShortcutBinding } from '@/features/shortcuts/commands';
 import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
 import { useShortcut, useShortcutScope, useShortcuts } from '@/features/shortcuts/hooks';
 import { displayShortcut, isSingleCharacterShortcut, normalizeKeyboardEvent, validateShortcut } from '@/features/shortcuts/normalize';
+import { useDisplaySettings } from '@/features/display-settings/hooks';
 
 export function SettingsPage() {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -23,6 +25,7 @@ export function SettingsPage() {
     disableSingleKeyShortcuts,
     setDisableSingleKeyShortcuts,
   } = useShortcuts();
+  const displaySettings = useDisplaySettings();
 
   const [query, setQuery] = useState('');
   const [selectedCommandId, setSelectedCommandId] = useState<CommandId>('global.dashboard');
@@ -134,6 +137,63 @@ export function SettingsPage() {
           <p className="text-sm text-muted-foreground mt-2">
             To update it, edit <code className="bg-secondary px-1 py-0.5 rounded text-xs font-mono">.env</code> and restart the server.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="mb-2">
+          <CardTitle>Transaction Amount Colors</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={displaySettings.amountGradientEnabled}
+              onChange={(event) => displaySettings.setAmountGradientEnabled(event.target.checked)}
+              className="h-4 w-4 rounded border-border bg-background"
+            />
+            Color transaction rows by amount
+          </label>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-muted-foreground">Negative</div>
+              <ColorPicker
+                value={displaySettings.negativeColor}
+                onChange={(color) => color && displaySettings.setGradientColor('negativeColor', color)}
+                label="Negative amount color"
+                allowClear={false}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-muted-foreground">Neutral</div>
+              <ColorPicker
+                value={displaySettings.neutralColor}
+                onChange={(color) => color && displaySettings.setGradientColor('neutralColor', color)}
+                label="Neutral amount color"
+                allowClear={false}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-muted-foreground">Positive</div>
+              <ColorPicker
+                value={displaySettings.positiveColor}
+                onChange={(color) => color && displaySettings.setGradientColor('positiveColor', color)}
+                label="Positive amount color"
+                allowClear={false}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/20 px-3 py-2 text-sm">
+            <div className="grid flex-1 grid-cols-3 overflow-hidden rounded border border-border text-center font-mono text-xs">
+              <span style={{ backgroundColor: `${displaySettings.negativeColor}24` }} className="px-2 py-1">-$500.00</span>
+              <span style={{ backgroundColor: `${displaySettings.neutralColor}24` }} className="px-2 py-1">$0.00</span>
+              <span style={{ backgroundColor: `${displaySettings.positiveColor}24` }} className="px-2 py-1">$500.00</span>
+            </div>
+            <Button type="button" variant="secondary" onClick={displaySettings.resetAmountGradientSettings}>
+              <RotateCcw className="mr-1 h-3.5 w-3.5" />
+              Reset
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

@@ -28,10 +28,13 @@ interface TransactionRow {
 interface TransactionWithDetailsRow extends TransactionRow {
   account_name: string | null;
   account_type: string | null;
+  account_color: string | null;
   subcategory_name: string | null;
+  subcategory_color: string | null;
   category_id: string | null;
   category_name: string | null;
   category_type: string | null;
+  category_color: string | null;
   running_balance?: number | null;
 }
 
@@ -39,6 +42,7 @@ interface RecentActivityRow {
   account_id: string;
   account_name: string;
   account_type: string;
+  account_color: string | null;
   current_balance: number;
   last_transaction_id: string | null;
   last_transaction_date: string | null;
@@ -79,10 +83,13 @@ function rowToTransactionWithDetails(
     ...rowToTransaction(row),
     account_name: row.account_name ?? undefined,
     account_type: row.account_type ?? undefined,
+    account_color: row.account_color,
     subcategory_name: row.subcategory_name ?? undefined,
+    subcategory_color: row.subcategory_color,
     category_id: row.category_id ?? undefined,
     category_name: row.category_name ?? undefined,
     category_type: row.category_type ?? undefined,
+    category_color: row.category_color,
     running_balance: row.running_balance ?? undefined,
   };
 }
@@ -233,9 +240,9 @@ export function getTransactionsWithDetails(
   });
 
   let sql = `
-    SELECT t.*, a.name AS account_name, a.type AS account_type,
-           s.name AS subcategory_name, s.category_id,
-           c.name AS category_name, c.type AS category_type,
+    SELECT t.*, a.name AS account_name, a.type AS account_type, a.color AS account_color,
+           s.name AS subcategory_name, s.color AS subcategory_color, s.category_id,
+           c.name AS category_name, c.type AS category_type, c.color AS category_color,
            (
              SELECT COALESCE(SUM(prior.amount), 0)
              FROM transactions prior
@@ -279,9 +286,9 @@ export function getTransactionById(id: string): TransactionWithDetails | null {
   const row = db
     .prepare(
       `
-    SELECT t.*, a.name AS account_name, a.type AS account_type,
-           s.name AS subcategory_name, s.category_id,
-           c.name AS category_name, c.type AS category_type
+    SELECT t.*, a.name AS account_name, a.type AS account_type, a.color AS account_color,
+           s.name AS subcategory_name, s.color AS subcategory_color, s.category_id,
+           c.name AS category_name, c.type AS category_type, c.color AS category_color
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
     LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
@@ -351,6 +358,7 @@ export const recentActivityByAccountSql = `
       a.id AS account_id,
       a.name AS account_name,
       a.type AS account_type,
+      a.color AS account_color,
       COALESCE(latest.running_balance, 0) AS current_balance,
       latest.id AS last_transaction_id,
       latest.date AS last_transaction_date,

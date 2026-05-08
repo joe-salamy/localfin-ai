@@ -7,6 +7,7 @@ interface RecentActivityRow {
   account_id: string;
   account_name: string;
   account_type: string;
+  account_color: string | null;
   current_balance: number;
   last_transaction_id: string | null;
   last_transaction_date: string | null;
@@ -22,6 +23,7 @@ function createRecentActivityDb(): Database.Database {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       type TEXT NOT NULL,
+      color TEXT,
       deleted_at TEXT
     );
 
@@ -109,6 +111,7 @@ test("recent activity returns one deterministic latest transaction per active ac
       account_id: "checking",
       account_name: "Checking",
       account_type: "asset",
+      account_color: null,
       current_balance: 65,
       last_transaction_id: "same-tie-second",
       last_transaction_date: "2026-05-01",
@@ -119,6 +122,7 @@ test("recent activity returns one deterministic latest transaction per active ac
       account_id: "empty",
       account_name: "Empty",
       account_type: "asset",
+      account_color: null,
       current_balance: 0,
       last_transaction_id: null,
       last_transaction_date: null,

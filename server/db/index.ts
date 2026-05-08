@@ -40,12 +40,30 @@ export function getDb(): Database.Database {
   // Run schema
   const schema = fs.readFileSync(path.resolve(__dirname, DATABASE_CONFIG.schemaFileName), 'utf-8');
   db.exec(schema);
+  migrate(db);
 
   // Seed system data
   seed(db);
 
   console.log(`Database initialized at ${dbPath}`);
   return db;
+}
+
+function columnExists(database: Database.Database, tableName: string, columnName: string): boolean {
+  const rows = database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  return rows.some((row) => row.name === columnName);
+}
+
+function addColumnIfMissing(database: Database.Database, tableName: string, columnDefinition: string): void {
+  const [columnName] = columnDefinition.split(/\s+/);
+  if (!columnName || columnExists(database, tableName, columnName)) return;
+  database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition}`);
+}
+
+function migrate(database: Database.Database): void {
+  addColumnIfMissing(database, 'accounts', 'color TEXT');
+  addColumnIfMissing(database, 'categories', 'color TEXT');
+  addColumnIfMissing(database, 'subcategories', 'color TEXT');
 }
 
 export function closeDbForTests(): void {

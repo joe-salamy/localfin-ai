@@ -16,6 +16,8 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SimpleSelect } from '@/components/ui/SimpleSelect';
+import { ColorPicker } from '@/components/ui/ColorPicker';
+import { EntityLabel } from '@/components/ui/EntityLabel';
 import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
@@ -140,11 +142,13 @@ function AccountsSection() {
   const [name, setName] = useState('');
   const [type, setType] = useState<'asset' | 'liability'>('asset');
   const [balance, setBalance] = useState('');
+  const [color, setColor] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState<'asset' | 'liability'>('asset');
+  const [editColor, setEditColor] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<AccountWithBalance | null>(null);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
@@ -189,10 +193,12 @@ function AccountsSection() {
         name: name.trim(),
         type,
         initial_balance: balance ? parseFloat(balance) : 0,
+        color,
       });
       toast.success('Account created');
       setName('');
       setBalance('');
+      setColor(null);
       setType('asset');
       setShowAdd(false);
     } catch {
@@ -211,7 +217,7 @@ function AccountsSection() {
     if (!editName.trim()) return;
     setSaving(true);
     try {
-      await updateAccount.mutateAsync({ id, name: editName.trim(), type: editType });
+      await updateAccount.mutateAsync({ id, name: editName.trim(), type: editType, color: editColor });
       toast.success('Account updated');
       setEditId(null);
     } catch {
@@ -274,6 +280,7 @@ function AccountsSection() {
     setEditId(a.id);
     setEditName(a.name);
     setEditType(a.type);
+    setEditColor(a.color);
   }
 
   function toggleSelected(id: string) {
@@ -386,6 +393,7 @@ function AccountsSection() {
                 onSort={(key) => setSort((current) => nextSort(current, key))}
               />
             </th>
+            <th className="pb-1 font-medium">Color</th>
             <th className="pb-1 text-right font-medium">
               <SortHeader
                 label="Balance"
@@ -429,6 +437,9 @@ function AccountsSection() {
                       className="h-7 text-sm"
                     />
                   </td>
+                  <td className="py-1.5 pr-2">
+                    <ColorPicker value={editColor} onChange={setEditColor} label={`${a.name} color`} />
+                  </td>
                   <td className="py-1.5 text-right">{formatCurrency(a.current_balance)}</td>
                   <td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">
@@ -452,8 +463,13 @@ function AccountsSection() {
                       className="h-4 w-4 rounded border-border bg-background"
                     />
                   </td>
-                  <td className="py-1.5">{a.name}</td>
+                  <td className="py-1.5">
+                    <EntityLabel id={a.id} name={a.name} color={a.color} />
+                  </td>
                   <td className="py-1.5"><TypeBadge type={a.type} /></td>
+                  <td className="py-1.5">
+                    <ColorPicker value={a.color} onChange={(nextColor) => void updateAccount.mutateAsync({ id: a.id, color: nextColor })} label={`${a.name} color`} />
+                  </td>
                   <td className="py-1.5 text-right font-mono">{formatCurrency(a.current_balance)}</td>
                   <td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">
@@ -498,6 +514,7 @@ function AccountsSection() {
             onChange={(e) => setBalance(e.target.value)}
             className="h-8 w-36 text-sm"
           />
+          <ColorPicker value={color} onChange={setColor} label="New account color" />
           <Button type="submit" size="sm" className="h-8" loading={saving}>Add</Button>
           <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setShowAdd(false)}>Cancel</Button>
         </form>
@@ -543,11 +560,13 @@ function CategoriesSection() {
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [color, setColor] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState<'income' | 'expense'>('expense');
+  const [editColor, setEditColor] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
@@ -583,9 +602,10 @@ function CategoriesSection() {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await createCategory.mutateAsync({ name: name.trim(), type });
+      await createCategory.mutateAsync({ name: name.trim(), type, color });
       toast.success('Category created');
       setName('');
+      setColor(null);
       setType('expense');
       setShowAdd(false);
     } catch {
@@ -604,7 +624,7 @@ function CategoriesSection() {
     if (!editName.trim()) return;
     setSaving(true);
     try {
-      await updateCategory.mutateAsync({ id, name: editName.trim(), type: editType });
+      await updateCategory.mutateAsync({ id, name: editName.trim(), type: editType, color: editColor });
       toast.success('Category updated');
       setEditId(null);
     } catch {
@@ -667,6 +687,7 @@ function CategoriesSection() {
     setEditId(c.id);
     setEditName(c.name);
     setEditType(c.type);
+    setEditColor(c.color);
   }
 
   function toggleSelected(id: string) {
@@ -777,6 +798,7 @@ function CategoriesSection() {
                 onSort={(key) => setSort((current) => nextSort(current, key))}
               />
             </th>
+            <th className="pb-1 font-medium">Color</th>
             <th className="pb-1 text-right font-medium w-20">Actions</th>
           </tr>
         </thead>
@@ -811,6 +833,9 @@ function CategoriesSection() {
                       className="h-7 text-sm"
                     />
                   </td>
+                  <td className="py-1.5 pr-2">
+                    <ColorPicker value={editColor} onChange={setEditColor} label={`${c.name} color`} />
+                  </td>
                   <td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">
                       <Button size="sm" className="h-6 px-2 text-xs" onClick={() => handleUpdate(c.id)} loading={saving}>
@@ -836,10 +861,13 @@ function CategoriesSection() {
                     )}
                   </td>
                   <td className="py-1.5">
-                    {c.name}
+                    <EntityLabel id={c.id} name={c.name} color={c.color} />
                     {c.is_system && <Lock size={12} className="ml-1.5 inline text-muted-foreground" />}
                   </td>
                   <td className="py-1.5"><TypeBadge type={c.type} /></td>
+                  <td className="py-1.5">
+                    <ColorPicker value={c.color} onChange={(nextColor) => void updateCategory.mutateAsync({ id: c.id, color: nextColor })} label={`${c.name} color`} />
+                  </td>
                   <td className="py-1.5 text-right">
                     {!c.is_system && (
                       <div className="flex justify-end gap-1">
@@ -876,6 +904,7 @@ function CategoriesSection() {
             ]}
             className="h-8 w-36 text-sm"
           />
+          <ColorPicker value={color} onChange={setColor} label="New category color" />
           <Button type="submit" size="sm" className="h-8" loading={saving}>Add</Button>
           <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setShowAdd(false)}>Cancel</Button>
         </form>
@@ -930,12 +959,14 @@ function SubcategoriesSection() {
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [goal, setGoal] = useState('');
+  const [color, setColor] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editCategoryId, setEditCategoryId] = useState('');
   const [editGoal, setEditGoal] = useState('');
+  const [editColor, setEditColor] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Subcategory | null>(null);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
@@ -992,11 +1023,13 @@ function SubcategoriesSection() {
         name: name.trim(),
         category_id: categoryId,
         monthly_goal: goal ? parseFloat(goal) : null,
+        color,
       });
       toast.success('Subcategory created');
       setName('');
       setCategoryId('');
       setGoal('');
+      setColor(null);
       setShowAdd(false);
     } catch {
       toast.error('Failed to create subcategory');
@@ -1019,6 +1052,7 @@ function SubcategoriesSection() {
         name: editName.trim(),
         category_id: editCategoryId,
         monthly_goal: editGoal ? parseFloat(editGoal) : null,
+        color: editColor,
       });
       toast.success('Subcategory updated');
       setEditId(null);
@@ -1083,6 +1117,7 @@ function SubcategoriesSection() {
     setEditName(s.name);
     setEditCategoryId(s.category_id);
     setEditGoal(s.monthly_goal != null ? String(s.monthly_goal) : '');
+    setEditColor(s.color);
   }
 
   function toggleSelected(id: string) {
@@ -1203,6 +1238,7 @@ function SubcategoriesSection() {
                 onSort={(key) => setSort((current) => nextSort(current, key))}
               />
             </th>
+            <th className="pb-1 font-medium">Color</th>
             <th className="pb-1 text-right font-medium w-20">Actions</th>
           </tr>
         </thead>
@@ -1246,6 +1282,9 @@ function SubcategoriesSection() {
                         className="h-7 text-right text-sm"
                       />
                     </td>
+                    <td className="py-1.5 pr-2">
+                      <ColorPicker value={editColor} onChange={setEditColor} label={`${s.name} color`} />
+                    </td>
                     <td className="py-1.5 text-right">
                       <div className="flex justify-end gap-1">
                         <Button size="sm" className="h-6 px-2 text-xs" onClick={() => handleUpdate(s.id)} loading={saving}>
@@ -1271,13 +1310,13 @@ function SubcategoriesSection() {
                       )}
                     </td>
                     <td className="py-1.5">
-                      {s.name}
+                      <EntityLabel id={s.id} name={s.name} color={s.color} />
                       {s.is_system && <Lock size={12} className="ml-1.5 inline text-muted-foreground" />}
                     </td>
                     <td className="py-1.5">
                       {parentCat ? (
                         <>
-                          {parentCat.name} <TypeBadge type={parentCat.type} />
+                          <EntityLabel id={parentCat.id} name={parentCat.name} color={parentCat.color} /> <TypeBadge type={parentCat.type} />
                         </>
                       ) : (
                         <span className="text-muted-foreground">Unknown</span>
@@ -1285,6 +1324,9 @@ function SubcategoriesSection() {
                     </td>
                     <td className="py-1.5 text-right font-mono">
                       {s.monthly_goal != null ? formatCurrency(s.monthly_goal) : <span className="text-muted-foreground">--</span>}
+                    </td>
+                    <td className="py-1.5">
+                      <ColorPicker value={s.color} onChange={(nextColor) => void updateSubcategory.mutateAsync({ id: s.id, color: nextColor })} label={`${s.name} color`} />
                     </td>
                     <td className="py-1.5 text-right">
                       {!s.is_system && (
@@ -1329,6 +1371,7 @@ function SubcategoriesSection() {
             onChange={(e) => setGoal(e.target.value)}
             className="h-8 w-36 text-sm"
           />
+          <ColorPicker value={color} onChange={setColor} label="New subcategory color" />
           <Button type="submit" size="sm" className="h-8" loading={saving}>Add</Button>
           <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setShowAdd(false)}>Cancel</Button>
         </form>

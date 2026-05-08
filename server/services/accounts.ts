@@ -6,6 +6,7 @@ interface AccountRow {
   id: string;
   name: string;
   type: string;
+  color: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -24,6 +25,7 @@ function rowToAccount(row: AccountRow): Account {
     id: row.id,
     name: row.name,
     type: row.type as AccountType,
+    color: row.color,
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
@@ -59,7 +61,7 @@ function checkNameUniqueness(name: string, excludeId?: string): void {
   }
 }
 
-export function createAccount(data: { name: string; type: AccountType; initial_balance?: number }): Account {
+export function createAccount(data: { name: string; type: AccountType; initial_balance?: number; color?: string | null }): Account {
   const db = getDb();
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
@@ -67,11 +69,11 @@ export function createAccount(data: { name: string; type: AccountType; initial_b
   checkNameUniqueness(data.name);
 
   const insertAccount = db.prepare(
-    'INSERT INTO accounts (id, name, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO accounts (id, name, type, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
   );
 
   const createTransaction = db.transaction(() => {
-    insertAccount.run(id, data.name, data.type, now, now);
+    insertAccount.run(id, data.name, data.type, data.color ?? null, now, now);
 
     const balance = data.initial_balance ?? 0;
     if (balance !== 0) {
@@ -118,7 +120,7 @@ export function getAccountById(id: string): Account | undefined {
   return row ? rowToAccount(row) : undefined;
 }
 
-export function updateAccount(id: string, updates: { name?: string; type?: AccountType }): Account {
+export function updateAccount(id: string, updates: { name?: string; type?: AccountType; color?: string | null }): Account {
   const db = getDb();
   const now = new Date().toISOString();
 
@@ -133,10 +135,11 @@ export function updateAccount(id: string, updates: { name?: string; type?: Accou
 
   const name = updates.name ?? existing.name;
   const type = updates.type ?? existing.type;
+  const color = updates.color !== undefined ? updates.color : existing.color;
 
   db.prepare(
-    'UPDATE accounts SET name = ?, type = ?, updated_at = ? WHERE id = ?'
-  ).run(name, type, now, id);
+    'UPDATE accounts SET name = ?, type = ?, color = ?, updated_at = ? WHERE id = ?'
+  ).run(name, type, color, now, id);
 
   const row = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id) as AccountRow;
   return rowToAccount(row);

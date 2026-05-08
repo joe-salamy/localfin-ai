@@ -13,14 +13,17 @@ import { finiteNumber, idParamSchema, nonEmptyString, parseRequest } from './val
 
 const router = Router();
 const accountTypeSchema = z.enum(['asset', 'liability']);
+const colorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable();
 const createAccountSchema = z.object({
   name: nonEmptyString,
   type: accountTypeSchema,
   initial_balance: finiteNumber.optional(),
+  color: colorSchema.optional(),
 });
 const updateAccountSchema = z.object({
   name: nonEmptyString.optional(),
   type: accountTypeSchema.optional(),
+  color: colorSchema.optional(),
 }).refine((value) => Object.keys(value).length > 0, 'At least one update field is required');
 
 router.get('/', (_req: Request, res: Response) => {
