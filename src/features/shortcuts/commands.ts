@@ -169,7 +169,7 @@ export const DEFAULT_COMMANDS = [
   command('global.transactionHistory', 'Go to Transaction History', 'Navigate to transaction history.', 'Global', 'global', 'Ctrl+Alt+H'),
   command('global.settings', 'Go to Settings', 'Navigate to settings.', 'Global', 'global', 'Ctrl+Alt+,'),
   command('global.keyboardShortcuts', 'Open Keyboard Shortcuts', 'Navigate to settings and focus keyboard shortcuts.', 'Global', 'global', 'Ctrl+Alt+K'),
-  command('global.toggleAssistant', 'Toggle AI Assistant', 'Open or close the AI assistant side panel.', 'Global', 'global', 'Ctrl+Alt+I'),
+  command('global.toggleAssistant', 'Toggle AI Assistant', 'Open or close the AI assistant side panel.', 'Global', 'global', 'Ctrl+Alt+I', { inputSafe: true }),
   command('global.focusAssistant', 'Focus AI Assistant Input', 'Move focus to the assistant message box.', 'Global', 'global', 'Ctrl+Alt+.'),
   command('global.close', 'Close AI Assistant', 'Close the AI assistant side panel.', 'Global', 'assistant', 'Escape'),
   command('assistant.send', 'Send Assistant Message', 'Send the current assistant message.', 'Global', 'assistant', 'Ctrl+Enter', { inputSafe: true }),

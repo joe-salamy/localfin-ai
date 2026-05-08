@@ -25,7 +25,7 @@ import type {
 } from '@/hooks/useAI';
 import { cn } from '@/lib/utils';
 import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
-import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
+import { useShortcut, useShortcutMetadata, useShortcutScope } from '@/features/shortcuts/hooks';
 
 interface ChatMessage {
   id: string;
@@ -128,6 +128,7 @@ export function ChatSidePanel({ open, onOpenChange, inputRef }: ChatSidePanelPro
   const selectedConversation = conversationList.find((item) => item.id === conversationId);
   const logHint = useMemo(() => `logs/*-${conversationId}.jsonl`, [conversationId]);
   const isStreaming = streamState !== null;
+  const toggleShortcut = useShortcutMetadata('global.toggleAssistant');
 
   useShortcutScope('assistant', open);
 
@@ -363,6 +364,8 @@ export function ChatSidePanel({ open, onOpenChange, inputRef }: ChatSidePanelPro
           open && 'hidden',
         )}
         aria-label="Open AI assistant"
+        aria-keyshortcuts={toggleShortcut.ariaKeyShortcuts}
+        title={`Open AI assistant (${toggleShortcut.label})`}
       >
         <MessageSquare className="h-5 w-5" />
       </button>
@@ -401,6 +404,8 @@ export function ChatSidePanel({ open, onOpenChange, inputRef }: ChatSidePanelPro
               onClick={() => onOpenChange(false)}
               className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
               aria-label="Close AI assistant"
+              aria-keyshortcuts={toggleShortcut.ariaKeyShortcuts}
+              title={`Close AI assistant (${toggleShortcut.label})`}
             >
               <X className="h-4 w-4" />
             </button>
