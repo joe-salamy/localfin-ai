@@ -475,6 +475,33 @@ test("assistant action execution rejects unknown ids instead of passing them thr
   assert.equal(actionFailureCanBeRetried(result), true);
 });
 
+test("assistant action execution reports unknown account ids as recoverable references", async () => {
+  await useTempDatabase();
+  const category = createCategory({
+    name: "Unknown Account Essentials",
+    type: "expense",
+  });
+  const subcategory = createSubcategory({
+    name: "Unknown Account Other",
+    category_id: category.id,
+  });
+
+  const result = executeAction({
+    type: "create_transaction",
+    input: {
+      account_id: "not-a-real-account-id",
+      date: "2026-05-01",
+      name: "Unknown Account Coffee",
+      amount: -5,
+      subcategory_id: subcategory.id,
+    },
+  });
+
+  assert.equal(result.status, "error");
+  assert.match(result.error ?? "", /unknown account/i);
+  assert.equal(actionFailureCanBeRetried(result), true);
+});
+
 test("assistant action execution reports ambiguous name-in-id references", async () => {
   await useTempDatabase();
   const testAccount = createAccount({
@@ -500,6 +527,17 @@ test("assistant action execution reports ambiguous name-in-id references", async
 });
 
 test("assistant tool loop continues only for recoverable failed actions", () => {
+  assert.equal(
+    shouldContinueToolLoop("Add coffee on my Missing Card account.", [
+      {
+        type: "create_transaction",
+        input: { account_id: "Missing Card", name: "Coffee" },
+        status: "error",
+        error: 'create_transaction references an unknown account',
+      },
+    ]),
+    true,
+  );
   assert.equal(
     shouldContinueToolLoop("Change the coffee transaction to Groceries.", [
       {

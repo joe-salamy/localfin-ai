@@ -1267,7 +1267,7 @@ export function executeAction(action: AIAction): ExecutedAction {
         };
       }
       case "create_transaction": {
-        const accountId = resolveAccount(input, accounts);
+        const accountId = resolveRequestedAccount(input, accounts, action.type);
         const date = requireIsoDate(input.date, "date", action.type);
         const name = asString(input.name);
         const amount = asNumber(input.amount);
@@ -1680,7 +1680,6 @@ export function shouldContinueToolLoop(
     ) &&
     !turnActions.some(actionCompletesMutation);
   const shouldRepairFailure =
-    messageRequestsMutationAfterSearch(message) &&
     turnActions.some(actionFailureCanBeRetried) &&
     !turnActions.some(actionCompletesCreate);
 
