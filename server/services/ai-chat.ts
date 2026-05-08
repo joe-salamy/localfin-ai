@@ -327,16 +327,68 @@ function findByName<T extends { name: string }>(
   return items.find((item) => item.name.trim().toLowerCase() === normalized);
 }
 
+function findAllByName<T extends { name: string }>(
+  items: T[],
+  name?: string,
+): T[] {
+  if (!name) return [];
+  const normalized = name.trim().toLowerCase();
+  return items.filter((item) => item.name.trim().toLowerCase() === normalized);
+}
+
+function describeEntityCandidate(
+  item: { id: string; name: string; type?: string; category_id?: string },
+): string {
+  const details = [
+    `id=${item.id}`,
+    item.type ? `type=${item.type}` : undefined,
+    item.category_id ? `category_id=${item.category_id}` : undefined,
+  ].filter(Boolean);
+  return `${item.name} (${details.join(", ")})`;
+}
+
+function resolveEntityReference<T extends { id: string; name: string }>(
+  items: T[],
+  idValue: string | undefined,
+  nameValue: string | undefined,
+): string | undefined {
+  if (idValue && items.some((item) => item.id === idValue)) return idValue;
+
+  const idNameMatches = findAllByName(items, idValue);
+  if (idNameMatches.length === 1) return idNameMatches[0]?.id;
+
+  const nameMatches = findAllByName(items, nameValue);
+  if (nameMatches.length === 1) return nameMatches[0]?.id;
+
+  return undefined;
+}
+
+function referenceError<T extends { id: string; name: string }>(
+  actionType: string,
+  label: string,
+  items: T[],
+  values: Array<string | undefined>,
+): Error {
+  const reference = values.find(Boolean);
+  const matches = findAllByName(items, reference);
+  if (reference && matches.length > 1) {
+    return new Error(
+      `${actionType} references ambiguous ${label} "${reference}". Candidates: ${matches
+        .map(describeEntityCandidate)
+        .join("; ")}`,
+    );
+  }
+  return new Error(`${actionType} references an unknown ${label}`);
+}
+
 function resolveAccount(
   input: Record<string, unknown>,
   accounts: Account[],
 ): string | undefined {
-  return (
-    asString(input.account_id) ??
-    findByName(
-      accounts,
-      asString(input.account_name) ?? asString(input.current_name),
-    )?.id
+  return resolveEntityReference(
+    accounts,
+    asString(input.account_id),
+    asString(input.account_name) ?? asString(input.current_name),
   );
 }
 
@@ -347,7 +399,11 @@ function resolveRequestedAccount(
 ): string | undefined {
   const accountId = resolveAccount(input, accounts);
   if (!accountId && hasAnyField(input, ["account_id", "account_name"])) {
-    throw new Error(`${actionType} references an unknown account`);
+    throw referenceError(actionType, "account", accounts, [
+      asString(input.account_id),
+      asString(input.account_name),
+      asString(input.current_name),
+    ]);
   }
   return accountId;
 }
@@ -356,26 +412,21 @@ function resolveCategory(
   input: Record<string, unknown>,
   categories: Category[],
 ): string | undefined {
-  const categoryId = asString(input.category_id);
-  if (categoryId && categories.some((category) => category.id === categoryId)) {
-    return categoryId;
-  }
-  return findByName(
+  return resolveEntityReference(
     categories,
-    asString(input.category_name) ?? categoryId,
-  )?.id;
+    asString(input.category_id),
+    asString(input.category_name) ?? asString(input.current_name),
+  );
 }
 
 function resolveSubcategory(
   input: Record<string, unknown>,
   subcategories: Subcategory[],
 ): string | undefined {
-  return (
-    asString(input.subcategory_id) ??
-    findByName(
-      subcategories,
-      asString(input.subcategory_name) ?? asString(input.current_name),
-    )?.id
+  return resolveEntityReference(
+    subcategories,
+    asString(input.subcategory_id),
+    asString(input.subcategory_name) ?? asString(input.current_name),
   );
 }
 
@@ -386,7 +437,11 @@ function resolveRequestedCategory(
 ): string | undefined {
   const categoryId = resolveCategory(input, categories);
   if (!categoryId && hasAnyField(input, ["category_id", "category_name"])) {
-    throw new Error(`${actionType} references an unknown category`);
+    throw referenceError(actionType, "category", categories, [
+      asString(input.category_id),
+      asString(input.category_name),
+      asString(input.current_name),
+    ]);
   }
   return categoryId;
 }
@@ -401,7 +456,11 @@ function resolveRequestedSubcategory(
     !subcategoryId &&
     hasAnyField(input, ["subcategory_id", "subcategory_name"])
   ) {
-    throw new Error(`${actionType} references an unknown subcategory`);
+    throw referenceError(actionType, "subcategory", subcategories, [
+      asString(input.subcategory_id),
+      asString(input.subcategory_name),
+      asString(input.current_name),
+    ]);
   }
   return subcategoryId;
 }
@@ -1423,6 +1482,9 @@ Amount conventions:
 Failure conventions:
 - If the user asks you to create or update something but it cannot be done because a referenced account/category/subcategory is missing, a date is invalid, or a name conflicts, still return the attempted action so validation can fail visibly.
 - If the user asks to delete, return no delete action and explain deletion is unavailable.
+- User-provided names are not IDs. For account/category/subcategory references, use ids only when they are present in the provided context. If the user provided a name, use account_name, category_name, subcategory_name, or current_name so the app can resolve it.
+- The account/category/subcategory lists are already in context. Do not invent ids, and do not treat a user phrase as an id unless it exactly matches an id in context.
+- After a failed action, inspect previousTurns.errors and return only the remaining corrective actions. Do not repeat actions that already succeeded.
 
 Allowed action types:
 - create_account: { name, type: "asset"|"liability", initial_balance? }
@@ -1460,6 +1522,40 @@ function compactExecutedAction(action: ExecutedAction): ExecutedAction {
     ? action.result.slice(0, 50)
     : action.result;
   return { ...action, result };
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function actionKey(action: AIAction): string {
+  return `${action.type}:${stableJson(action.input)}`;
+}
+
+function successfulActionKeys(previousTurns: ToolLoopState[]): Set<string> {
+  return new Set(
+    previousTurns.flatMap((turn) =>
+      turn.actions
+        .filter((action) => action.status === "success")
+        .map(actionKey),
+    ),
+  );
+}
+
+function removePreviouslySuccessfulActions(
+  actions: AIAction[],
+  previousTurns: ToolLoopState[],
+): AIAction[] {
+  const successfulKeys = successfulActionKeys(previousTurns);
+  if (successfulKeys.size === 0) return actions;
+  return actions.filter((action) => !successfulKeys.has(actionKey(action)));
 }
 
 function assistantUserContent(
@@ -1544,6 +1640,25 @@ function actionCompletesMutation(action: ExecutedAction): boolean {
   );
 }
 
+function actionCompletesCreate(action: ExecutedAction): boolean {
+  return action.status === "success" && /^create_/.test(action.type);
+}
+
+export function actionFailureCanBeRetried(action: ExecutedAction): boolean {
+  if (action.status !== "error" || !action.error) return false;
+  return (
+    /\breferences (?:an unknown|ambiguous) (?:account|category|subcategory)\b/i.test(
+      action.error,
+    ) ||
+    /\b(?:Account|Category|Subcategory) with id ".+" not found\b/i.test(
+      action.error,
+    ) ||
+    /\brequires id or (?:existing account name|current_name|subcategory)\b/i.test(
+      action.error,
+    )
+  );
+}
+
 function messageRequestsMutationAfterSearch(message: string): boolean {
   return (
     /\b(update|change|set|move|classify|categorize)\b/i.test(message) &&
@@ -1553,18 +1668,23 @@ function messageRequestsMutationAfterSearch(message: string): boolean {
   );
 }
 
-function shouldContinueToolLoop(
+export function shouldContinueToolLoop(
   message: string,
   turnActions: ExecutedAction[],
 ): boolean {
-  return (
+  const shouldContinueAfterSearch =
     messageRequestsMutationAfterSearch(message) &&
     turnActions.some(
       (action) =>
         action.type === "search_transactions" && action.status === "success",
     ) &&
-    !turnActions.some(actionCompletesMutation)
-  );
+    !turnActions.some(actionCompletesMutation);
+  const shouldRepairFailure =
+    messageRequestsMutationAfterSearch(message) &&
+    turnActions.some(actionFailureCanBeRetried) &&
+    !turnActions.some(actionCompletesCreate);
+
+  return shouldContinueAfterSearch || shouldRepairFailure;
 }
 
 async function runAssistantChat(
@@ -1616,11 +1736,14 @@ async function runAssistantChat(
     logFile = turnLogFile;
     finalAssistantMessage = parsed.message;
 
-    const plannedActions = prepareActionsForExecution(
-      parsed.actions ?? [],
-      request.message,
-      parsed.message,
-      planningContext(),
+    const plannedActions = removePreviouslySuccessfulActions(
+      prepareActionsForExecution(
+        parsed.actions ?? [],
+        request.message,
+        parsed.message,
+        planningContext(),
+      ),
+      previousTurns,
     );
     await emit?.({ type: "actions_planned", actions: plannedActions });
 
