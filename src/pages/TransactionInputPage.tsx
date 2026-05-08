@@ -4,7 +4,7 @@ import { RecentAccountTransactionsTable } from '@/components/features/RecentAcco
 export function TransactionInputPage() {
   return (
     <div className="space-y-4">
-      <h1 className="lf-page-title">Add Transactions</h1>
+      <h1 className="text-2xl font-bold text-foreground">Add Transactions</h1>
       <RecentAccountTransactionsTable />
       <MultiTransactionTable />
     </div>

@@ -30,13 +30,11 @@ export function AppLayout() {
   }, []), { enabled: chatOpen });
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Navbar />
-      <div className="min-w-0">
-        <main className="px-3 pb-24 pt-4 md:pl-64 md:pr-4 md:pt-4">
-          <div className="mx-auto max-w-7xl">
+    <div className="min-h-screen bg-background text-foreground md:flex">
+      <div className="min-w-0 flex-1">
+        <Navbar />
+        <main className="mx-auto max-w-7xl px-4 py-6">
           <Outlet />
-          </div>
         </main>
       </div>
       <ChatSidePanel open={chatOpen} onOpenChange={setChatOpen} inputRef={assistantInputRef} />

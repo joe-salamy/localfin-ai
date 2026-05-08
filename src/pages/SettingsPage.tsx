@@ -124,7 +124,7 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="lf-page-title">Settings</h1>
+      <h1 className="text-xl font-bold">Settings</h1>
 
       <Card>
         <CardHeader className="mb-2">
@@ -183,8 +183,8 @@ export function SettingsPage() {
               />
             </div>
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-lg bg-secondary/40 px-3 py-2 text-sm">
-            <div className="grid flex-1 grid-cols-3 overflow-hidden rounded-lg bg-card text-center font-mono text-xs">
+          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/20 px-3 py-2 text-sm">
+            <div className="grid flex-1 grid-cols-3 overflow-hidden rounded border border-border text-center font-mono text-xs">
               <span style={{ backgroundColor: `${displaySettings.negativeColor}24` }} className="px-2 py-1">-$500.00</span>
               <span style={{ backgroundColor: `${displaySettings.neutralColor}24` }} className="px-2 py-1">$0.00</span>
               <span style={{ backgroundColor: `${displaySettings.positiveColor}24` }} className="px-2 py-1">$500.00</span>
@@ -250,13 +250,13 @@ export function SettingsPage() {
           </div>
 
           {message && (
-            <p className="rounded-lg bg-secondary/40 px-3 py-2 text-sm text-muted-foreground" aria-live="polite">
+            <p className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground" aria-live="polite">
               {message}
             </p>
           )}
 
           <div
-            className="lf-table-wrap overflow-x-auto"
+            className="overflow-x-auto rounded-md border border-border"
             onFocus={() => setShortcutsTableFocused(true)}
             onBlur={(event) => {
               if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -318,7 +318,7 @@ export function SettingsPage() {
                               <button
                                 type="button"
                                 autoFocus
-                                className="rounded-full border-0 bg-input ring-2 ring-ring px-2 py-1 text-foreground"
+                                className="rounded border border-ring bg-input px-2 py-1 text-foreground"
                                 onKeyDown={(event) => {
                                   event.preventDefault();
                                   if (event.key === 'Escape') {

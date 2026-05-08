@@ -19,7 +19,7 @@ export function ShortcutHint({
   return (
     <kbd
       className={cn(
-        'ml-1.5 rounded-full bg-black/25 px-1.5 py-0.5 font-mono text-[10px] font-normal normal-case tracking-normal text-muted-foreground',
+        'ml-1.5 rounded border border-border bg-background/60 px-1.5 py-0.5 font-mono text-[10px] font-normal text-muted-foreground',
         className,
       )}
     >

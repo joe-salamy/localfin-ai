@@ -71,31 +71,26 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-lg bg-card p-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="lf-page-title">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Money movement, balances, and category flow.</p>
-        </div>
-        <div className="space-y-2">
+      <div className="space-y-2">
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
-            <label className="lf-pill-label block text-muted-foreground">Start</label>
+            <label className="block text-xs font-medium text-muted-foreground">Start</label>
             <input
               ref={startInputRef}
               type="date"
               value={startInput}
               onChange={(e) => setStartInput(e.target.value)}
-              className="h-8 rounded-full border-0 bg-input px-3 text-sm text-foreground"
+              className="h-8 rounded border border-border bg-input px-2 text-sm text-foreground"
             />
           </div>
           <div className="space-y-1">
-            <label className="lf-pill-label block text-muted-foreground">End</label>
+            <label className="block text-xs font-medium text-muted-foreground">End</label>
             <input
               ref={endInputRef}
               type="date"
               value={endInput}
               onChange={(e) => setEndInput(e.target.value)}
-              className="h-8 rounded-full border-0 bg-input px-3 text-sm text-foreground"
+              className="h-8 rounded border border-border bg-input px-2 text-sm text-foreground"
             />
           </div>
           <Button
@@ -130,14 +125,13 @@ export function DashboardPage() {
           })}
         </div>
       </div>
-      </div>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : (
         <>
           {/* Metrics cards */}
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-3 gap-3">
             <MetricCard
               label="Total Income"
               value={metrics?.totalIncome ?? 0}
@@ -221,10 +215,10 @@ function MetricCard({
   return (
     <Card className="p-3">
       <div className="flex items-center justify-between">
-        <span className="lf-pill-label text-muted-foreground">{label}</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
         {icon}
       </div>
-      <p className={cn('mt-2 font-mono text-xl font-bold tabular-nums', colorClass)}>
+      <p className={cn('text-lg font-semibold font-mono tabular-nums mt-1', colorClass)}>
         {formatCurrency(value)}
       </p>
     </Card>

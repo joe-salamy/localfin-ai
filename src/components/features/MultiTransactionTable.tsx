@@ -239,7 +239,7 @@ function GroupedSubcategorySelect({
       onPaste={onPaste}
       onFocus={onFocus}
       className={cn(
-        "h-7 w-full rounded-full border-0 bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,
       )}
     >
@@ -646,7 +646,7 @@ export function MultiTransactionTable() {
               ref={statementAccountRef}
               value={statementAccountId}
               onChange={(e) => setStatementAccountId(e.target.value)}
-              className="h-8 rounded-full border-0 bg-input px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-8 rounded border border-border bg-input px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="">Select account</option>
               {accountOptions.map((opt) => (
@@ -675,7 +675,7 @@ export function MultiTransactionTable() {
             value={statementText}
             onChange={(e) => setStatementText(e.target.value)}
             placeholder="Paste statement lines here"
-            className="min-h-20 w-full rounded-lg border-0 bg-input px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-h-20 w-full rounded border border-border bg-input px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           {parseSummary && (
             <p className="text-xs text-muted-foreground">{parseSummary}</p>
@@ -685,7 +685,7 @@ export function MultiTransactionTable() {
 
       {/* Table */}
       <div
-        className="lf-table-wrap overflow-x-auto"
+        className="overflow-x-auto rounded-md border border-border"
         onFocus={() => setGridFocused(true)}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -713,13 +713,13 @@ export function MultiTransactionTable() {
                 key={row.id}
                 className={cn(
                   "border-b border-border last:border-b-0",
-                  row.isDuplicate && "bg-warning/10",
+                  row.isDuplicate && "bg-yellow-500/10",
                 )}
               >
                 {/* Duplicate indicator */}
                 <td className="px-1 py-0.5 text-center">
                   {row.isDuplicate && (
-                    <AlertTriangle className="inline h-3.5 w-3.5 text-warning" />
+                    <AlertTriangle className="inline h-3.5 w-3.5 text-yellow-500" />
                   )}
                 </td>
 
@@ -737,7 +737,7 @@ export function MultiTransactionTable() {
                     }
                     onPaste={(e) => handlePaste(e, idx, "date")}
                     onFocus={() => setFocusedRowId(row.id)}
-                    className="h-7 w-28 rounded-full border-0 bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="h-7 w-28 rounded border border-border bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
 
@@ -755,7 +755,7 @@ export function MultiTransactionTable() {
                     }
                     onPaste={(e) => handlePaste(e, idx, "name")}
                     onFocus={() => setFocusedRowId(row.id)}
-                    className="h-7 w-44 rounded-full border-0 bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="h-7 w-44 rounded border border-border bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
 
@@ -780,7 +780,7 @@ export function MultiTransactionTable() {
                     }
                     onPaste={(e) => handlePaste(e, idx, "amount")}
                     onFocus={() => setFocusedRowId(row.id)}
-                    className="h-7 w-24 rounded-full border-0 bg-input px-1.5 text-right text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="h-7 w-24 rounded border border-border bg-input px-1.5 text-right text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
 
@@ -796,7 +796,7 @@ export function MultiTransactionTable() {
                     }
                     onPaste={(e) => handlePaste(e, idx, "account_id")}
                     onFocus={() => setFocusedRowId(row.id)}
-                    className="h-7 w-32 rounded-full border-0 bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="h-7 w-32 rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <option value="">--</option>
                     {accountOptions.map((opt) => (
@@ -843,7 +843,7 @@ export function MultiTransactionTable() {
                     }
                     onPaste={(e) => handlePaste(e, idx, "comment")}
                     onFocus={() => setFocusedRowId(row.id)}
-                    className="h-7 w-32 rounded-full border-0 bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="h-7 w-32 rounded border border-border bg-input px-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </td>
 

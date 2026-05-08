@@ -31,29 +31,29 @@ export function NetWorthChart({ data }: NetWorthChartProps) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <LineChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
         <XAxis
           dataKey="formattedDate"
-          tick={{ fill: '#b3b3b3', fontSize: 11, fontWeight: 600 }}
-          tickLine={{ stroke: '#4d4d4d' }}
+          tick={{ fill: '#9ca3af', fontSize: 11 }}
+          tickLine={{ stroke: '#555' }}
         />
         <YAxis
-          tick={{ fill: '#b3b3b3', fontSize: 11, fontWeight: 600 }}
-          tickLine={{ stroke: '#4d4d4d' }}
+          tick={{ fill: '#9ca3af', fontSize: 11 }}
+          tickLine={{ stroke: '#555' }}
           tickFormatter={(v: number) => formatCurrency(v)}
           width={90}
         />
         <Tooltip
-          contentStyle={{ backgroundColor: '#181818', border: '0', borderRadius: 8, boxShadow: 'rgba(0,0,0,0.5) 0px 8px 24px', fontSize: 12 }}
-          labelStyle={{ color: '#ffffff', fontWeight: 700 }}
+          contentStyle={{ backgroundColor: '#1f1f1f', border: '1px solid #333', borderRadius: 6, fontSize: 12 }}
+          labelStyle={{ color: '#ddd' }}
           formatter={(value) => formatCurrency(Number(value))}
         />
-        <Legend wrapperStyle={{ fontSize: 11, color: '#b3b3b3', fontWeight: 700 }} />
+        <Legend wrapperStyle={{ fontSize: 11, color: '#ccc' }} />
         <Line
           type="monotone"
           dataKey="netWorth"
-          stroke="#1ed760"
-          strokeWidth={3}
+          stroke="#ffffff"
+          strokeWidth={2}
           dot={false}
           name="Net Worth"
         />
