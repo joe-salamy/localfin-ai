@@ -10,13 +10,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let db: Database.Database | null = null;
 
 export function resolveDatabasePath(): string {
-  const explicitPath = process.env.LOCALFIN_DB_PATH;
-  if (explicitPath?.trim()) {
+  const explicitPath = process.env.LOCALFIN_DB_PATH?.trim();
+  if (explicitPath) {
     return path.resolve(explicitPath);
   }
 
-  const dataDir = process.env.LOCALFIN_DATA_DIR?.trim()
-    ? path.resolve(process.env.LOCALFIN_DATA_DIR)
+  const configuredDataDir = process.env.LOCALFIN_DATA_DIR?.trim();
+  const dataDir = configuredDataDir
+    ? path.resolve(configuredDataDir)
     : DATABASE_CONFIG.dataDirectory;
   return path.join(dataDir, DATABASE_CONFIG.fileName);
 }
