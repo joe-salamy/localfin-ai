@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPost, apiStream } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
+import { readAssistantSettings } from "@/features/assistant-settings/storage";
 import type { EnrichedTransaction } from "@/types";
 
 interface CategorizeTransaction {
@@ -44,6 +45,7 @@ export interface ChatRequest {
   conversationId: string;
   message: string;
   currentPage?: string;
+  maxAssistantTurns?: number;
 }
 
 export interface ChatActionResult {
@@ -79,6 +81,12 @@ export type ChatStreamEvent =
 export function useAI() {
   const queryClient = useQueryClient();
 
+  const withAssistantSettings = useCallback((data: ChatRequest): ChatRequest => ({
+    ...data,
+    maxAssistantTurns:
+      data.maxAssistantTurns ?? readAssistantSettings().maxAssistantTurns,
+  }), []);
+
   const invalidateFinanceData = useCallback(
     () =>
       Promise.all([
@@ -104,7 +112,8 @@ export function useAI() {
   });
 
   const chat = useMutation({
-    mutationFn: (data: ChatRequest) => apiPost<ChatResult>("/ai/chat", data),
+    mutationFn: (data: ChatRequest) =>
+      apiPost<ChatResult>("/ai/chat", withAssistantSettings(data)),
     onSuccess: () => invalidateFinanceData(),
   });
 
@@ -116,7 +125,7 @@ export function useAI() {
     ) => {
       await apiStream<ChatStreamEvent>(
         "/ai/chat/stream",
-        data,
+        withAssistantSettings(data),
         (event) => {
           onEvent(event);
           if (
@@ -129,7 +138,7 @@ export function useAI() {
         signal,
       );
     },
-    [invalidateFinanceData],
+    [invalidateFinanceData, withAssistantSettings],
   );
 
   return {

@@ -20,6 +20,7 @@ const chatSchema = z.object({
   conversationId: nonEmptyString,
   message: nonEmptyString.max(10_000),
   currentPage: z.string().optional(),
+  maxAssistantTurns: z.coerce.number().int().min(1).max(10).optional(),
 });
 
 router.post('/categorize', async (req: Request, res: Response) => {

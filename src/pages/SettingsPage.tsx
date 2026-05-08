@@ -9,6 +9,8 @@ import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
 import { useShortcut, useShortcutScope, useShortcuts } from '@/features/shortcuts/hooks';
 import { displayShortcut, isSingleCharacterShortcut, normalizeKeyboardEvent, validateShortcut } from '@/features/shortcuts/normalize';
 import { useDisplaySettings } from '@/features/display-settings/hooks';
+import { useAssistantSettings } from '@/features/assistant-settings/hooks';
+import { MAX_MAX_ASSISTANT_TURNS, MIN_MAX_ASSISTANT_TURNS } from '@/features/assistant-settings/storage';
 
 export function SettingsPage() {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -26,6 +28,7 @@ export function SettingsPage() {
     setDisableSingleKeyShortcuts,
   } = useShortcuts();
   const displaySettings = useDisplaySettings();
+  const assistantSettings = useAssistantSettings();
 
   const [query, setQuery] = useState('');
   const [selectedCommandId, setSelectedCommandId] = useState<CommandId>('global.dashboard');
@@ -137,6 +140,28 @@ export function SettingsPage() {
           <p className="text-sm text-muted-foreground mt-2">
             To update it, edit <code className="bg-secondary px-1 py-0.5 rounded text-xs font-mono">.env</code> and restart the server.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="mb-2">
+          <CardTitle>Assistant</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input
+            type="number"
+            min={MIN_MAX_ASSISTANT_TURNS}
+            max={MAX_MAX_ASSISTANT_TURNS}
+            step={1}
+            label="Max LLM turns per request"
+            value={assistantSettings.maxAssistantTurns}
+            onChange={(event) => assistantSettings.setMaxAssistantTurns(Number(event.target.value))}
+            helperText="Controls how many times the assistant can continue after tool results. Default is 5."
+          />
+          <Button type="button" variant="secondary" onClick={assistantSettings.resetAssistantSettings}>
+            <RotateCcw className="mr-1 h-3.5 w-3.5" />
+            Reset
+          </Button>
         </CardContent>
       </Card>
 

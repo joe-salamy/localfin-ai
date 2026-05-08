@@ -150,6 +150,7 @@ interface LiveAgentScenario {
   name: string;
   prompt: string;
   mode?: "chat" | "stream";
+  maxAssistantTurns?: number;
   seed?: ScenarioSeed;
   assertions: EvalAssertion[];
 }
@@ -194,12 +195,14 @@ interface ServiceModules {
     conversationId: string;
     message: string;
     currentPage?: string;
+    maxAssistantTurns?: number;
   }) => Promise<ChatResult>;
   streamChatWithAssistant: (
     request: {
       conversationId: string;
       message: string;
       currentPage?: string;
+      maxAssistantTurns?: number;
     },
     emit: (event: ChatStreamEvent) => void | Promise<void>,
   ) => Promise<ChatResult>;
@@ -308,8 +311,15 @@ function assertAnyActionFailed(): EvalAssertion {
 
 function assertSearchBeforeUpdate(): EvalAssertion {
   return {
-    name: "search happens before transaction update",
+    name: "search/update or bulk update path used",
     check: ({ actions }) => {
+      const bulkIndex = actions.findIndex(
+        (action) => action.type === "bulk_update_transactions",
+      );
+      if (bulkIndex !== -1) {
+        return pass("search/update or bulk update path used");
+      }
+
       const searchIndex = actions.findIndex(
         (action) => action.type === "search_transactions",
       );
@@ -321,7 +331,7 @@ function assertSearchBeforeUpdate(): EvalAssertion {
         searchIndex < updateIndex
         ? pass("search happens before transaction update")
         : fail(
-            "search happens before transaction update",
+            "search/update or bulk update path used",
             `search index ${searchIndex}, update index ${updateIndex}`,
           );
     },
@@ -487,6 +497,39 @@ function assertTransaction(expected: {
   };
 }
 
+function assertMatchingTransactionsSubcategory(expected: {
+  account: string;
+  nameIncludes: string;
+  subcategory: string;
+  count: number;
+}): EvalAssertion {
+  return {
+    name: `all ${expected.nameIncludes} transactions are ${expected.subcategory}`,
+    check: ({ snapshot }) => {
+      const matches = snapshot.transactions.filter(
+        (item) =>
+          normalize(item.account_name) === normalize(expected.account) &&
+          includesText(item.name, expected.nameIncludes),
+      );
+      if (matches.length !== expected.count) {
+        return fail(
+          `all ${expected.nameIncludes} transactions are ${expected.subcategory}`,
+          `found ${matches.length}, expected ${expected.count}`,
+        );
+      }
+      const mismatches = matches.filter(
+        (item) => normalize(item.subcategory_name) !== normalize(expected.subcategory),
+      );
+      return mismatches.length === 0
+        ? pass(`all ${expected.nameIncludes} transactions are ${expected.subcategory}`)
+        : fail(
+            `all ${expected.nameIncludes} transactions are ${expected.subcategory}`,
+            `mismatched ids: ${mismatches.map((item) => item.id).join(", ")}`,
+          );
+    },
+  };
+}
+
 function assertNoDeletedRows(): EvalAssertion {
   return {
     name: "no rows were soft-deleted",
@@ -579,6 +622,8 @@ const baseSeed: ScenarioSeed = {
       subcategories: [
         { name: "Utilities", monthly_goal: 220 },
         { name: "Subscriptions", monthly_goal: 80 },
+        { name: "Rent", monthly_goal: 1600 },
+        { name: "Bank Fees", monthly_goal: 20 },
       ],
     },
   ],
@@ -630,6 +675,34 @@ const baseSeed: ScenarioSeed = {
       amount: 2750,
       subcategory: "Paycheck",
       comment: "salary",
+    },
+    {
+      account: "Test Checking",
+      date: "2026-04-01",
+      name: "ZELLE INSTANT PMT TO Nick",
+      amount: -1561,
+      subcategory: "Rideshare",
+    },
+    {
+      account: "Test Checking",
+      date: "2026-05-01",
+      name: "ZELLE INSTANT PMT TO Nick",
+      amount: -1561,
+      subcategory: "Rideshare",
+    },
+    {
+      account: "Test Checking",
+      date: "2026-04-30",
+      name: "MONTHLY MAINTENANCE FEE",
+      amount: -12,
+      subcategory: "Utilities",
+    },
+    {
+      account: "Test Checking",
+      date: "2026-05-05",
+      name: "MONTHLY MAINTENANCE FEE",
+      amount: -12,
+      subcategory: "Utilities",
     },
   ],
   goals: [
@@ -835,6 +908,29 @@ const scenarios: LiveAgentScenario[] = [
   },
   {
     suite: "search and update",
+    name: "bulk matching subcategory update",
+    seed: baseSeed,
+    prompt:
+      'Within Test Checking, change all transactions with "ZELLE INSTANT PMT" to subcategory Rent, and all with "MONTHLY MAINTENANCE FEE" to subcategory Bank Fees.',
+    assertions: [
+      assertActionCount("bulk_update_transactions", 2),
+      assertMatchingTransactionsSubcategory({
+        account: "Test Checking",
+        nameIncludes: "ZELLE INSTANT PMT",
+        subcategory: "Rent",
+        count: 2,
+      }),
+      assertMatchingTransactionsSubcategory({
+        account: "Test Checking",
+        nameIncludes: "MONTHLY MAINTENANCE FEE",
+        subcategory: "Bank Fees",
+        count: 2,
+      }),
+      assertAllActionsSucceeded(),
+    ],
+  },
+  {
+    suite: "search and update",
     name: "exclude payroll",
     seed: baseSeed,
     prompt:
@@ -974,6 +1070,7 @@ const scenarios: LiveAgentScenario[] = [
     suite: "streaming",
     name: "stream search update",
     mode: "stream",
+    maxAssistantTurns: 5,
     seed: baseSeed,
     prompt:
       'Search name:"Uber Trip" AND comment:"client" and update that transaction\'s comment to \'client meeting rideshare - reimbursable\'.',
@@ -1347,6 +1444,7 @@ async function runScenario(
       conversationId,
       message: scenario.prompt,
       currentPage: "/agent-live-eval",
+      maxAssistantTurns: scenario.maxAssistantTurns,
     };
     const result =
       scenario.mode === "stream"

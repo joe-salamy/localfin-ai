@@ -40,6 +40,7 @@ interface ChatRequest {
   conversationId: string;
   message: string;
   currentPage?: string;
+  maxAssistantTurns?: number;
 }
 
 interface AIAction {
@@ -64,6 +65,7 @@ interface PlanningContext {
   accounts: Account[];
   categories: Category[];
   subcategories: Subcategory[];
+  goals: SpendingGoalWithDetails[];
   recentTransactions: TransactionWithDetails[];
 }
 
@@ -102,6 +104,12 @@ interface SearchActionResult {
   executedAction: ExecutedAction;
 }
 
+interface ToolLoopState {
+  turn: number;
+  assistantMessage: string;
+  actions: ExecutedAction[];
+}
+
 export interface ChatResult {
   conversationId: string;
   requestId: string;
@@ -122,6 +130,21 @@ export type ChatStreamEvent =
   | { type: "final"; data: ChatResult };
 
 type ChatStreamEmitter = (event: ChatStreamEvent) => void | Promise<void>;
+
+const DEFAULT_MAX_ASSISTANT_TURNS = 5;
+const MIN_MAX_ASSISTANT_TURNS = 1;
+const MAX_MAX_ASSISTANT_TURNS = 10;
+const DEFAULT_BULK_TRANSACTION_LIMIT = 100;
+const MAX_BULK_TRANSACTION_LIMIT = 500;
+
+export function normalizeMaxAssistantTurns(value: unknown): number {
+  const numericValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numericValue)) return DEFAULT_MAX_ASSISTANT_TURNS;
+  return Math.min(
+    Math.max(Math.trunc(numericValue), MIN_MAX_ASSISTANT_TURNS),
+    MAX_MAX_ASSISTANT_TURNS,
+  );
+}
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -271,6 +294,14 @@ function optionalNullableIsoDate(
   return requireIsoDate(value, field, actionType);
 }
 
+function optionalPositiveInteger(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  const numberValue = asNumber(value);
+  if (numberValue === undefined) return undefined;
+  const integerValue = Math.trunc(numberValue);
+  return integerValue > 0 ? integerValue : undefined;
+}
+
 function assertDateRange(
   startDate: string,
   endDate: string | null | undefined,
@@ -319,10 +350,14 @@ function resolveCategory(
   input: Record<string, unknown>,
   categories: Category[],
 ): string | undefined {
-  return (
-    asString(input.category_id) ??
-    findByName(categories, asString(input.category_name))?.id
-  );
+  const categoryId = asString(input.category_id);
+  if (categoryId && categories.some((category) => category.id === categoryId)) {
+    return categoryId;
+  }
+  return findByName(
+    categories,
+    asString(input.category_name) ?? categoryId,
+  )?.id;
 }
 
 function resolveSubcategory(
@@ -374,6 +409,81 @@ function resolveGoal(
   if (id) return id;
   const subcategoryId = resolveSubcategory(input, subcategories);
   return goals.find((goal) => goal.subcategory_id === subcategoryId)?.id;
+}
+
+function transactionSearchFilters(
+  input: Record<string, unknown>,
+  accounts: Account[],
+  subcategories: Subcategory[],
+  actionType: string,
+  defaultLimit: number,
+  maxLimit: number,
+): Parameters<typeof getTransactionsWithDetails>[0] {
+  const searchQuery = asString(input.searchQuery);
+  if (!searchQuery) {
+    throw new Error(`${actionType} requires searchQuery`);
+  }
+
+  const requestedLimit = optionalPositiveInteger(input.limit);
+  const limit = Math.min(requestedLimit ?? defaultLimit, maxLimit);
+  return {
+    searchQuery,
+    accountId: resolveRequestedAccount(input, accounts, actionType),
+    subcategoryId: resolveRequestedSubcategory(
+      input,
+      subcategories,
+      actionType,
+    ),
+    startDate:
+      optionalIsoDate(input.startDate, "startDate", actionType) ??
+      optionalIsoDate(input.start_date, "start_date", actionType),
+    endDate:
+      optionalIsoDate(input.endDate, "endDate", actionType) ??
+      optionalIsoDate(input.end_date, "end_date", actionType),
+    limit,
+  };
+}
+
+function transactionUpdateInput(
+  input: Record<string, unknown>,
+  subcategories: Subcategory[],
+  actionType: string,
+): {
+  subcategory_id?: string | null;
+  comment?: string | null;
+} {
+  const updates = input.updates;
+  const updateInput =
+    updates && typeof updates === "object"
+      ? (updates as Record<string, unknown>)
+      : input;
+  const hasSubcategoryUpdate = hasAnyField(updateInput, [
+    "subcategory_id",
+    "subcategory_name",
+  ]);
+  const hasCommentUpdate = hasField(updateInput, "comment");
+
+  if (!hasSubcategoryUpdate && !hasCommentUpdate) {
+    throw new Error(`${actionType} requires at least one update field`);
+  }
+
+  return {
+    ...(hasSubcategoryUpdate
+      ? {
+          subcategory_id:
+            updateInput.subcategory_id === null
+              ? null
+              : resolveRequestedSubcategory(
+                  updateInput,
+                  subcategories,
+                  actionType,
+                ),
+        }
+      : {}),
+    ...(hasCommentUpdate
+      ? { comment: asNullableString(updateInput.comment) ?? null }
+      : {}),
+  };
 }
 
 function normalizeForMatch(value: string): string {
@@ -608,6 +718,48 @@ function normalizeCreateTransactionAction(
   );
 }
 
+function subcategoryGoalUpdateAction(
+  action: AIAction,
+  message: string,
+  context: PlanningContext,
+): AIAction | undefined {
+  if (
+    action.type !== "update_subcategory" ||
+    !hasField(action.input, "monthly_goal") ||
+    !/\b(goal|target|budget)\b/i.test(message)
+  ) {
+    return undefined;
+  }
+
+  const amount = optionalNonnegativeNumber(
+    action.input.monthly_goal,
+    "monthly_goal",
+    action.type,
+  );
+  if (typeof amount !== "number") return undefined;
+
+  const subcategoryName =
+    asString(action.input.current_name) ??
+    asString(action.input.subcategory_name) ??
+    asString(action.input.name);
+  const subcategory =
+    context.subcategories.find((item) => item.id === asString(action.input.id)) ??
+    findByName(context.subcategories, subcategoryName);
+  if (!subcategory) return undefined;
+  const existingGoal = context.goals.find(
+    (goal) => goal.subcategory_id === subcategory.id,
+  );
+  if (!existingGoal) return undefined;
+
+  return {
+    type: "update_goal",
+    input: {
+      id: existingGoal.id,
+      amount,
+    },
+  };
+}
+
 function quoteSearchValue(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
@@ -699,6 +851,8 @@ export function prepareActionsForExecution(
       if (searchAction) withSearches.push(searchAction);
     }
     withSearches.push(action);
+    const goalUpdate = subcategoryGoalUpdateAction(action, message, context);
+    if (goalUpdate) withSearches.push(goalUpdate);
   }
 
   return withSearches;
@@ -720,7 +874,9 @@ function requestedUpdateSubcategory(
   message: string,
   subcategories: Subcategory[],
 ): string | undefined {
-  const directMatch = message.match(/\bsubcategory\s+is\s+([A-Za-z][\w -]+)/i);
+  const directMatch = message.match(
+    /\bsubcategory\s+(?:is|to)\s+["']?([A-Za-z][\w -]*?)["']?(?:[.,;!?]|$|\s+and\b)/i,
+  );
   const directName = directMatch?.[1]?.trim().replace(/[.?!,].*$/, "");
   if (directName && findByName(subcategories, directName)) return directName;
 
@@ -788,7 +944,8 @@ function shouldRepairSearchOnlyUpdate(
   message: string,
 ): boolean {
   return (
-    /\b(search|find|use)\b[\s\S]*\bupdate\b/i.test(message) &&
+    /\b(search|find|use)\b[\s\S]*\b(update|change)\b/i.test(message) &&
+    !/\b(all|every)\b/i.test(message) &&
     actions.some((action) => action.type === "search_transactions") &&
     !actions.some((action) => action.type === "update_transaction")
   );
@@ -896,7 +1053,7 @@ function parseChatResponse(parsed: unknown): AIChatResponse {
   };
 }
 
-function executeAction(action: AIAction): ExecutedAction {
+export function executeAction(action: AIAction): ExecutedAction {
   const accounts = getAccounts();
   const categories = getCategories();
   const subcategories = getSubcategories();
@@ -1001,7 +1158,17 @@ function executeAction(action: AIAction): ExecutedAction {
       }
       case "update_subcategory": {
         const id =
-          asString(input.id) ?? resolveSubcategory(input, subcategories);
+          asString(input.id) ??
+          resolveSubcategory(
+            {
+              ...input,
+              current_name:
+                asString(input.current_name) ??
+                asString(input.subcategory_name) ??
+                asString(input.name),
+            },
+            subcategories,
+          );
         if (!id)
           throw new Error("update_subcategory requires id or current_name");
         if (
@@ -1061,28 +1228,16 @@ function executeAction(action: AIAction): ExecutedAction {
         };
       }
       case "search_transactions": {
-        const searchQuery = asString(input.searchQuery);
-        if (!searchQuery) {
-          throw new Error("search_transactions requires searchQuery");
-        }
-        const requestedLimit = asNumber(input.limit);
-        const limit = Math.min(Math.max(requestedLimit ?? 25, 1), 100);
-        const transactions = getTransactionsWithDetails({
-          searchQuery,
-          accountId: resolveRequestedAccount(input, accounts, action.type),
-          subcategoryId: resolveRequestedSubcategory(
+        const transactions = getTransactionsWithDetails(
+          transactionSearchFilters(
             input,
+            accounts,
             subcategories,
             action.type,
+            25,
+            100,
           ),
-          startDate:
-            optionalIsoDate(input.startDate, "startDate", action.type) ??
-            optionalIsoDate(input.start_date, "start_date", action.type),
-          endDate:
-            optionalIsoDate(input.endDate, "endDate", action.type) ??
-            optionalIsoDate(input.end_date, "end_date", action.type),
-          limit,
-        });
+        );
 
         return {
           ...action,
@@ -1098,6 +1253,39 @@ function executeAction(action: AIAction): ExecutedAction {
             subcategory_name: transaction.subcategory_name,
             comment: transaction.comment,
           })),
+        };
+      }
+      case "bulk_update_transactions": {
+        const filters = transactionSearchFilters(
+          input,
+          accounts,
+          subcategories,
+          action.type,
+          DEFAULT_BULK_TRANSACTION_LIMIT,
+          MAX_BULK_TRANSACTION_LIMIT,
+        );
+        const updates = transactionUpdateInput(
+          input,
+          subcategories,
+          action.type,
+        );
+        const transactions = getTransactionsWithDetails(filters);
+        const transactionIds = transactions.map((transaction) => transaction.id);
+        let updatedCount = 0;
+
+        for (const transaction of transactions) {
+          updateTransaction(transaction.id, updates);
+          updatedCount += 1;
+        }
+
+        return {
+          ...action,
+          status: "success",
+          result: {
+            matched_count: transactionIds.length,
+            updated_count: updatedCount,
+            transaction_ids: transactionIds,
+          },
         };
       }
       case "update_transaction": {
@@ -1240,47 +1428,77 @@ Allowed action types:
 - create_transaction: { account_id? or account_name, date: "YYYY-MM-DD", name, amount, subcategory_id? or subcategory_name?, comment? }
 - search_transactions: { searchQuery, account_id? or account_name?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit? }
 - update_transaction: { id, date?, name?, amount?, subcategory_id? or subcategory_name?, comment? }
+- bulk_update_transactions: { searchQuery, account_id? or account_name?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit?, updates: { subcategory_id? or subcategory_name?, comment? } }
 - create_goal: { subcategory_id? or subcategory_name, amount, period: "weekly"|"monthly"|"quarterly"|"annual", start_date: "YYYY-MM-DD", end_date? }
 - update_goal: { id? or subcategory_id? or subcategory_name, amount?, period?, start_date?, end_date? }
 
 Transaction search supports grep-like logic in searchQuery: quoted phrases, parentheses, AND, OR, NOT, |, -term, and fields name:, comment:, account:, category:, subcategory:, amount/date comparisons such as amount>20 and date>=2026-01-01. Examples: "coffee AND NOT starbucks", "(uber OR lyft) AND amount>20", "account:checking AND category:food AND date>=2026-01-01". Any request phrased as find/search/use criteria and then update must include search_transactions followed by update_transaction. Use search_transactions before update_transaction when the user describes a transaction but does not provide its id.
+For requests to update all/every matching transaction, prefer bulk_update_transactions over search_transactions plus many update_transaction actions. For multiple independent criteria, return one bulk_update_transactions action per criterion.
 
 Use today's date ${new Date().toISOString().slice(0, 10)} when the user says today.`;
 }
 
-async function runAssistantChat(
-  request: ChatRequest,
-  emit?: ChatStreamEmitter,
-): Promise<ChatResult> {
-  const requestId = crypto.randomUUID();
-  await emit?.({
-    type: "started",
-    conversationId: request.conversationId,
-    requestId,
-  });
-  await emit?.({
-    type: "thinking",
-    message: "Reading your finance context and planning actions...",
-  });
+function planningContext(): PlanningContext {
+  return {
+    accounts: getAccounts(),
+    categories: getCategories(),
+    subcategories: getSubcategories(),
+    goals: getSpendingGoalsWithDetails(),
+    recentTransactions: getTransactionsWithDetails({ limit: 25 }),
+  };
+}
 
+function compactExecutedAction(action: ExecutedAction): ExecutedAction {
+  if (action.type !== "search_transactions") return action;
+  const result = Array.isArray(action.result)
+    ? action.result.slice(0, 50)
+    : action.result;
+  return { ...action, result };
+}
+
+function assistantUserContent(
+  request: ChatRequest,
+  previousTurns: ToolLoopState[],
+): string {
+  return JSON.stringify({
+    currentPage: request.currentPage ?? null,
+    message: request.message,
+    context: compactContext(),
+    ...(previousTurns.length > 0
+      ? {
+          instruction:
+            "Continue from the prior tool results. Return only the next needed JSON response.",
+          previousTurns: previousTurns.map((turn) => ({
+            turn: turn.turn,
+            assistantMessage: turn.assistantMessage,
+            actions: turn.actions.map(compactExecutedAction),
+          })),
+        }
+      : {}),
+  });
+}
+
+async function planAssistantActions(
+  request: ChatRequest,
+  requestId: string,
+  turn: number,
+  previousTurns: ToolLoopState[],
+  emit?: ChatStreamEmitter,
+): Promise<{ parsed: AIChatResponse; logFile: string }> {
   const response = await streamOpenRouter(
     [
       { role: "system", content: assistantSystemMessage() },
       {
         role: "user",
-        content: JSON.stringify({
-          currentPage: request.currentPage ?? null,
-          message: request.message,
-          context: compactContext(),
-        }),
+        content: assistantUserContent(request, previousTurns),
       },
     ],
     {
       conversationId: request.conversationId,
       requestId,
-      operation: "assistant.chat",
+      operation: turn === 1 ? "assistant.chat" : "assistant.chat.follow_up",
       model: AI_MODELS.assistantChat,
-      metadata: { currentPage: request.currentPage ?? null },
+      metadata: { currentPage: request.currentPage ?? null, turn },
     },
     async (event) => {
       switch (event.type) {
@@ -1299,41 +1517,119 @@ async function runAssistantChat(
     },
   );
 
-  const parsed = parseChatResponse(response.parsedContent);
-  const planningContext: PlanningContext = {
-    accounts: getAccounts(),
-    categories: getCategories(),
-    subcategories: getSubcategories(),
-    recentTransactions: getTransactionsWithDetails({ limit: 25 }),
+  return {
+    parsed: parseChatResponse(response.parsedContent),
+    logFile: response.logFile,
   };
-  const plannedActions = prepareActionsForExecution(
-    parsed.actions ?? [],
-    request.message,
-    parsed.message,
-    planningContext,
+}
+
+function actionCompletesMutation(action: ExecutedAction): boolean {
+  return (
+    action.status === "success" &&
+    (action.type === "bulk_update_transactions" ||
+      /^(create|update)_/.test(action.type))
   );
-  await emit?.({ type: "actions_planned", actions: plannedActions });
+}
+
+function messageRequestsMutationAfterSearch(message: string): boolean {
+  return (
+    /\b(update|change|set|move|classify|categorize)\b/i.test(message) &&
+    !/\bdo not\s+(?:update|change|set|move|classify|categorize)\b/i.test(
+      message,
+    )
+  );
+}
+
+function shouldContinueToolLoop(
+  message: string,
+  turnActions: ExecutedAction[],
+): boolean {
+  return (
+    messageRequestsMutationAfterSearch(message) &&
+    turnActions.some(
+      (action) =>
+        action.type === "search_transactions" && action.status === "success",
+    ) &&
+    !turnActions.some(actionCompletesMutation)
+  );
+}
+
+async function runAssistantChat(
+  request: ChatRequest,
+  emit?: ChatStreamEmitter,
+): Promise<ChatResult> {
+  const requestId = crypto.randomUUID();
+  const maxTurns = normalizeMaxAssistantTurns(request.maxAssistantTurns);
+  await emit?.({
+    type: "started",
+    conversationId: request.conversationId,
+    requestId,
+  });
+  await emit?.({
+    type: "thinking",
+    message: "Reading your finance context and planning actions...",
+  });
 
   const actions: ExecutedAction[] = [];
-  for (let index = 0; index < plannedActions.length; index += 1) {
-    const action = plannedActions[index];
-    if (!action) continue;
-    await emit?.({ type: "action_started", index, action });
-    const executedAction = executeAction(action);
-    actions.push(executedAction);
-    await emit?.({ type: "action_finished", index, action: executedAction });
+  const previousTurns: ToolLoopState[] = [];
+  let finalAssistantMessage = "Done.";
+  let logFile = "";
 
-    if (action.type === "search_transactions") {
-      const followUp = buildSearchUpdateFollowUp(
-        plannedActions,
-        request.message,
-        { action, executedAction },
-        getSubcategories(),
-      );
-      if (followUp) {
-        plannedActions.splice(index + 1, 0, followUp);
+  for (let turn = 1; turn <= maxTurns; turn += 1) {
+    const { parsed, logFile: turnLogFile } = await planAssistantActions(
+      request,
+      requestId,
+      turn,
+      previousTurns,
+      emit,
+    );
+    logFile = turnLogFile;
+    finalAssistantMessage = parsed.message;
+
+    const plannedActions = prepareActionsForExecution(
+      parsed.actions ?? [],
+      request.message,
+      parsed.message,
+      planningContext(),
+    );
+    await emit?.({ type: "actions_planned", actions: plannedActions });
+
+    const turnActions: ExecutedAction[] = [];
+    for (let index = 0; index < plannedActions.length; index += 1) {
+      const action = plannedActions[index];
+      if (!action) continue;
+      const actionIndex = actions.length;
+      await emit?.({ type: "action_started", index: actionIndex, action });
+      const executedAction = executeAction(action);
+      actions.push(executedAction);
+      turnActions.push(executedAction);
+      await emit?.({
+        type: "action_finished",
+        index: actionIndex,
+        action: executedAction,
+      });
+
+      if (action.type === "search_transactions" && turn === maxTurns) {
+        const followUp = buildSearchUpdateFollowUp(
+          plannedActions,
+          request.message,
+          { action, executedAction },
+          getSubcategories(),
+        );
+        if (followUp) {
+          plannedActions.splice(index + 1, 0, followUp);
+        }
       }
     }
+
+    previousTurns.push({
+      turn,
+      assistantMessage: parsed.message,
+      actions: turnActions,
+    });
+
+    if (plannedActions.length === 0) break;
+    if (!shouldContinueToolLoop(request.message, turnActions)) break;
   }
 
   await appendConversationLog(request.conversationId, {
@@ -1356,9 +1652,9 @@ async function runAssistantChat(
   const result = {
     conversationId: request.conversationId,
     requestId,
-    message: `${parsed.message}${suffix}`,
+    message: `${finalAssistantMessage}${suffix}`,
     actions,
-    logFile: response.logFile,
+    logFile,
   };
 
   await emit?.({ type: "final", data: result });
