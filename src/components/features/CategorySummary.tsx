@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { CategorySummary as CategorySummaryType } from '@/types';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { EntityLabel } from '@/components/ui/EntityLabel';
 import { formatCurrency, cn } from '@/lib/utils';
+import { useAmountGradient } from '@/features/display-settings/hooks';
 
 interface CategorySummaryProps {
   categories: CategorySummaryType[];
@@ -13,6 +15,9 @@ const cellClass = 'px-2 py-1.5 text-sm whitespace-nowrap';
 
 export function CategorySummaryTable({ categories }: CategorySummaryProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const getSummaryGradientStyle = useAmountGradient(
+    categories.flatMap((category) => (category.difference == null ? [] : [category.difference])),
+  );
 
   const toggle = (id: string) => {
     const next = new Set(expanded);
@@ -43,6 +48,7 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
                 category={c}
                 isOpen={isOpen}
                 onToggle={() => toggle(c.category_id)}
+                getSummaryGradientStyle={getSummaryGradientStyle}
               />
             );
           })}
@@ -59,22 +65,36 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
   );
 }
 
-function DifferenceCell({ value }: { value: number | null }) {
+function DifferenceCell({
+  value,
+  getGradientStyle,
+}: {
+  value: number | null;
+  getGradientStyle: (amount: number) => CSSProperties | undefined;
+}) {
   if (value == null) return <span className="text-muted-foreground">-</span>;
   // Positive difference = under budget (good), negative = over budget (bad)
   const color = value >= 0 ? 'text-green-400' : 'text-red-400';
-  return <span className={cn('font-mono tabular-nums', color)}>{formatCurrency(value)}</span>;
+  return <span className={cn('font-mono tabular-nums', color)} style={getGradientStyle(value)}>{formatCurrency(value)}</span>;
 }
 
 function CategoryRow({
   category,
   isOpen,
   onToggle,
+  getSummaryGradientStyle,
 }: {
   category: CategorySummaryType;
   isOpen: boolean;
   onToggle: () => void;
+  getSummaryGradientStyle: (amount: number) => CSSProperties | undefined;
 }) {
+  const getSubcategoryGradientStyle = useAmountGradient(
+    category.subcategories.flatMap((subcategory) =>
+      subcategory.difference == null ? [] : [subcategory.difference],
+    ),
+  );
+
   return (
     <>
       <tr className="hover:bg-secondary/30 cursor-pointer" onClick={onToggle}>
@@ -99,7 +119,7 @@ function CategoryRow({
           {category.goal != null ? formatCurrency(category.goal) : '-'}
         </td>
         <td className={cn(cellClass, 'text-right')}>
-          <DifferenceCell value={category.difference} />
+          <DifferenceCell value={category.difference} getGradientStyle={getSummaryGradientStyle} />
         </td>
       </tr>
       {isOpen && category.subcategories.length > 0 && (
@@ -128,7 +148,7 @@ function CategoryRow({
                         {s.goal != null ? formatCurrency(s.goal) : '-'}
                       </td>
                       <td className={cn(cellClass, 'text-right text-xs')}>
-                        <DifferenceCell value={s.difference} />
+                        <DifferenceCell value={s.difference} getGradientStyle={getSubcategoryGradientStyle} />
                       </td>
                     </tr>
                   ))}

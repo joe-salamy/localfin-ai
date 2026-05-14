@@ -25,6 +25,6 @@ export function useAmountGradient(amounts: number[]) {
       settings.positiveColor,
     );
     if (!color) return undefined;
-    return { backgroundColor: `${color}24` };
+    return { color };
   };
 }

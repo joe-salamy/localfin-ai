@@ -307,6 +307,7 @@ export function TransactionTable({
               const isEditing = editingId === t.id;
               const flaggedWords = findMatches(t.name);
               const isFlagged = flaggedWords.length > 0;
+              const amountGradientStyle = t.kind === 'transfer' ? undefined : getGradientStyle(t.amount);
               return (
                 <tr
                   key={t.id}
@@ -326,7 +327,6 @@ export function TransactionTable({
                     focusedId === t.id && 'bg-secondary/30',
                     isFlagged && 'bg-red-500/25 hover:bg-red-500/30 focus-visible:bg-red-500/30',
                   )}
-                  style={isFlagged ? undefined : getGradientStyle(t.amount)}
                 >
                   <td className={cellClass}>
                     <input
@@ -384,7 +384,10 @@ export function TransactionTable({
                         className="h-7 w-24 rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       />
                     ) : (
-                      <span className={t.kind === 'transfer' ? 'text-muted-foreground' : t.amount >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      <span
+                        className={t.kind === 'transfer' ? 'text-muted-foreground' : t.amount >= 0 ? 'text-green-400' : 'text-red-400'}
+                        style={amountGradientStyle}
+                      >
                         {formatCurrency(t.amount)}
                       </span>
                     )}
