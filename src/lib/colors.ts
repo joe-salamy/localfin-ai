@@ -84,10 +84,12 @@ export function amountGradientColor(
 ): string | null {
   if (amount === 0 || maxAbsAmount <= 0) return neutralColor;
 
+  const ratio = Math.log1p(Math.abs(amount)) / Math.log1p(maxAbsAmount);
+
   if (amount < 0) {
-    return mixHexColors(neutralColor, negativeColor, Math.abs(amount) / maxAbsAmount);
+    return mixHexColors(neutralColor, negativeColor, ratio);
   }
 
-  return mixHexColors(neutralColor, positiveColor, amount / maxAbsAmount);
+  return mixHexColors(neutralColor, positiveColor, ratio);
 }
 
