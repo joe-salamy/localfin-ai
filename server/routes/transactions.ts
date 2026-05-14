@@ -22,11 +22,23 @@ const optionalQueryBoolean = z.preprocess((value) => {
   if (value === false || value === 'false') return false;
   return value;
 }, z.boolean().optional());
+const optionalQueryStringArray = z.preprocess((value) => {
+  if (value === undefined || value === '') return undefined;
+  const values = Array.isArray(value) ? value : [value];
+  const normalized = values
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return normalized.length > 0 ? normalized : undefined;
+}, z.array(nonEmptyString).optional());
 
 const router = Router();
 const transactionFiltersSchema = z.object({
   accountId: nonEmptyString.optional(),
+  accountIds: optionalQueryStringArray,
+  categoryIds: optionalQueryStringArray,
   subcategoryId: nonEmptyString.optional(),
+  subcategoryIds: optionalQueryStringArray,
   kind: z.enum(['income', 'expense', 'transfer']).optional(),
   needsCategory: optionalQueryBoolean,
   startDate: isoDateString.optional(),

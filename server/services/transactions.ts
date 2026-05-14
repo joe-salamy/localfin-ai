@@ -108,15 +108,37 @@ function buildWhereClause(
   const p = prefix ? `${prefix}.` : "";
   const clauses: string[] = [`${p}deleted_at IS NULL`];
   const params: unknown[] = [];
+  const addInClause = (column: string, values?: string[]) => {
+    if (!values || values.length === 0) return;
+    clauses.push(`${column} IN (${values.map(() => "?").join(", ")})`);
+    params.push(...values);
+  };
 
   if (filters.accountId) {
     clauses.push(`${p}account_id = ?`);
     params.push(filters.accountId);
   }
+  addInClause(`${p}account_id`, filters.accountIds);
+  if (filters.categoryIds && filters.categoryIds.length > 0) {
+    clauses.push(`
+      EXISTS (
+        SELECT 1
+        FROM subcategories filter_s
+        JOIN categories filter_c
+          ON filter_s.category_id = filter_c.id
+          AND filter_c.deleted_at IS NULL
+        WHERE filter_s.id = ${p}subcategory_id
+          AND filter_s.deleted_at IS NULL
+          AND filter_c.id IN (${filters.categoryIds.map(() => "?").join(", ")})
+      )
+    `);
+    params.push(...filters.categoryIds);
+  }
   if (filters.subcategoryId) {
     clauses.push(`${p}subcategory_id = ?`);
     params.push(filters.subcategoryId);
   }
+  addInClause(`${p}subcategory_id`, filters.subcategoryIds);
   if (filters.kind) {
     clauses.push(`${p}kind = ?`);
     params.push(filters.kind);

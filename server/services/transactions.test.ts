@@ -244,3 +244,93 @@ test("needs category filter excludes transfers after subcategory-only updates", 
   assert.deepEqual(matches.map((transaction) => transaction.id), [expense.id]);
   assert.equal(getTransactionById(transfer.id)?.subcategory_id, null);
 });
+
+test("multi-select filters use OR within groups and AND across groups", async () => {
+  await useIsolatedDb();
+  const checking = createAccount({ name: "Multi Checking", type: "asset" });
+  const savings = createAccount({ name: "Multi Savings", type: "asset" });
+  const credit = createAccount({ name: "Multi Credit", type: "liability" });
+  const food = createCategory({ name: "Multi Food", type: "expense" });
+  const bills = createCategory({ name: "Multi Bills", type: "expense" });
+  const income = createCategory({ name: "Multi Income", type: "income" });
+  const groceries = createSubcategory({ category_id: food.id, name: "Multi Groceries" });
+  const restaurants = createSubcategory({ category_id: food.id, name: "Multi Restaurants" });
+  const utilities = createSubcategory({ category_id: bills.id, name: "Multi Utilities" });
+  const paycheck = createSubcategory({ category_id: income.id, name: "Multi Paycheck" });
+
+  const checkingGroceries = createTransaction({
+    account_id: checking.id,
+    date: "2026-05-01",
+    name: "Groceries",
+    amount: -45,
+    kind: "expense",
+    subcategory_id: groceries.id,
+  });
+  const savingsRestaurants = createTransaction({
+    account_id: savings.id,
+    date: "2026-05-02",
+    name: "Dinner",
+    amount: -80,
+    kind: "expense",
+    subcategory_id: restaurants.id,
+  });
+  const creditUtilities = createTransaction({
+    account_id: credit.id,
+    date: "2026-05-03",
+    name: "Power",
+    amount: -120,
+    kind: "expense",
+    subcategory_id: utilities.id,
+  });
+  const checkingPaycheck = createTransaction({
+    account_id: checking.id,
+    date: "2026-05-04",
+    name: "Paycheck",
+    amount: 1000,
+    kind: "income",
+    subcategory_id: paycheck.id,
+  });
+
+  const accountMatches = getTransactionsWithDetails({
+    accountIds: [checking.id, savings.id],
+  });
+  assert.deepEqual(
+    accountMatches.map((transaction) => transaction.id),
+    [checkingPaycheck.id, savingsRestaurants.id, checkingGroceries.id],
+  );
+
+  const categoryMatches = getTransactionsWithDetails({
+    categoryIds: [food.id, bills.id],
+  });
+  assert.deepEqual(
+    categoryMatches.map((transaction) => transaction.id),
+    [creditUtilities.id, savingsRestaurants.id, checkingGroceries.id],
+  );
+
+  const subcategoryMatches = getTransactionsWithDetails({
+    subcategoryIds: [groceries.id, utilities.id],
+  });
+  assert.deepEqual(
+    subcategoryMatches.map((transaction) => transaction.id),
+    [creditUtilities.id, checkingGroceries.id],
+  );
+
+  const combinedMatches = getTransactionsWithDetails({
+    accountIds: [checking.id, savings.id],
+    categoryIds: [food.id],
+    subcategoryIds: [groceries.id],
+  });
+  assert.deepEqual(
+    combinedMatches.map((transaction) => transaction.id),
+    [checkingGroceries.id],
+  );
+
+  const legacyMatches = getTransactionsWithDetails({
+    accountId: checking.id,
+    subcategoryId: groceries.id,
+  });
+  assert.deepEqual(
+    legacyMatches.map((transaction) => transaction.id),
+    [checkingGroceries.id],
+  );
+});
