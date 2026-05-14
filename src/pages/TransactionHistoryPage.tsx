@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
-import type { TransactionFilters } from '@/types';
+import type { TransactionFilters, TransactionKind } from '@/types';
 import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { useTransactions } from '@/hooks/useTransactions';
@@ -25,6 +25,7 @@ export function TransactionHistoryPage() {
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(today);
   const [accountId, setAccountId] = useState('');
+  const [kindFilter, setKindFilter] = useState<'all' | TransactionKind | 'needsCategory'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const startDateRef = useRef<HTMLInputElement>(null);
   const endDateRef = useRef<HTMLInputElement>(null);
@@ -61,9 +62,11 @@ export function TransactionHistoryPage() {
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       accountId: accountId || undefined,
+      kind: kindFilter !== 'all' && kindFilter !== 'needsCategory' ? kindFilter : undefined,
+      needsCategory: kindFilter === 'needsCategory' ? true : undefined,
       searchQuery: searchQuery || undefined,
     });
-  }, [accountId, endDate, searchQuery, startDate]);
+  }, [accountId, endDate, kindFilter, searchQuery, startDate]);
 
   const applyDateRangePreset = useCallback((preset: DateRangePreset) => {
     const range = preset.getRange();
@@ -74,9 +77,11 @@ export function TransactionHistoryPage() {
       startDate: range.startDate || undefined,
       endDate: range.endDate || undefined,
       accountId: accountId || undefined,
+      kind: kindFilter !== 'all' && kindFilter !== 'needsCategory' ? kindFilter : undefined,
+      needsCategory: kindFilter === 'needsCategory' ? true : undefined,
       searchQuery: searchQuery || undefined,
     });
-  }, [accountId, searchQuery]);
+  }, [accountId, kindFilter, searchQuery]);
 
   // Sort transactions client-side
   const sortedTransactions = useMemo(() => {
@@ -129,11 +134,11 @@ export function TransactionHistoryPage() {
     }
   }, [deleteTransaction, selectedIds]);
 
-  const handleBulkEdit = useCallback(async (subcategoryId: string) => {
+  const handleBulkEdit = useCallback(async (updates: { kind?: TransactionKind; subcategory_id?: string | null }) => {
     try {
       await bulkUpdateTransactions.mutateAsync({
         ids: Array.from(selectedIds),
-        updates: { subcategory_id: subcategoryId },
+        updates,
       });
       toast.success(`Updated ${selectedIds.size} transactions`);
       setSelectedIds(new Set());
@@ -211,6 +216,20 @@ export function TransactionHistoryPage() {
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
             options={[{ value: '', label: 'All Accounts' }, ...accountOptions]}
+            className="h-8 text-xs"
+          />
+        </div>
+        <div className="w-40">
+          <SimpleSelect
+            value={kindFilter}
+            onChange={(e) => setKindFilter(e.target.value as typeof kindFilter)}
+            options={[
+              { value: 'all', label: 'All Types' },
+              { value: 'income', label: 'Income' },
+              { value: 'expense', label: 'Expense' },
+              { value: 'transfer', label: 'Transfer' },
+              { value: 'needsCategory', label: 'Needs Category' },
+            ]}
             className="h-8 text-xs"
           />
         </div>

@@ -297,7 +297,8 @@ export function getSpendingProgress(
      FROM transactions t
      WHERE t.subcategory_id = ?
        AND t.date >= ? AND t.date <= ?
-       AND t.deleted_at IS NULL`,
+       AND t.deleted_at IS NULL
+       AND t.kind = 'expense'`,
     )
     .get(goal.subcategory_id, periodStart, periodEnd) as SpentRow;
 

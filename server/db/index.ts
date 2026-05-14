@@ -64,6 +64,12 @@ function migrate(database: Database.Database): void {
   addColumnIfMissing(database, 'accounts', 'color TEXT');
   addColumnIfMissing(database, 'categories', 'color TEXT');
   addColumnIfMissing(database, 'subcategories', 'color TEXT');
+  addColumnIfMissing(database, 'transactions', "kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer'))");
+  database.exec(`
+    UPDATE transactions
+    SET kind = CASE WHEN amount >= 0 THEN 'income' ELSE 'expense' END
+    WHERE kind = 'expense' AND amount >= 0
+  `);
 }
 
 export function closeDbForTests(): void {

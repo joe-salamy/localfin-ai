@@ -78,10 +78,11 @@ export function createAccount(data: { name: string; type: AccountType; initial_b
     const balance = data.initial_balance ?? 0;
     if (balance !== 0) {
       const txnId = crypto.randomUUID();
+      const kind = balance >= 0 ? 'income' : 'expense';
       db.prepare(
-        `INSERT INTO transactions (id, account_id, date, name, amount, is_initial_balance, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 1, ?, ?)`
-      ).run(txnId, id, now.split('T')[0], 'Initial Balance', balance, now, now);
+        `INSERT INTO transactions (id, account_id, date, name, amount, kind, is_initial_balance, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`
+      ).run(txnId, id, now.split('T')[0], 'Initial Balance', balance, kind, now, now);
     }
   });
 

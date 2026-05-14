@@ -50,7 +50,7 @@ async function createChartTestDatabase() {
   insertSubcategory.run("expense-hosting", "expense-cat", "Hosting", "#f97316");
 
   const insertTransaction = db.prepare(
-    "INSERT INTO transactions (id, account_id, date, name, amount, subcategory_id) VALUES (?, ?, ?, ?, ?, ?)",
+    "INSERT INTO transactions (id, account_id, date, name, amount, kind, subcategory_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
   );
   insertTransaction.run(
     "income-1",
@@ -58,6 +58,7 @@ async function createChartTestDatabase() {
     "2026-05-01",
     "Client payment",
     1200,
+    "income",
     "income-consulting",
   );
   insertTransaction.run(
@@ -66,6 +67,7 @@ async function createChartTestDatabase() {
     "2026-05-02",
     "Contractor payment",
     -300,
+    "expense",
     "expense-consulting",
   );
   insertTransaction.run(
@@ -74,6 +76,7 @@ async function createChartTestDatabase() {
     "2026-05-03",
     "Server bill",
     -100,
+    "expense",
     "expense-hosting",
   );
 

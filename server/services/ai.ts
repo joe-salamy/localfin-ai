@@ -1,6 +1,7 @@
 import { getDb } from "../db/index.js";
 import { callOpenRouter } from "../ai/openrouter.js";
 import { AI_CONFIG, AI_MODELS } from "../config/app.js";
+import type { TransactionKind } from "../../src/types/index.js";
 
 interface CategorizeRequest {
   transactions: {
@@ -8,16 +9,18 @@ interface CategorizeRequest {
     account_id: string;
     account_name: string;
     amount: number;
+    date?: string;
   }[];
   conversationId?: string;
 }
 
 interface CategorizeResult {
   transaction_name: string;
+  kind: TransactionKind;
   subcategory_id: string | null;
   subcategory_name: string | null;
   category_name: string | null;
-  source: "lookup" | "ai" | "none";
+  source: "lookup" | "transfer" | "ai" | "none";
 }
 
 interface SubcategoryRow {
@@ -35,26 +38,30 @@ interface PastExampleRow {
   name: string;
   amount: number;
   account_name: string;
-  subcategory_name: string;
-  category_name: string;
+  kind: TransactionKind;
+  subcategory_name: string | null;
+  category_name: string | null;
 }
 
 interface PastTxRow {
-  subcategory_id: string;
-  subcategory_name: string;
-  category_name: string;
+  kind: TransactionKind;
+  subcategory_id: string | null;
+  subcategory_name: string | null;
+  category_name: string | null;
 }
 
 interface AIResultItem {
   index: number;
+  kind?: number | null;
   subcategory?: number | null;
 }
 
 interface ResolvedAIResultItem {
   index: number;
-  subcategory_id: string;
-  subcategory_name: string;
-  category_name: string;
+  kind: TransactionKind;
+  subcategory_id: string | null;
+  subcategory_name: string | null;
+  category_name: string | null;
 }
 
 interface UnknownTransaction {
@@ -63,7 +70,12 @@ interface UnknownTransaction {
   account_id: string;
   account_name: string;
   amount: number;
+  date?: string;
 }
+
+const KIND_CHOICES: TransactionKind[] = ["income", "expense", "transfer"];
+const TRANSFER_NAME_PATTERN =
+  /\b(?:transfer|online transfer|credit card payment|payment thank you|autopay|ach payment|card payment|payment received|payment posted)\b/i;
 
 export async function categorizeTransactions(
   request: CategorizeRequest,
@@ -80,12 +92,13 @@ export async function categorizeTransactions(
     const pastTx = db
       .prepare(
         `
-      SELECT t.subcategory_id, s.name as subcategory_name, c.name as category_name
+      SELECT t.kind, t.subcategory_id, s.name as subcategory_name, c.name as category_name
       FROM transactions t
       JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
-      JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
-      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
-      WHERE t.account_id = ? AND LOWER(TRIM(t.name)) = ? AND t.subcategory_id IS NOT NULL AND t.deleted_at IS NULL
+      LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
+      LEFT JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
+      WHERE t.account_id = ? AND LOWER(TRIM(t.name)) = ? AND t.deleted_at IS NULL
+        AND (t.kind = 'transfer' OR t.subcategory_id IS NOT NULL)
       ORDER BY t.date DESC LIMIT 1
     `,
       )
@@ -94,10 +107,23 @@ export async function categorizeTransactions(
     if (pastTx) {
       results[i] = {
         transaction_name: tx.name,
-        subcategory_id: pastTx.subcategory_id,
-        subcategory_name: pastTx.subcategory_name,
-        category_name: pastTx.category_name,
+        kind: pastTx.kind,
+        subcategory_id: pastTx.kind === "transfer" ? null : pastTx.subcategory_id,
+        subcategory_name: pastTx.kind === "transfer" ? null : pastTx.subcategory_name,
+        category_name: pastTx.kind === "transfer" ? null : pastTx.category_name,
         source: "lookup",
+      };
+      continue;
+    }
+
+    if (isLikelyTransfer(tx, request.transactions)) {
+      results[i] = {
+        transaction_name: tx.name,
+        kind: "transfer",
+        subcategory_id: null,
+        subcategory_name: null,
+        category_name: null,
+        source: "transfer",
       };
       continue;
     }
@@ -106,6 +132,7 @@ export async function categorizeTransactions(
     unknowns.push({ index: i, ...tx });
     results[i] = {
       transaction_name: tx.name,
+      kind: getTransactionCategoryType(tx.amount),
       subcategory_id: null,
       subcategory_name: null,
       category_name: null,
@@ -130,12 +157,12 @@ export async function categorizeTransactions(
     const pastExamples = db
       .prepare(
         `
-      SELECT t.name, t.amount, a.name as account_name, s.name as subcategory_name, c.name as category_name
+      SELECT t.name, t.amount, t.kind, a.name as account_name, s.name as subcategory_name, c.name as category_name
       FROM transactions t
       JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
-      JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
-      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
-      WHERE t.deleted_at IS NULL AND t.subcategory_id IS NOT NULL
+      LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
+      LEFT JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
+      WHERE t.deleted_at IS NULL AND (t.kind = 'transfer' OR t.subcategory_id IS NOT NULL)
       ORDER BY t.date DESC LIMIT ?
     `,
       )
@@ -229,9 +256,10 @@ async function processCategorizationBatches({
 
       for (let j = 0; j < batch.length; j++) {
         const aiResult = aiResults[j];
-        if (aiResult && aiResult.subcategory_id) {
+        if (aiResult) {
           results[batch[j].index] = {
             transaction_name: batch[j].name,
+            kind: aiResult.kind,
             subcategory_id: aiResult.subcategory_id,
             subcategory_name: aiResult.subcategory_name,
             category_name: aiResult.category_name,
@@ -314,18 +342,24 @@ export function buildCategorizationMessages(
   pastExamples: PastExampleRow[],
 ): { systemMessage: string; userMessage: string } {
   // Build past examples context
-  const exampleLines = pastExamples.map(
-    (e) =>
-      `"${e.name}" ($${e.amount}) on "${e.account_name}" -> "${e.category_name} > ${e.subcategory_name}"`,
-  );
+  const exampleLines = pastExamples.map((e) => {
+    if (e.kind === "transfer") {
+      return `"${e.name}" ($${e.amount}) on "${e.account_name}" -> kind 2 transfer, no subcategory`;
+    }
+    const kindIndex = e.kind === "income" ? 0 : 1;
+    return `"${e.name}" ($${e.amount}) on "${e.account_name}" -> kind ${kindIndex} ${e.kind}, "${e.category_name} > ${e.subcategory_name}"`;
+  });
 
   const systemMessage = `You are a transaction categorizer for a personal budget app. Categorize each transaction into the most appropriate subcategory.
 
 RULES:
 - Positive amounts are income, negative amounts are expenses
+- Transfers are money moving between owned accounts, including card payments, ACH transfers, autopay payments, and payment-thank-you lines
+- Return kind as a numeric index: 0 = income, 1 = expense, 2 = transfer
+- Transfers must return kind 2 and subcategory null
 - Match the subcategory number to the transaction direction (income subcategories for positive, expense for negative)
 - If unsure, use the "Unassigned" subcategory number for the appropriate type
-- Return the numeric subcategory value only; do not return category or subcategory names
+- Return numeric values only; do not return category, subcategory, or kind names
 - Return ONLY the JSON, no explanation
 AVAILABLE SUBCATEGORIES:
 ${formatAvailableSubcategories(availableSubcategories)}
@@ -347,25 +381,34 @@ ${exampleLines.join("\n")}
 ${transactionLines.join("\n")}
 
 Return exactly one result per transaction using the same zero-based index values shown above.
-Return JSON: { "results": [{ "index": 0, "subcategory": 0 }] }`;
+Return JSON: { "results": [{ "index": 0, "kind": 0, "subcategory": 0 }] }`;
 
   return { systemMessage, userMessage };
 }
 
 export function resolveSubcategoryChoice(
   choice: unknown,
-  transactionAmount: number,
+  kind: "income" | "expense",
   availableSubcategories: AvailableSubcategoryChoice[],
 ): AvailableSubcategoryChoice | null {
-  const type = getTransactionCategoryType(transactionAmount);
   if (typeof choice === "number" && Number.isInteger(choice)) {
     const subcategory = availableSubcategories[choice];
-    if (subcategory?.category_type === type) {
+    if (subcategory?.category_type === kind) {
       return subcategory;
     }
   }
 
-  return findUnassignedSubcategory(availableSubcategories, type);
+  return findUnassignedSubcategory(availableSubcategories, kind);
+}
+
+export function resolveKindChoice(
+  choice: unknown,
+  transactionAmount: number,
+): TransactionKind {
+  if (typeof choice === "number" && Number.isInteger(choice)) {
+    return KIND_CHOICES[choice] ?? getTransactionCategoryType(transactionAmount);
+  }
+  return getTransactionCategoryType(transactionAmount);
 }
 
 function resolveAIResults(
@@ -401,14 +444,27 @@ function resolveAIResults(
     );
     if (batchIndex === null) continue;
 
+    const kind = resolveKindChoice(result.kind, batch[batchIndex].amount);
+    if (kind === "transfer") {
+      indexedResults[batchIndex] = {
+        index: batchIndex,
+        kind,
+        subcategory_id: null,
+        subcategory_name: null,
+        category_name: null,
+      };
+      continue;
+    }
+
     const subcategory = resolveSubcategoryChoice(
       result.subcategory,
-      batch[batchIndex].amount,
+      kind,
       availableSubcategories,
     );
     if (subcategory) {
       indexedResults[batchIndex] = {
         index: batchIndex,
+        kind,
         subcategory_id: subcategory.id,
         subcategory_name: subcategory.name,
         category_name: subcategory.category_name,
@@ -419,14 +475,12 @@ function resolveAIResults(
   for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
     if (indexedResults[batchIndex]) continue;
 
-    const subcategory = resolveSubcategoryChoice(
-      null,
-      batch[batchIndex].amount,
-      availableSubcategories,
-    );
+    const kind = getTransactionCategoryType(batch[batchIndex].amount);
+    const subcategory = resolveSubcategoryChoice(null, kind, availableSubcategories);
     if (subcategory) {
       indexedResults[batchIndex] = {
         index: batchIndex,
+        kind,
         subcategory_id: subcategory.id,
         subcategory_name: subcategory.name,
         category_name: subcategory.category_name,
@@ -439,6 +493,47 @@ function resolveAIResults(
 
 function getTransactionCategoryType(amount: number): "income" | "expense" {
   return amount >= 0 ? "income" : "expense";
+}
+
+function isLikelyTransfer(
+  tx: CategorizeRequest["transactions"][number],
+  batchTransactions: CategorizeRequest["transactions"] = [],
+): boolean {
+  if (TRANSFER_NAME_PATTERN.test(tx.name)) return true;
+  if (!tx.date) return false;
+  const txDate = tx.date;
+
+  if (
+    batchTransactions.some(
+      (candidate) =>
+        candidate !== tx &&
+        candidate.account_id !== tx.account_id &&
+        candidate.amount === -tx.amount &&
+        typeof candidate.date === "string" &&
+        Math.abs(
+          (new Date(candidate.date).getTime() - new Date(txDate).getTime()) /
+            86_400_000,
+        ) <= 3,
+    )
+  ) {
+    return true;
+  }
+
+  const db = getDb();
+  const row = db
+    .prepare(
+      `
+      SELECT 1
+      FROM transactions
+      WHERE account_id != ?
+        AND amount = ?
+        AND deleted_at IS NULL
+        AND date BETWEEN date(?, '-3 days') AND date(?, '+3 days')
+      LIMIT 1
+    `,
+    )
+    .get(tx.account_id, -tx.amount, tx.date, tx.date);
+  return !!row;
 }
 
 function findUnassignedSubcategory(

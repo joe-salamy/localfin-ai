@@ -4,6 +4,7 @@ import {
   buildAvailableSubcategoryChoices,
   buildCategorizationMessages,
   normalizeAIResultIndex,
+  resolveKindChoice,
   resolveSubcategoryChoice,
 } from "./ai.js";
 
@@ -58,15 +59,15 @@ const availableSubcategories = buildAvailableSubcategoryChoices([
 
 test("AI categorization resolves numeric subcategory choices", () => {
   assert.equal(
-    resolveSubcategoryChoice(0, 100, availableSubcategories)?.id,
+    resolveSubcategoryChoice(0, "income", availableSubcategories)?.id,
     "income-unassigned",
   );
   assert.equal(
-    resolveSubcategoryChoice(1, 100, availableSubcategories)?.id,
+    resolveSubcategoryChoice(1, "income", availableSubcategories)?.id,
     "cash-back",
   );
   assert.equal(
-    resolveSubcategoryChoice(3, -25, availableSubcategories)?.id,
+    resolveSubcategoryChoice(3, "expense", availableSubcategories)?.id,
     "groceries",
   );
 });
@@ -76,11 +77,11 @@ test("AI categorization falls back to direction-correct Unassigned for invalid c
 
   for (const choice of invalidChoices) {
     assert.equal(
-      resolveSubcategoryChoice(choice, 100, availableSubcategories)?.id,
+      resolveSubcategoryChoice(choice, "income", availableSubcategories)?.id,
       "income-unassigned",
     );
     assert.equal(
-      resolveSubcategoryChoice(choice, -100, availableSubcategories)?.id,
+      resolveSubcategoryChoice(choice, "expense", availableSubcategories)?.id,
       "expense-unassigned",
     );
   }
@@ -88,27 +89,35 @@ test("AI categorization falls back to direction-correct Unassigned for invalid c
 
 test("AI categorization rejects wrong-direction subcategory choices", () => {
   assert.equal(
-    resolveSubcategoryChoice(3, 100, availableSubcategories)?.id,
+    resolveSubcategoryChoice(3, "income", availableSubcategories)?.id,
     "income-unassigned",
   );
   assert.equal(
-    resolveSubcategoryChoice(1, -100, availableSubcategories)?.id,
+    resolveSubcategoryChoice(1, "expense", availableSubcategories)?.id,
     "expense-unassigned",
   );
 });
 
 test("AI categorization resolves duplicate names deterministically by number", () => {
   assert.equal(
-    resolveSubcategoryChoice(3, -25, availableSubcategories)?.id,
+    resolveSubcategoryChoice(3, "expense", availableSubcategories)?.id,
     "groceries",
   );
   assert.equal(
-    resolveSubcategoryChoice(4, -25, availableSubcategories)?.id,
+    resolveSubcategoryChoice(4, "expense", availableSubcategories)?.id,
     "duplicate-groceries",
   );
 });
 
-test("AI categorization prompt asks for numeric subcategory choices", () => {
+test("AI categorization resolves fixed zero-based kind choices", () => {
+  assert.equal(resolveKindChoice(0, -25), "income");
+  assert.equal(resolveKindChoice(1, 25), "expense");
+  assert.equal(resolveKindChoice(2, -25), "transfer");
+  assert.equal(resolveKindChoice(3, 25), "income");
+  assert.equal(resolveKindChoice("2", -25), "expense");
+});
+
+test("AI categorization prompt asks for numeric kind and subcategory choices", () => {
   const messages = buildCategorizationMessages(
     [
       {
@@ -128,9 +137,10 @@ test("AI categorization prompt asks for numeric subcategory choices", () => {
     /0\. \[income\] Unassigned > Unassigned/,
   );
   assert.match(messages.systemMessage, /3\. \[expense\] Essentials > Groceries/);
+  assert.match(messages.systemMessage, /0 = income, 1 = expense, 2 = transfer/);
   assert.match(
     messages.userMessage,
-    /"results": \[\{ "index": 0, "subcategory": 0 \}\]/,
+    /"results": \[\{ "index": 0, "kind": 0, "subcategory": 0 \}\]/,
   );
   assert.doesNotMatch(messages.userMessage, /subcategory_name/);
 });

@@ -19,7 +19,7 @@ import { useAI } from "@/hooks/useAI";
 import { useCategories } from "@/hooks/useCategories";
 import { useTransactions } from "@/hooks/useTransactions";
 import { formatDateInput, cn } from "@/lib/utils";
-import type { Category, Subcategory, CreateTransactionData } from "@/types";
+import type { Category, Subcategory, CreateTransactionData, TransactionKind } from "@/types";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
@@ -37,12 +37,13 @@ interface TransactionRow {
   date: string;
   name: string;
   amount: string;
+  kind: TransactionKind;
   account_id: string;
   subcategory_id: string;
   comment: string;
   isDuplicate: boolean;
   transferMatch: unknown | null;
-  categorizationSource: "lookup" | "ai" | "none" | "manual";
+  categorizationSource: "lookup" | "transfer" | "ai" | "none" | "manual";
   aiSuggestedSubcategoryId: string | null;
 }
 
@@ -50,6 +51,7 @@ type PasteField =
   | "date"
   | "name"
   | "amount"
+  | "kind"
   | "account_id"
   | "subcategory_id"
   | "comment";
@@ -69,6 +71,7 @@ function emptyRow(): TransactionRow {
     date: "",
     name: "",
     amount: "",
+    kind: "expense",
     account_id: "",
     subcategory_id: "",
     comment: "",
@@ -96,6 +99,18 @@ function isRowValid(row: TransactionRow) {
 function displayAmountToNumber(val: string): number {
   const cleaned = val.replace(/[$,\s]/g, "");
   return parseFloat(cleaned) || 0;
+}
+
+function inferKindFromAmount(val: string): TransactionKind {
+  return displayAmountToNumber(val) >= 0 ? "income" : "expense";
+}
+
+function resolveKind(value: string): TransactionKind | null {
+  const normalized = normaliseClipboardValue(value);
+  if (normalized === "income" || normalized === "expense" || normalized === "transfer") {
+    return normalized;
+  }
+  return null;
 }
 
 function formatAmountDisplay(val: string): string {
@@ -180,8 +195,14 @@ function applyPastedValue(
 
   if (field === "date") return { ...row, date: formatDateInput(value) };
   if (field === "name") return { ...row, name: value };
-  if (field === "amount")
-    return { ...row, amount: value.replace(/[$,\s]/g, "") };
+  if (field === "amount") {
+    const amount = value.replace(/[$,\s]/g, "");
+    return { ...row, amount, kind: row.kind === "transfer" ? "transfer" : inferKindFromAmount(amount) };
+  }
+  if (field === "kind") {
+    const kind = resolveKind(value);
+    return kind ? { ...row, kind, subcategory_id: kind === "transfer" ? "" : row.subcategory_id } : row;
+  }
   if (field === "comment") return { ...row, comment: value };
   if (field === "account_id") {
     const accountId = resolveAccountId(value, accounts);
@@ -189,7 +210,7 @@ function applyPastedValue(
   }
 
   const subcategoryId = resolveSubcategoryId(value, categories, subcategories);
-  return subcategoryId
+  return subcategoryId && row.kind !== "transfer"
     ? {
         ...row,
         subcategory_id: subcategoryId,
@@ -213,6 +234,7 @@ interface GroupedSelectProps {
   onFocus?: () => void;
   refIndex?: number;
   registerRef?: (index: number, node: HTMLSelectElement | null) => void;
+  disabled?: boolean;
 }
 
 function GroupedSubcategorySelect({
@@ -225,6 +247,7 @@ function GroupedSubcategorySelect({
   onFocus,
   refIndex,
   registerRef,
+  disabled,
 }: GroupedSelectProps) {
   const filtered = useMemo(() => {
     return categories
@@ -247,8 +270,10 @@ function GroupedSubcategorySelect({
       onChange={(e) => onChange(e.target.value)}
       onPaste={onPaste}
       onFocus={onFocus}
+      disabled={disabled}
       className={cn(
         "h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        disabled && "cursor-not-allowed opacity-60",
         className,
       )}
     >
@@ -331,6 +356,17 @@ export function MultiTransactionTable() {
     [updateRow],
   );
 
+  const handleKindChange = useCallback((row: TransactionRow, kind: TransactionKind) => {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === row.id
+          ? { ...r, kind, subcategory_id: kind === "transfer" ? "" : r.subcategory_id }
+          : r,
+      ),
+    );
+    setDuplicatesChecked(false);
+  }, []);
+
   const removeRow = useCallback((id: string) => {
     setRows((prev) => {
       if (prev.length <= 1) return [emptyRow()];
@@ -368,7 +404,7 @@ export function MultiTransactionTable() {
       const text = e.clipboardData.getData("text/plain");
       const isStructuredPaste = text.includes("\t") || text.includes("\n");
       const isSelectPaste =
-        startField === "account_id" || startField === "subcategory_id";
+        startField === "account_id" || startField === "subcategory_id" || startField === "kind";
       if (!isStructuredPaste && !isSelectPaste) return;
 
       e.preventDefault();
@@ -387,6 +423,17 @@ export function MultiTransactionTable() {
             next.push(emptyRow());
           }
           let row = { ...next[targetIdx] };
+          if (startColumn < 0) {
+            next[targetIdx] = applyPastedValue(
+              row,
+              startField,
+              cols[0] ?? "",
+              accounts,
+              categories,
+              subcategories,
+            );
+            continue;
+          }
           for (let j = 0; j < cols.length; j++) {
             const field = pasteFields[startColumn + j];
             if (!field) break;
@@ -436,6 +483,7 @@ export function MultiTransactionTable() {
             accounts.find((account) => account.id === row.account_id)?.name ??
             "Unknown",
           amount: displayAmountToNumber(row.amount),
+          date: row.date ? toApiDate(row.date) : undefined,
         })),
       });
       const data = result.data ?? [];
@@ -448,7 +496,9 @@ export function MultiTransactionTable() {
           if (!cat) return row;
           return {
             ...row,
-            subcategory_id: cat.subcategory_id ?? row.subcategory_id,
+            kind: cat.kind,
+            subcategory_id:
+              cat.kind === "transfer" ? "" : cat.subcategory_id ?? row.subcategory_id,
             categorizationSource: cat.source,
             aiSuggestedSubcategoryId:
               cat.source === "ai" ? cat.subcategory_id : null,
@@ -483,6 +533,7 @@ export function MultiTransactionTable() {
           date: formatDateInput(tx.date),
           name: tx.name,
           amount: String(tx.amount.toFixed(2)),
+          kind: tx.kind,
           account_id: statementAccountId,
           subcategory_id: tx.subcategory_id ?? "",
           comment: tx.needsReview ? "Needs review" : "",
@@ -569,7 +620,8 @@ export function MultiTransactionTable() {
         date: toApiDate(r.date),
         name: r.name,
         amount: displayAmountToNumber(r.amount),
-        subcategory_id: r.subcategory_id || null,
+        kind: r.kind,
+        subcategory_id: r.kind === "transfer" ? null : r.subcategory_id || null,
         comment: r.comment || null,
         ai_suggested: r.categorizationSource === "ai",
       }));
@@ -717,6 +769,7 @@ export function MultiTransactionTable() {
               <th className="px-1 py-1.5">Date</th>
               <th className="px-1 py-1.5">Name</th>
               <th className="px-1 py-1.5">Amount</th>
+              <th className="px-1 py-1.5">Type</th>
               <th className="px-1 py-1.5">Account</th>
               <th className="px-1 py-1.5">Subcategory</th>
               <th className="px-1 py-1.5">Comment</th>
@@ -743,7 +796,7 @@ export function MultiTransactionTable() {
                 <td className="px-1 py-0.5">
                   <input
                     ref={(node) => {
-                      cellRefs.current[idx * 6] = node;
+                      cellRefs.current[idx * 7] = node;
                     }}
                     type="text"
                     placeholder="MM/DD/YYYY"
@@ -761,7 +814,7 @@ export function MultiTransactionTable() {
                 <td className="px-1 py-0.5">
                   <input
                     ref={(node) => {
-                      cellRefs.current[idx * 6 + 1] = node;
+                      cellRefs.current[idx * 7 + 1] = node;
                     }}
                     type="text"
                     placeholder="Description"
@@ -779,13 +832,27 @@ export function MultiTransactionTable() {
                 <td className="px-1 py-0.5">
                   <input
                     ref={(node) => {
-                      cellRefs.current[idx * 6 + 2] = node;
+                      cellRefs.current[idx * 7 + 2] = node;
                     }}
                     type="text"
                     placeholder="0.00"
                     value={row.amount}
                     onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      updateRow(row.id, "amount", e.target.value)
+                      setRows((prev) =>
+                        prev.map((r) =>
+                          r.id === row.id
+                            ? {
+                                ...r,
+                                amount: e.target.value,
+                                kind:
+                                  r.kind === "transfer"
+                                    ? "transfer"
+                                    : inferKindFromAmount(e.target.value),
+                                isDuplicate: false,
+                              }
+                            : r,
+                        ),
+                      )
                     }
                     onBlur={() =>
                       updateRow(
@@ -800,11 +867,29 @@ export function MultiTransactionTable() {
                   />
                 </td>
 
+                {/* Type */}
+                <td className="px-1 py-0.5">
+                  <select
+                    ref={(node) => {
+                      cellRefs.current[idx * 7 + 3] = node;
+                    }}
+                    value={row.kind}
+                    onChange={(e) => handleKindChange(row, e.target.value as TransactionKind)}
+                    onPaste={(e) => handlePaste(e, idx, "kind")}
+                    onFocus={() => setFocusedRowId(row.id)}
+                    className="h-7 w-24 rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="income">Income</option>
+                    <option value="expense">Expense</option>
+                    <option value="transfer">Transfer</option>
+                  </select>
+                </td>
+
                 {/* Account */}
                 <td className="px-1 py-0.5">
                   <select
                     ref={(node) => {
-                      cellRefs.current[idx * 6 + 3] = node;
+                      cellRefs.current[idx * 7 + 4] = node;
                     }}
                     value={row.account_id}
                     onChange={(e) =>
@@ -826,7 +911,7 @@ export function MultiTransactionTable() {
                 {/* Subcategory (grouped) */}
                 <td className="px-1 py-0.5">
                   <GroupedSubcategorySelect
-                    refIndex={idx * 6 + 4}
+                    refIndex={idx * 7 + 5}
                     registerRef={(index, node) => {
                       cellRefs.current[index] = node;
                     }}
@@ -834,7 +919,8 @@ export function MultiTransactionTable() {
                     onChange={(val) => handleSubcategoryChange(row, val)}
                     categories={categories}
                     subcategories={subcategories}
-                    className="w-36"
+                    className={cn("w-36", row.kind === "transfer" && "opacity-60")}
+                    disabled={row.kind === "transfer"}
                     onPaste={(e) => handlePaste(e, idx, "subcategory_id")}
                     onFocus={() => setFocusedRowId(row.id)}
                   />
@@ -849,7 +935,7 @@ export function MultiTransactionTable() {
                 <td className="px-1 py-0.5">
                   <input
                     ref={(node) => {
-                      cellRefs.current[idx * 6 + 5] = node;
+                      cellRefs.current[idx * 7 + 6] = node;
                     }}
                     type="text"
                     placeholder="Note"
