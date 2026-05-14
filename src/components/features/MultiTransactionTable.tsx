@@ -497,7 +497,8 @@ export function MultiTransactionTable() {
           return {
             ...row,
             kind: cat.kind,
-            subcategory_id: cat.subcategory_id ?? row.subcategory_id,
+            subcategory_id:
+              cat.kind === "transfer" ? "" : cat.subcategory_id ?? row.subcategory_id,
             categorizationSource: cat.source,
             aiSuggestedSubcategoryId:
               cat.source === "ai" ? cat.subcategory_id : null,

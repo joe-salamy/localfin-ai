@@ -1,7 +1,43 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test, { afterEach } from "node:test";
 import Database from "better-sqlite3";
-import { recentActivityByAccountSql } from "./transactions.js";
+import { createAccount } from "./accounts.js";
+import { createCategory, createSubcategory } from "./categories.js";
+import {
+  bulkUpdateTransactions,
+  createTransaction,
+  getTransactionById,
+  getTransactionsWithDetails,
+  recentActivityByAccountSql,
+  updateTransaction,
+} from "./transactions.js";
+import { closeDbForTests } from "../db/index.js";
+
+const originalDbPath = process.env.LOCALFIN_DB_PATH;
+const tempRoots: string[] = [];
+
+function restoreEnvironment(): void {
+  if (originalDbPath === undefined) {
+    delete process.env.LOCALFIN_DB_PATH;
+  } else {
+    process.env.LOCALFIN_DB_PATH = originalDbPath;
+  }
+}
+
+async function useIsolatedDb(): Promise<void> {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-transactions-test-"));
+  tempRoots.push(tempDir);
+  process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
+}
+
+afterEach(async () => {
+  closeDbForTests();
+  restoreEnvironment();
+  await Promise.all(tempRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
 
 interface RecentActivityRow {
   account_id: string;
@@ -132,4 +168,79 @@ test("recent activity returns one deterministic latest transaction per active ac
   ]);
 
   db.close();
+});
+
+test("subcategory-only update keeps existing transfers uncategorized", async () => {
+  await useIsolatedDb();
+  const account = createAccount({ name: "Transfer Checking", type: "asset" });
+  const category = createCategory({ name: "Transfer Test Expense", type: "expense" });
+  const subcategory = createSubcategory({
+    category_id: category.id,
+    name: "Transfer Test Other",
+  });
+  const transfer = createTransaction({
+    account_id: account.id,
+    date: "2026-05-01",
+    name: "Card payment",
+    amount: -100,
+    kind: "transfer",
+  });
+
+  const updated = updateTransaction(transfer.id, { subcategory_id: subcategory.id });
+
+  assert.equal(updated?.kind, "transfer");
+  assert.equal(updated?.subcategory_id, null);
+});
+
+test("bulk subcategory update does not attach categories to existing transfers", async () => {
+  await useIsolatedDb();
+  const account = createAccount({ name: "Bulk Transfer Checking", type: "asset" });
+  const category = createCategory({ name: "Bulk Transfer Expense", type: "expense" });
+  const subcategory = createSubcategory({
+    category_id: category.id,
+    name: "Bulk Transfer Other",
+  });
+  const transfer = createTransaction({
+    account_id: account.id,
+    date: "2026-05-01",
+    name: "Online transfer",
+    amount: -50,
+    kind: "transfer",
+  });
+  const expense = createTransaction({
+    account_id: account.id,
+    date: "2026-05-02",
+    name: "Groceries",
+    amount: -25,
+    kind: "expense",
+  });
+
+  bulkUpdateTransactions([transfer.id, expense.id], { subcategory_id: subcategory.id });
+
+  assert.equal(getTransactionById(transfer.id)?.subcategory_id, null);
+  assert.equal(getTransactionById(expense.id)?.subcategory_id, subcategory.id);
+});
+
+test("needs category filter excludes transfers after subcategory-only updates", async () => {
+  await useIsolatedDb();
+  const account = createAccount({ name: "Needs Category Checking", type: "asset" });
+  const transfer = createTransaction({
+    account_id: account.id,
+    date: "2026-05-01",
+    name: "ACH payment",
+    amount: -75,
+    kind: "transfer",
+  });
+  const expense = createTransaction({
+    account_id: account.id,
+    date: "2026-05-02",
+    name: "Uncategorized expense",
+    amount: -20,
+    kind: "expense",
+  });
+
+  const matches = getTransactionsWithDetails({ needsCategory: true });
+
+  assert.deepEqual(matches.map((transaction) => transaction.id), [expense.id]);
+  assert.equal(getTransactionById(transfer.id)?.subcategory_id, null);
 });

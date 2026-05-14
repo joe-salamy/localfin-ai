@@ -419,18 +419,19 @@ export function updateTransaction(
   const existing = db
     .prepare(
       `
-    SELECT t.id
+    SELECT t.id, t.kind
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
     WHERE t.id = ? AND t.deleted_at IS NULL
   `,
     )
-    .get(id);
+    .get(id) as { id: string; kind: TransactionKind } | undefined;
 
   if (!existing) {
     throw new Error(`Transaction with id "${id}" not found`);
   }
 
+  const nextKind = updates.kind ?? existing.kind;
   const setClauses: string[] = [];
   const params: unknown[] = [];
 
@@ -455,7 +456,7 @@ export function updateTransaction(
     }
   }
   if (updates.subcategory_id !== undefined) {
-    const nextSubcategoryId = updates.kind === "transfer" ? null : updates.subcategory_id;
+    const nextSubcategoryId = nextKind === "transfer" ? null : updates.subcategory_id;
     if (nextSubcategoryId) {
       assertActiveSubcategory(nextSubcategoryId);
     }
@@ -511,7 +512,11 @@ export function bulkUpdateTransactions(
     if (nextSubcategoryId) {
       assertActiveSubcategory(nextSubcategoryId);
     }
-    setClauses.push("subcategory_id = ?");
+    if (updates.kind === undefined && nextSubcategoryId !== null) {
+      setClauses.push("subcategory_id = CASE WHEN kind = 'transfer' THEN NULL ELSE ? END");
+    } else {
+      setClauses.push("subcategory_id = ?");
+    }
     params.push(nextSubcategoryId);
   }
 

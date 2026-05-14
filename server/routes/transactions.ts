@@ -16,12 +16,19 @@ import {
 } from '../services/transactions.js';
 import { finiteNumber, idParamSchema, isoDateString, nonEmptyString, parseRequest } from './validation.js';
 
+const optionalQueryBoolean = z.preprocess((value) => {
+  if (value === undefined || value === '') return undefined;
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return value;
+}, z.boolean().optional());
+
 const router = Router();
 const transactionFiltersSchema = z.object({
   accountId: nonEmptyString.optional(),
   subcategoryId: nonEmptyString.optional(),
   kind: z.enum(['income', 'expense', 'transfer']).optional(),
-  needsCategory: z.coerce.boolean().optional(),
+  needsCategory: optionalQueryBoolean,
   startDate: isoDateString.optional(),
   endDate: isoDateString.optional(),
   searchQuery: z.string().trim().min(1).optional(),
