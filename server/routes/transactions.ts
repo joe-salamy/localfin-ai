@@ -20,6 +20,8 @@ const router = Router();
 const transactionFiltersSchema = z.object({
   accountId: nonEmptyString.optional(),
   subcategoryId: nonEmptyString.optional(),
+  kind: z.enum(['income', 'expense', 'transfer']).optional(),
+  needsCategory: z.coerce.boolean().optional(),
   startDate: isoDateString.optional(),
   endDate: isoDateString.optional(),
   searchQuery: z.string().trim().min(1).optional(),
@@ -31,6 +33,7 @@ const createTransactionSchema = z.object({
   date: isoDateString,
   name: nonEmptyString,
   amount: finiteNumber,
+  kind: z.enum(['income', 'expense', 'transfer']).optional(),
   subcategory_id: nonEmptyString.nullable().optional(),
   comment: z.string().nullable().optional(),
   ai_suggested: z.boolean().optional(),
@@ -39,6 +42,7 @@ const updateTransactionSchema = z.object({
   date: isoDateString.optional(),
   name: nonEmptyString.optional(),
   amount: finiteNumber.optional(),
+  kind: z.enum(['income', 'expense', 'transfer']).optional(),
   subcategory_id: nonEmptyString.nullable().optional(),
   comment: z.string().nullable().optional(),
   ai_suggested: z.boolean().optional(),
@@ -48,7 +52,10 @@ const bulkCreateSchema = z.object({
 });
 const bulkUpdateSchema = z.object({
   ids: z.array(nonEmptyString).min(1).max(500),
-  updates: z.object({ subcategory_id: nonEmptyString.nullable().optional() })
+  updates: z.object({
+    kind: z.enum(['income', 'expense', 'transfer']).optional(),
+    subcategory_id: nonEmptyString.nullable().optional(),
+  })
     .refine((value) => Object.keys(value).length > 0, 'At least one update field is required'),
 });
 const bulkDeleteSchema = z.object({

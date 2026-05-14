@@ -1,6 +1,7 @@
 // === ENUMS ===
 export type AccountType = 'asset' | 'liability';
 export type CategoryType = 'income' | 'expense';
+export type TransactionKind = 'income' | 'expense' | 'transfer';
 export type GoalPeriod = 'weekly' | 'monthly' | 'quarterly' | 'annual';
 
 // === CORE ENTITIES ===
@@ -48,6 +49,7 @@ export interface Transaction {
   date: string;
   name: string;
   amount: number;
+  kind: TransactionKind;
   subcategory_id: string | null;
   comment: string | null;
   is_initial_balance: boolean;
@@ -194,6 +196,8 @@ export interface SankeyData {
 export interface TransactionFilters {
   accountId?: string;
   subcategoryId?: string;
+  kind?: TransactionKind;
+  needsCategory?: boolean;
   startDate?: string;
   endDate?: string;
   searchQuery?: string;
@@ -213,6 +217,7 @@ export interface ParsedTransaction {
 }
 
 export interface EnrichedTransaction extends ParsedTransaction {
+  kind: TransactionKind;
   subcategory_id: string | null;
   subcategory_name: string | null;
   category_name: string | null;
@@ -269,6 +274,7 @@ export interface CreateTransactionData {
   date: string;
   name: string;
   amount: number;
+  kind?: TransactionKind;
   subcategory_id?: string | null;
   comment?: string | null;
   ai_suggested?: boolean;

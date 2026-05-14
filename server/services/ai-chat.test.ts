@@ -131,6 +131,7 @@ function transaction(
     date: "2026-04-11",
     name: "Marriott Hotel",
     amount: -215.4,
+    kind: "expense",
     subcategory_id: "hotels",
     comment: "work trip",
     is_initial_balance: false,
@@ -524,6 +525,36 @@ test("assistant action execution reports ambiguous name-in-id references", async
   assert.match(result.error ?? "", /ambiguous subcategory "Unassigned"/i);
   assert.match(result.error ?? "", /Candidates:/);
   assert.equal(actionFailureCanBeRetried(result), true);
+});
+
+test("assistant action execution can reassign a transaction to transfer", async () => {
+  await useTempDatabase();
+  const testAccount = createAccount({ name: "Kind Checking", type: "asset" });
+  const category = createCategory({ name: "Kind Essentials", type: "expense" });
+  const other = createSubcategory({
+    name: "Kind Other",
+    category_id: category.id,
+  });
+  const transaction = createTransaction({
+    account_id: testAccount.id,
+    date: "2026-05-01",
+    name: "Kind Card Payment",
+    amount: -250,
+    subcategory_id: other.id,
+  });
+
+  const result = executeAction({
+    type: "update_transaction",
+    input: {
+      id: transaction.id,
+      kind: "transfer",
+    },
+  });
+
+  assert.equal(result.status, "success");
+  const updated = getTransactionsWithDetails({ searchQuery: 'name:"Kind Card Payment"' });
+  assert.equal(updated[0]?.kind, "transfer");
+  assert.equal(updated[0]?.subcategory_id, null);
 });
 
 test("assistant tool loop continues only for recoverable failed actions", () => {

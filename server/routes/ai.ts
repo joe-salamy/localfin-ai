@@ -9,7 +9,7 @@ import {
   listAgentConversations,
   softDeleteAgentConversation,
 } from '../services/agent-conversations.js';
-import { finiteNumber, nonEmptyString, parseRequest } from './validation.js';
+import { finiteNumber, isoDateString, nonEmptyString, parseRequest } from './validation.js';
 import { HTTP_HEADERS } from '../config/app.js';
 
 const router = Router();
@@ -19,6 +19,7 @@ const categorizeSchema = z.object({
     account_id: nonEmptyString,
     account_name: nonEmptyString,
     amount: finiteNumber,
+    date: isoDateString.optional(),
   })).min(1).max(500),
   conversationId: nonEmptyString.optional(),
 });

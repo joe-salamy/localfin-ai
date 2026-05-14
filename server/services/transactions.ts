@@ -4,6 +4,7 @@ import type {
   TransactionWithDetails,
   TransactionFilters,
   CreateTransactionData,
+  TransactionKind,
 } from "../../src/types/index.js";
 import { getDb, toBool, fromBool } from "../db/index.js";
 import { compileTransactionSearch } from "./transaction-search.js";
@@ -16,6 +17,7 @@ interface TransactionRow {
   date: string;
   name: string;
   amount: number;
+  kind: TransactionKind;
   subcategory_id: string | null;
   comment: string | null;
   is_initial_balance: number;
@@ -54,6 +56,7 @@ interface UpdateTransactionData {
   date?: string;
   name?: string;
   amount?: number;
+  kind?: TransactionKind;
   subcategory_id?: string | null;
   comment?: string | null;
   ai_suggested?: boolean;
@@ -114,6 +117,14 @@ function buildWhereClause(
     clauses.push(`${p}subcategory_id = ?`);
     params.push(filters.subcategoryId);
   }
+  if (filters.kind) {
+    clauses.push(`${p}kind = ?`);
+    params.push(filters.kind);
+  }
+  if (filters.needsCategory) {
+    clauses.push(`${p}kind IN ('income', 'expense')`);
+    clauses.push(`${p}subcategory_id IS NULL`);
+  }
   if (filters.startDate) {
     clauses.push(`${p}date >= ?`);
     params.push(filters.startDate);
@@ -162,32 +173,50 @@ function assertActiveSubcategory(subcategoryId: string): void {
   }
 }
 
+function inferTransactionKind(amount: number): TransactionKind {
+  return amount >= 0 ? "income" : "expense";
+}
+
+function normalizeTransactionFields(data: CreateTransactionData): CreateTransactionData & {
+  kind: TransactionKind;
+  subcategory_id: string | null;
+} {
+  const kind = data.kind ?? inferTransactionKind(data.amount);
+  return {
+    ...data,
+    kind,
+    subcategory_id: kind === "transfer" ? null : data.subcategory_id ?? null,
+  };
+}
+
 // ---------- CRUD ----------
 
 export function createTransaction(data: CreateTransactionData): Transaction {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const normalized = normalizeTransactionFields(data);
 
-  assertActiveAccount(data.account_id);
-  if (data.subcategory_id) {
-    assertActiveSubcategory(data.subcategory_id);
+  assertActiveAccount(normalized.account_id);
+  if (normalized.subcategory_id) {
+    assertActiveSubcategory(normalized.subcategory_id);
   }
 
   const stmt = db.prepare(`
-    INSERT INTO transactions (id, account_id, date, name, amount, subcategory_id, comment, is_initial_balance, ai_suggested, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+    INSERT INTO transactions (id, account_id, date, name, amount, kind, subcategory_id, comment, is_initial_balance, ai_suggested, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
   `);
 
   stmt.run(
     id,
-    data.account_id,
-    data.date,
-    data.name,
-    data.amount,
-    data.subcategory_id ?? null,
-    data.comment ?? null,
-    fromBool(data.ai_suggested ?? false),
+    normalized.account_id,
+    normalized.date,
+    normalized.name,
+    normalized.amount,
+    normalized.kind,
+    normalized.subcategory_id,
+    normalized.comment ?? null,
+    fromBool(normalized.ai_suggested ?? false),
     now,
     now,
   );
@@ -311,7 +340,8 @@ export function getRecentTransactionByNameAndAccount(
     .prepare(
       `
     SELECT * FROM transactions
-    WHERE name = ? AND account_id = ? AND subcategory_id IS NOT NULL AND deleted_at IS NULL
+    WHERE name = ? AND account_id = ? AND deleted_at IS NULL
+      AND (kind = 'transfer' OR subcategory_id IS NOT NULL)
     ORDER BY date DESC, created_at DESC
     LIMIT 1
   `,
@@ -416,12 +446,21 @@ export function updateTransaction(
     setClauses.push("amount = ?");
     params.push(updates.amount);
   }
+  if (updates.kind !== undefined) {
+    setClauses.push("kind = ?");
+    params.push(updates.kind);
+    if (updates.kind === "transfer" && updates.subcategory_id === undefined) {
+      setClauses.push("subcategory_id = ?");
+      params.push(null);
+    }
+  }
   if (updates.subcategory_id !== undefined) {
-    if (updates.subcategory_id) {
-      assertActiveSubcategory(updates.subcategory_id);
+    const nextSubcategoryId = updates.kind === "transfer" ? null : updates.subcategory_id;
+    if (nextSubcategoryId) {
+      assertActiveSubcategory(nextSubcategoryId);
     }
     setClauses.push("subcategory_id = ?");
-    params.push(updates.subcategory_id);
+    params.push(nextSubcategoryId);
   }
   if (updates.comment !== undefined) {
     setClauses.push("comment = ?");
@@ -446,7 +485,7 @@ export function updateTransaction(
 
 export function bulkUpdateTransactions(
   ids: string[],
-  updates: { subcategory_id?: string | null },
+  updates: { kind?: TransactionKind; subcategory_id?: string | null },
 ): void {
   if (ids.length === 0) return;
 
@@ -458,12 +497,22 @@ export function bulkUpdateTransactions(
 
   const setClauses: string[] = [];
 
+  if (updates.kind !== undefined) {
+    setClauses.push("kind = ?");
+    params.push(updates.kind);
+    if (updates.kind === "transfer" && updates.subcategory_id === undefined) {
+      setClauses.push("subcategory_id = ?");
+      params.push(null);
+    }
+  }
+
   if (updates.subcategory_id !== undefined) {
-    if (updates.subcategory_id) {
-      assertActiveSubcategory(updates.subcategory_id);
+    const nextSubcategoryId = updates.kind === "transfer" ? null : updates.subcategory_id;
+    if (nextSubcategoryId) {
+      assertActiveSubcategory(nextSubcategoryId);
     }
     setClauses.push("subcategory_id = ?");
-    params.push(updates.subcategory_id);
+    params.push(nextSubcategoryId);
   }
 
   if (setClauses.length === 0) return;
@@ -519,30 +568,32 @@ export function bulkCreateTransactions(
   const now = new Date().toISOString();
 
   const stmt = db.prepare(`
-    INSERT INTO transactions (id, account_id, date, name, amount, subcategory_id, comment, is_initial_balance, ai_suggested, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+    INSERT INTO transactions (id, account_id, date, name, amount, kind, subcategory_id, comment, is_initial_balance, ai_suggested, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
   `);
 
   const ids: string[] = [];
 
   const insertAll = db.transaction(() => {
     for (const data of transactions) {
-      assertActiveAccount(data.account_id);
-      if (data.subcategory_id) {
-        assertActiveSubcategory(data.subcategory_id);
+      const normalized = normalizeTransactionFields(data);
+      assertActiveAccount(normalized.account_id);
+      if (normalized.subcategory_id) {
+        assertActiveSubcategory(normalized.subcategory_id);
       }
 
       const id = crypto.randomUUID();
       ids.push(id);
       stmt.run(
         id,
-        data.account_id,
-        data.date,
-        data.name,
-        data.amount,
-        data.subcategory_id ?? null,
-        data.comment ?? null,
-        fromBool(data.ai_suggested ?? false),
+        normalized.account_id,
+        normalized.date,
+        normalized.name,
+        normalized.amount,
+        normalized.kind,
+        normalized.subcategory_id,
+        normalized.comment ?? null,
+        fromBool(normalized.ai_suggested ?? false),
         now,
         now,
       );

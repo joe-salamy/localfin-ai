@@ -3,6 +3,7 @@ import type {
   ParsedTransaction,
 } from "../../src/types/index.js";
 import { getDb } from "../db/index.js";
+import { categorizeTransactions } from "./ai.js";
 
 // ---------- Format detection ----------
 
@@ -152,6 +153,7 @@ function checkDuplicatesInDb(
 export async function parseStatement(
   text: string,
   accountId: string,
+  conversationId?: string,
 ): Promise<{
   transactions: EnrichedTransaction[];
   summary: {
@@ -261,8 +263,25 @@ export async function parseStatement(
     parsed.map((t) => ({ date: t.date, name: t.name, amount: t.amount })),
     accountId,
   );
+  const db = getDb();
+  const account = db
+    .prepare("SELECT name FROM accounts WHERE id = ? AND deleted_at IS NULL")
+    .get(accountId) as { name: string } | undefined;
 
-  // Build summary and enriched transactions without running categorization.
+  const categorizations =
+    parsed.length > 0 && account
+      ? await categorizeTransactions({
+          conversationId,
+          transactions: parsed.map((t) => ({
+            date: t.date,
+            name: t.name,
+            account_id: accountId,
+            account_name: account.name,
+            amount: t.amount,
+          })),
+        })
+      : [];
+
   const summary = {
     total: parsed.length,
     duplicates: 0,
@@ -274,18 +293,27 @@ export async function parseStatement(
 
   const enriched: EnrichedTransaction[] = parsed.map((t, i) => {
     const isDuplicate = duplicateFlags[i];
+    const categorization = categorizations[i];
     if (isDuplicate) summary.duplicates++;
 
-    summary.uncategorized++;
+    if (categorization?.source === "lookup" || categorization?.source === "transfer") {
+      summary.fromLookup++;
+    } else if (categorization?.source === "ai") {
+      summary.fromAI++;
+    }
+    if (!categorization?.subcategory_id && categorization?.kind !== "transfer") {
+      summary.uncategorized++;
+    }
 
     if (t.needsReview) summary.needsReview++;
 
     return {
       ...t,
-      subcategory_id: null,
-      subcategory_name: null,
-      category_name: null,
-      categorizationSource: "none",
+      kind: categorization?.kind ?? (t.amount >= 0 ? "income" : "expense"),
+      subcategory_id: categorization?.subcategory_id ?? null,
+      subcategory_name: categorization?.subcategory_name ?? null,
+      category_name: categorization?.category_name ?? null,
+      categorizationSource: categorization?.source === "transfer" ? "lookup" : categorization?.source ?? "none",
       isDuplicate,
     };
   });

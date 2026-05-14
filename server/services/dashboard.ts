@@ -163,6 +163,7 @@ export function getCategorySummary(
        ON t.subcategory_id = s.id
        AND t.date >= ? AND t.date <= ?
        AND t.deleted_at IS NULL
+       AND t.kind = c.type
      WHERE c.deleted_at IS NULL
      GROUP BY c.id, s.id
      ORDER BY c.type, c.name, s.name`,
@@ -227,8 +228,8 @@ export function getDashboardMetrics(
   const row = db
     .prepare(
       `SELECT
-       COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) AS totalIncome,
-       COALESCE(SUM(CASE WHEN t.amount < 0 THEN t.amount ELSE 0 END), 0) AS totalExpenses
+       COALESCE(SUM(CASE WHEN t.kind = 'income' THEN t.amount ELSE 0 END), 0) AS totalIncome,
+       COALESCE(SUM(CASE WHEN t.kind = 'expense' THEN t.amount ELSE 0 END), 0) AS totalExpenses
      FROM transactions t
      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
      WHERE t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL`,

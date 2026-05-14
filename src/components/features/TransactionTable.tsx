@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
-import type { TransactionWithDetails, Subcategory } from '@/types';
+import type { TransactionKind, TransactionWithDetails, Subcategory } from '@/types';
 import { format, parseISO } from 'date-fns';
 import { Pencil, Trash2, Check, X, ArrowUp, ArrowDown } from 'lucide-react';
 import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
@@ -31,6 +31,7 @@ interface EditState {
   date: string;
   name: string;
   amount: string;
+  kind: TransactionKind;
   subcategory_id: string;
   comment: string;
 }
@@ -80,7 +81,7 @@ export function TransactionTable({
   subcategories,
 }: TransactionTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<EditState>({ date: '', name: '', amount: '', subcategory_id: '', comment: '' });
+  const [editState, setEditState] = useState<EditState>({ date: '', name: '', amount: '', kind: 'expense', subcategory_id: '', comment: '' });
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TransactionWithDetails | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -144,6 +145,7 @@ export function TransactionTable({
       date: t.date,
       name: t.name,
       amount: String(t.amount),
+      kind: t.kind,
       subcategory_id: t.subcategory_id ?? '',
       comment: t.comment ?? '',
     });
@@ -161,7 +163,8 @@ export function TransactionTable({
         date: editState.date,
         name: editState.name,
         amount: parseFloat(editState.amount),
-        subcategory_id: editState.subcategory_id || null,
+        kind: editState.kind,
+        subcategory_id: editState.kind === 'transfer' ? null : editState.subcategory_id || null,
         comment: editState.comment || null,
       });
       setEditingId(null);
@@ -286,6 +289,7 @@ export function TransactionTable({
                 </th>
               ))}
               <th className={headerClass}>Category</th>
+              <th className={headerClass}>Type</th>
               <th className={headerClass}>Subcategory</th>
               <th className={headerClass}>Account</th>
               <th className={cn(headerClass, 'w-20')}>Actions</th>
@@ -294,7 +298,7 @@ export function TransactionTable({
           <tbody className="divide-y divide-border">
             {transactions.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-2 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={10} className="px-2 py-8 text-center text-sm text-muted-foreground">
                   No transactions found.
                 </td>
               </tr>
@@ -380,7 +384,7 @@ export function TransactionTable({
                         className="h-7 w-24 rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       />
                     ) : (
-                      <span className={t.amount >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      <span className={t.kind === 'transfer' ? 'text-muted-foreground' : t.amount >= 0 ? 'text-green-400' : 'text-red-400'}>
                         {formatCurrency(t.amount)}
                       </span>
                     )}
@@ -390,6 +394,30 @@ export function TransactionTable({
                   </td>
                   <td className={cn(cellClass, 'text-xs')}>
                     <EntityLabel id={t.category_id} name={t.category_name} color={t.category_color} />
+                  </td>
+                  <td className={cn(cellClass, 'text-xs')}>
+                    {isEditing ? (
+                      <select
+                        value={editState.kind}
+                        onChange={(e) =>
+                          setEditState({
+                            ...editState,
+                            kind: e.target.value as TransactionKind,
+                            subcategory_id:
+                              e.target.value === 'transfer'
+                                ? ''
+                                : editState.subcategory_id,
+                          })
+                        }
+                        className="h-7 w-24 rounded border border-border bg-input px-1.5 text-xs text-foreground"
+                      >
+                        <option value="income">Income</option>
+                        <option value="expense">Expense</option>
+                        <option value="transfer">Transfer</option>
+                      </select>
+                    ) : (
+                      <span className="capitalize text-muted-foreground">{t.kind}</span>
+                    )}
                   </td>
                   <td
                     className={cellClass}
@@ -402,6 +430,7 @@ export function TransactionTable({
                         value={editState.subcategory_id}
                         onChange={(e) => setEditState({ ...editState, subcategory_id: e.target.value })}
                         onPaste={(e) => void applySubcategoryPaste(e, t)}
+                        disabled={editState.kind === 'transfer'}
                         className="h-7 w-36 rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       >
                         <option value="">None</option>

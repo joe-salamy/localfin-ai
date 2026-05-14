@@ -39,6 +39,7 @@ import type {
   GoalPeriod,
   SpendingGoalWithDetails,
   Subcategory,
+  TransactionKind,
   TransactionWithDetails,
 } from "../../src/types/index.js";
 
@@ -202,6 +203,24 @@ function optionalCategoryType(
 ): CategoryType | undefined {
   if (value === undefined) return undefined;
   return requireCategoryType(value, actionType);
+}
+
+function requireTransactionKind(
+  value: unknown,
+  actionType: string,
+): TransactionKind {
+  if (value === "income" || value === "expense" || value === "transfer") {
+    return value;
+  }
+  throw new Error(`${actionType} requires kind income|expense|transfer`);
+}
+
+function optionalTransactionKind(
+  value: unknown,
+  actionType: string,
+): TransactionKind | undefined {
+  if (value === undefined) return undefined;
+  return requireTransactionKind(value, actionType);
 }
 
 function requireGoalPeriod(value: unknown, actionType: string): GoalPeriod {
@@ -499,6 +518,9 @@ function transactionSearchFilters(
       subcategories,
       actionType,
     ),
+    kind: optionalTransactionKind(input.kind, actionType),
+    needsCategory:
+      typeof input.needsCategory === "boolean" ? input.needsCategory : undefined,
     startDate:
       optionalIsoDate(input.startDate, "startDate", actionType) ??
       optionalIsoDate(input.start_date, "start_date", actionType),
@@ -514,6 +536,7 @@ function transactionUpdateInput(
   subcategories: Subcategory[],
   actionType: string,
 ): {
+  kind?: TransactionKind;
   subcategory_id?: string | null;
   comment?: string | null;
 } {
@@ -526,13 +549,17 @@ function transactionUpdateInput(
     "subcategory_id",
     "subcategory_name",
   ]);
+  const hasKindUpdate = hasField(updateInput, "kind");
   const hasCommentUpdate = hasField(updateInput, "comment");
 
-  if (!hasSubcategoryUpdate && !hasCommentUpdate) {
+  if (!hasKindUpdate && !hasSubcategoryUpdate && !hasCommentUpdate) {
     throw new Error(`${actionType} requires at least one update field`);
   }
 
   return {
+    ...(hasKindUpdate
+      ? { kind: optionalTransactionKind(updateInput.kind, actionType) }
+      : {}),
     ...(hasSubcategoryUpdate
       ? {
           subcategory_id:
@@ -953,6 +980,19 @@ function requestedUpdateSubcategory(
   )?.name;
 }
 
+function requestedUpdateKind(message: string): TransactionKind | undefined {
+  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+transfer\b/i.test(message)) {
+    return "transfer";
+  }
+  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+income\b/i.test(message)) {
+    return "income";
+  }
+  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+expense\b/i.test(message)) {
+    return "expense";
+  }
+  return undefined;
+}
+
 function tokenScore(
   message: string,
   transaction: TransactionWithDetails,
@@ -1034,7 +1074,8 @@ export function buildSearchUpdateFollowUp(
 
   const comment = requestedUpdateComment(message);
   const subcategoryName = requestedUpdateSubcategory(message, subcategories);
-  if (!comment && !subcategoryName) {
+  const kind = requestedUpdateKind(message);
+  if (!comment && !subcategoryName && !kind) {
     return {
       type: "report_failure",
       input: { reason: "Could not infer requested transaction update." },
@@ -1045,6 +1086,7 @@ export function buildSearchUpdateFollowUp(
     type: "update_transaction",
     input: {
       id: target.id,
+      ...(kind ? { kind } : {}),
       ...(comment ? { comment } : {}),
       ...(subcategoryName ? { subcategory_name: subcategoryName } : {}),
     },
@@ -1281,6 +1323,7 @@ export function executeAction(action: AIAction): ExecutedAction {
           date,
           name,
           amount,
+          kind: optionalTransactionKind(input.kind, action.type),
           subcategory_id:
             resolveRequestedSubcategory(input, subcategories, action.type) ??
             null,
@@ -1312,6 +1355,7 @@ export function executeAction(action: AIAction): ExecutedAction {
             date: transaction.date,
             name: transaction.name,
             amount: transaction.amount,
+            kind: transaction.kind,
             account_id: transaction.account_id,
             account_name: transaction.account_name,
             category_name: transaction.category_name,
@@ -1361,6 +1405,7 @@ export function executeAction(action: AIAction): ExecutedAction {
             "date",
             "name",
             "amount",
+            "kind",
             "subcategory_id",
             "subcategory_name",
             "comment",
@@ -1381,6 +1426,7 @@ export function executeAction(action: AIAction): ExecutedAction {
             date: optionalIsoDate(input.date, "date", action.type),
             name: asString(input.name),
             amount: asNumber(input.amount),
+            kind: optionalTransactionKind(input.kind, action.type),
             subcategory_id: subcategoryId,
             comment: asNullableString(input.comment),
           }),
@@ -1478,6 +1524,7 @@ Amount conventions:
 - Spending, purchases, bills, charges, rides, meals, groceries, fuel, hotels, flights, and subscriptions are negative amounts unless the user explicitly wrote a plus sign.
 - Deposits, payroll, reimbursements, refunds, interest, and income are positive amounts unless the user explicitly wrote a minus sign.
 - Preserve explicit + and - signs from the user's request.
+- Transaction kind is separate from amount sign: use kind "income", "expense", or "transfer" when creating or updating transactions. Transfers are money moving between owned accounts, have no subcategory, and still affect account balances.
 
 Failure conventions:
 - If the user asks you to create or update something but it cannot be done because a referenced account/category/subcategory is missing, a date is invalid, or a name conflicts, still return the attempted action so validation can fail visibly.
@@ -1493,10 +1540,10 @@ Allowed action types:
 - update_category: { id? or current_name, name?, type? }
 - create_subcategory: { name, category_id? or category_name, monthly_goal? }
 - update_subcategory: { id? or current_name, name?, category_id? or category_name, monthly_goal? }
-- create_transaction: { account_id? or account_name, date: "YYYY-MM-DD", name, amount, subcategory_id? or subcategory_name?, comment? }
-- search_transactions: { searchQuery, account_id? or account_name?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit? }
-- update_transaction: { id, date?, name?, amount?, subcategory_id? or subcategory_name?, comment? }
-- bulk_update_transactions: { searchQuery, account_id? or account_name?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit?, updates: { subcategory_id? or subcategory_name?, comment? } }
+- create_transaction: { account_id? or account_name, date: "YYYY-MM-DD", name, amount, kind?: "income"|"expense"|"transfer", subcategory_id? or subcategory_name?, comment? }
+- search_transactions: { searchQuery, account_id? or account_name?, kind?: "income"|"expense"|"transfer", needsCategory?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit? }
+- update_transaction: { id, date?, name?, amount?, kind?: "income"|"expense"|"transfer", subcategory_id? or subcategory_name?, comment? }
+- bulk_update_transactions: { searchQuery, account_id? or account_name?, kind?: "income"|"expense"|"transfer", needsCategory?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit?, updates: { kind?: "income"|"expense"|"transfer", subcategory_id? or subcategory_name?, comment? } }
 - create_goal: { subcategory_id? or subcategory_name, amount, period: "weekly"|"monthly"|"quarterly"|"annual", start_date: "YYYY-MM-DD", end_date? }
 - update_goal: { id? or subcategory_id? or subcategory_name, amount?, period?, start_date?, end_date? }
 

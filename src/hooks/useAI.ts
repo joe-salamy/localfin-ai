@@ -4,21 +4,23 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiDelete, apiGet, apiPost, apiStream } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import { readAssistantSettings } from "@/features/assistant-settings/storage";
-import type { EnrichedTransaction } from "@/types";
+import type { EnrichedTransaction, TransactionKind } from "@/types";
 
 interface CategorizeTransaction {
   name: string;
   account_id: string;
   account_name: string;
   amount: number;
+  date?: string;
 }
 
 interface CategorizeResult {
   transaction_name: string;
+  kind: TransactionKind;
   subcategory_id: string | null;
   subcategory_name: string | null;
   category_name: string | null;
-  source: "lookup" | "ai" | "none";
+  source: "lookup" | "transfer" | "ai" | "none";
 }
 
 interface ParseStatementRequest {
