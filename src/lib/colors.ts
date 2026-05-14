@@ -77,22 +77,17 @@ export function mixHexColors(startHex: string, endHex: string, ratio: number): s
 
 export function amountGradientColor(
   amount: number,
-  minAmount: number,
-  maxAmount: number,
+  maxAbsAmount: number,
   negativeColor: string,
   neutralColor: string,
   positiveColor: string,
 ): string | null {
-  if (amount === 0 || (minAmount >= 0 && maxAmount <= 0)) return neutralColor;
+  if (amount === 0 || maxAbsAmount <= 0) return neutralColor;
 
   if (amount < 0) {
-    const floor = Math.min(minAmount, 0);
-    if (floor === 0) return neutralColor;
-    return mixHexColors(neutralColor, negativeColor, Math.abs(amount / floor));
+    return mixHexColors(neutralColor, negativeColor, Math.abs(amount) / maxAbsAmount);
   }
 
-  const ceiling = Math.max(maxAmount, 0);
-  if (ceiling === 0) return neutralColor;
-  return mixHexColors(neutralColor, positiveColor, amount / ceiling);
+  return mixHexColors(neutralColor, positiveColor, amount / maxAbsAmount);
 }
 
