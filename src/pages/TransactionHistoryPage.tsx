@@ -7,6 +7,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { MultiSelect } from '@/components/ui/MultiSelect';
 import { SimpleSelect } from '@/components/ui/SimpleSelect';
 import { TransactionTable } from '@/components/features/TransactionTable';
 import { BulkEditModal } from '@/components/features/BulkEditModal';
@@ -24,12 +25,14 @@ export function TransactionHistoryPage() {
   // Filter state
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(today);
-  const [accountId, setAccountId] = useState('');
+  const [accountIds, setAccountIds] = useState<string[]>([]);
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [subcategoryIds, setSubcategoryIds] = useState<string[]>([]);
   const [kindFilter, setKindFilter] = useState<'all' | TransactionKind | 'needsCategory'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const startDateRef = useRef<HTMLInputElement>(null);
   const endDateRef = useRef<HTMLInputElement>(null);
-  const accountRef = useRef<HTMLSelectElement>(null);
+  const accountRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useShortcutScope('transactionHistory');
@@ -61,12 +64,14 @@ export function TransactionHistoryPage() {
     setAppliedFilters({
       startDate: startDate || undefined,
       endDate: endDate || undefined,
-      accountId: accountId || undefined,
+      accountIds: accountIds.length > 0 ? accountIds : undefined,
+      categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
+      subcategoryIds: subcategoryIds.length > 0 ? subcategoryIds : undefined,
       kind: kindFilter !== 'all' && kindFilter !== 'needsCategory' ? kindFilter : undefined,
       needsCategory: kindFilter === 'needsCategory' ? true : undefined,
       searchQuery: searchQuery || undefined,
     });
-  }, [accountId, endDate, kindFilter, searchQuery, startDate]);
+  }, [accountIds, categoryIds, endDate, kindFilter, searchQuery, startDate, subcategoryIds]);
 
   const applyDateRangePreset = useCallback((preset: DateRangePreset) => {
     const range = preset.getRange();
@@ -76,12 +81,14 @@ export function TransactionHistoryPage() {
     setAppliedFilters({
       startDate: range.startDate || undefined,
       endDate: range.endDate || undefined,
-      accountId: accountId || undefined,
+      accountIds: accountIds.length > 0 ? accountIds : undefined,
+      categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
+      subcategoryIds: subcategoryIds.length > 0 ? subcategoryIds : undefined,
       kind: kindFilter !== 'all' && kindFilter !== 'needsCategory' ? kindFilter : undefined,
       needsCategory: kindFilter === 'needsCategory' ? true : undefined,
       searchQuery: searchQuery || undefined,
     });
-  }, [accountId, kindFilter, searchQuery]);
+  }, [accountIds, categoryIds, kindFilter, searchQuery, subcategoryIds]);
 
   // Sort transactions client-side
   const sortedTransactions = useMemo(() => {
@@ -159,7 +166,31 @@ export function TransactionHistoryPage() {
     }
   }, [bulkDeleteTransactions, selectedIds]);
 
+  const handleCategoryIdsChange = useCallback((nextCategoryIds: string[]) => {
+    setCategoryIds(nextCategoryIds);
+
+    if (nextCategoryIds.length === 0) return;
+    const selectedCategories = new Set(nextCategoryIds);
+    const compatibleSubcategoryIds = new Set(
+      subcategories
+        .filter((subcategory) => selectedCategories.has(subcategory.category_id))
+        .map((subcategory) => subcategory.id),
+    );
+    setSubcategoryIds((current) => current.filter((id) => compatibleSubcategoryIds.has(id)));
+  }, [subcategories]);
+
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
+  const categoryOptions = categories.map((category) => ({ value: category.id, label: category.name }));
+  const selectedCategorySet = useMemo(() => new Set(categoryIds), [categoryIds]);
+  const subcategoryOptions = subcategories
+    .filter((subcategory) => categoryIds.length === 0 || selectedCategorySet.has(subcategory.category_id))
+    .map((subcategory) => {
+      const category = categories.find((item) => item.id === subcategory.category_id);
+      return {
+        value: subcategory.id,
+        label: category ? `${category.name} / ${subcategory.name}` : subcategory.name,
+      };
+    });
   const searchError = error instanceof Error && appliedFilters.searchQuery
     ? error.message
     : null;
@@ -211,12 +242,31 @@ export function TransactionHistoryPage() {
           />
         </div>
         <div className="w-40">
-          <SimpleSelect
+          <MultiSelect
             ref={accountRef}
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            options={[{ value: '', label: 'All Accounts' }, ...accountOptions]}
-            className="h-8 text-xs"
+            value={accountIds}
+            onChange={setAccountIds}
+            options={accountOptions}
+            allLabel="All Accounts"
+            selectedLabel="accounts"
+          />
+        </div>
+        <div className="w-40">
+          <MultiSelect
+            value={categoryIds}
+            onChange={handleCategoryIdsChange}
+            options={categoryOptions}
+            allLabel="All Categories"
+            selectedLabel="categories"
+          />
+        </div>
+        <div className="w-48">
+          <MultiSelect
+            value={subcategoryIds}
+            onChange={setSubcategoryIds}
+            options={subcategoryOptions}
+            allLabel="All Subcategories"
+            selectedLabel="subcategories"
           />
         </div>
         <div className="w-40">

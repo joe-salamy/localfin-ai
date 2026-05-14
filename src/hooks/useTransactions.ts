@@ -11,12 +11,19 @@ import type {
 
 function buildQueryString(filters?: TransactionFilters): string {
   if (!filters) return '';
-  const params = new URLSearchParams(
-    Object.entries(filters)
-      .filter(([, v]) => v != null)
-      .map(([k, v]) => [k, String(v)]),
-  ).toString();
-  return params ? `?${params}` : '';
+  const params = new URLSearchParams();
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value == null) return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => params.append(key, String(item)));
+      return;
+    }
+    params.set(key, String(value));
+  });
+
+  const query = params.toString();
+  return query ? `?${query}` : '';
 }
 
 export function useTransactions(filters?: TransactionFilters) {

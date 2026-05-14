@@ -195,7 +195,10 @@ export interface SankeyData {
 
 export interface TransactionFilters {
   accountId?: string;
+  accountIds?: string[];
+  categoryIds?: string[];
   subcategoryId?: string;
+  subcategoryIds?: string[];
   kind?: TransactionKind;
   needsCategory?: boolean;
   startDate?: string;
