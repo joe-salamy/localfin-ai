@@ -1,5 +1,6 @@
 import { differenceInDays, parseISO } from "date-fns";
 import { getDb } from "../db/index.js";
+import { clampStartDateToFirstTransaction } from "./date-ranges.js";
 import type {
   AccountSummary,
   AccountTransaction,
@@ -64,6 +65,7 @@ export function getAccountSummary(
   endDate: string,
 ): { accounts: AccountSummary[]; netWorth: NetWorthSummary } {
   const db = getDb();
+  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
 
   const accounts = db
     .prepare(
@@ -79,7 +81,7 @@ export function getAccountSummary(
        FROM transactions
        WHERE account_id = ? AND date < ? AND deleted_at IS NULL`,
       )
-      .get(account.id, startDate) as BalanceRow;
+      .get(account.id, effectiveStartDate) as BalanceRow;
 
     const startingBalance = balanceRow.starting_balance;
 
@@ -97,7 +99,7 @@ export function getAccountSummary(
        WHERE t.account_id = ? AND t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
        ORDER BY t.date, t.created_at`,
       )
-      .all(account.id, startDate, endDate) as TransactionRow[];
+      .all(account.id, effectiveStartDate, endDate) as TransactionRow[];
 
     // Build transactions with running balance
     let runningBalance = startingBalance;
@@ -142,8 +144,9 @@ export function getCategorySummary(
   endDate: string,
 ): CategorySummary[] {
   const db = getDb();
+  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
   const rangeDays =
-    differenceInDays(parseISO(endDate), parseISO(startDate)) + 1;
+    differenceInDays(parseISO(endDate), parseISO(effectiveStartDate)) + 1;
 
   const rows = db
     .prepare(
@@ -167,7 +170,7 @@ export function getCategorySummary(
      GROUP BY c.id, s.id
      ORDER BY c.type, c.name, s.name`,
     )
-    .all(startDate, endDate) as CategoryGroupRow[];
+    .all(effectiveStartDate, endDate) as CategoryGroupRow[];
 
   // Group by category
   const categoryMap = new Map<string, CategorySummary>();
@@ -223,6 +226,7 @@ export function getDashboardMetrics(
   endDate: string,
 ): DashboardMetrics {
   const db = getDb();
+  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
 
   const row = db
     .prepare(
@@ -233,7 +237,7 @@ export function getDashboardMetrics(
      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
      WHERE t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL`,
     )
-    .get(startDate, endDate) as MetricsRow;
+    .get(effectiveStartDate, endDate) as MetricsRow;
 
   return {
     totalIncome: row.totalIncome,

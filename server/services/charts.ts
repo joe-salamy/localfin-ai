@@ -9,6 +9,7 @@ import {
 } from "date-fns";
 import { getDb } from "../db/index.js";
 import { DATE_CONFIG } from "../config/app.js";
+import { clampStartDateToFirstTransaction } from "./date-ranges.js";
 import { resolveEntityColor } from "../../src/lib/colors.js";
 import type {
   NetWorthDataPoint,
@@ -43,7 +44,8 @@ export function prepareNetWorthData(
   endDate: string,
 ): NetWorthDataPoint[] {
   const db = getDb();
-  const start = parseISO(startDate);
+  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
+  const start = parseISO(effectiveStartDate);
   const end = parseISO(endDate);
   const totalDays = differenceInDays(end, start);
 
@@ -137,6 +139,7 @@ export function prepareSankeyData(
   endDate: string,
 ): SankeyData {
   const db = getDb();
+  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
 
   // Get income flows (positive amounts in income categories)
   const incomeRows = db
@@ -155,7 +158,7 @@ export function prepareSankeyData(
      HAVING total > 0
      ORDER BY total DESC`,
     )
-    .all(startDate, endDate) as CategoryFlowRow[];
+    .all(effectiveStartDate, endDate) as CategoryFlowRow[];
 
   // Get expense flows (negative amounts in expense categories)
   const expenseRows = db
@@ -174,7 +177,7 @@ export function prepareSankeyData(
      HAVING total > 0
      ORDER BY total DESC`,
     )
-    .all(startDate, endDate) as CategoryFlowRow[];
+    .all(effectiveStartDate, endDate) as CategoryFlowRow[];
 
   const nodes: SankeyNode[] = [];
   const links: SankeyLink[] = [];

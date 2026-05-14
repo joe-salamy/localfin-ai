@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test, { afterEach } from "node:test";
 import { closeDbForTests, getDb } from "../db/index.js";
-import { prepareSankeyData } from "./charts.js";
+import { prepareNetWorthData, prepareSankeyData } from "./charts.js";
 
 const originalDbPath = process.env.LOCALFIN_DB_PATH;
 const tempRoots: string[] = [];
@@ -117,4 +117,13 @@ test("prepareSankeyData keeps all subcategories while using clean display labels
         link.value === 100,
     ),
   );
+});
+
+test("prepareNetWorthData clamps all-time requests to the first transaction date", async () => {
+  await createChartTestDatabase();
+
+  const data = prepareNetWorthData("0001-01-01", "2026-05-31");
+
+  assert.equal(data.at(0)?.date, "2026-05-01");
+  assert.equal(data.length, 5);
 });
