@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { AccountSummary as AccountSummaryType, NetWorthSummary } from '@/types';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -17,6 +18,7 @@ const cellClass = 'px-2 py-1.5 text-sm whitespace-nowrap';
 
 export function AccountSummaryTable({ accounts, netWorth }: AccountSummaryProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const getSummaryGradientStyle = useAmountGradient(accounts.map((account) => account.total_change));
 
   const toggle = (id: string) => {
     const next = new Set(expanded);
@@ -47,6 +49,7 @@ export function AccountSummaryTable({ accounts, netWorth }: AccountSummaryProps)
                 account={a}
                 isOpen={isOpen}
                 onToggle={() => toggle(a.account_id)}
+                getSummaryGradientStyle={getSummaryGradientStyle}
               />
             );
           })}
@@ -75,10 +78,12 @@ function AccountRow({
   account,
   isOpen,
   onToggle,
+  getSummaryGradientStyle,
 }: {
   account: AccountSummaryType;
   isOpen: boolean;
   onToggle: () => void;
+  getSummaryGradientStyle: (amount: number) => CSSProperties | undefined;
 }) {
   const getGradientStyle = useAmountGradient(account.transactions.map((transaction) => transaction.amount));
 
@@ -102,7 +107,7 @@ function AccountRow({
         <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
           {formatCurrency(account.starting_balance)}
         </td>
-        <td className={cn(cellClass, 'text-right font-mono tabular-nums', account.total_change >= 0 ? 'text-green-400' : 'text-red-400')}>
+        <td className={cn(cellClass, 'text-right font-mono tabular-nums', account.total_change >= 0 ? 'text-green-400' : 'text-red-400')} style={getSummaryGradientStyle(account.total_change)}>
           {formatCurrency(account.total_change)}
         </td>
         <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
@@ -125,10 +130,10 @@ function AccountRow({
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {account.transactions.map((t) => (
-                    <tr key={t.id} className="hover:bg-secondary/20" style={getGradientStyle(t.amount)}>
+                    <tr key={t.id} className="hover:bg-secondary/20">
                       <td className={cn(cellClass, 'text-xs')}>{format(parseISO(t.date), DISPLAY_DATE_FORMAT)}</td>
                       <td className={cn(cellClass, 'text-xs')}>{t.name}</td>
-                      <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs', t.amount >= 0 ? 'text-green-400' : 'text-red-400')}>
+                      <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs', t.amount >= 0 ? 'text-green-400' : 'text-red-400')} style={getGradientStyle(t.amount)}>
                         {formatCurrency(t.amount)}
                       </td>
                       <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs')}>

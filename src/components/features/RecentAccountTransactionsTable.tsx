@@ -54,11 +54,6 @@ export function RecentAccountTransactionsTable() {
                 <tr
                   key={activity.account_id}
                   className="border-b border-border last:border-b-0"
-                  style={
-                    activity.last_transaction_amount == null
-                      ? undefined
-                      : getGradientStyle(activity.last_transaction_amount)
-                  }
                 >
                   <td className="px-2 py-1.5 font-medium text-foreground">
                     <EntityLabel id={activity.account_id} name={activity.account_name} color={activity.account_color} />
@@ -75,7 +70,10 @@ export function RecentAccountTransactionsTable() {
                     {activity.last_transaction_amount == null
                       ? '-'
                       : (
-                        <span className={activity.last_transaction_amount >= 0 ? 'text-green-400' : 'text-red-400'}>
+                        <span
+                          className={activity.last_transaction_amount >= 0 ? 'text-green-400' : 'text-red-400'}
+                          style={getGradientStyle(activity.last_transaction_amount)}
+                        >
                           {formatCurrency(activity.last_transaction_amount)}
                         </span>
                       )}
