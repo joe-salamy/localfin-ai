@@ -13,15 +13,13 @@ export function useDisplaySettings() {
 
 export function useAmountGradient(amounts: number[]) {
   const settings = useDisplaySettings();
-  const minAmount = Math.min(0, ...amounts);
-  const maxAmount = Math.max(0, ...amounts);
+  const maxAbsAmount = Math.max(0, ...amounts.map((amount) => Math.abs(amount)));
 
   return (amount: number): CSSProperties | undefined => {
     if (!settings.amountGradientEnabled) return undefined;
     const color = amountGradientColor(
       amount,
-      minAmount,
-      maxAmount,
+      maxAbsAmount,
       settings.negativeColor,
       settings.neutralColor,
       settings.positiveColor,
