@@ -1,7 +1,7 @@
 // === ENUMS ===
 export type AccountType = 'asset' | 'liability';
 export type CategoryType = 'income' | 'expense';
-export type TransactionKind = 'income' | 'expense' | 'transfer';
+export type TransactionKind = 'income' | 'expense' | 'transfer' | 'adjustment';
 export type GoalPeriod = 'weekly' | 'monthly' | 'quarterly' | 'annual';
 
 // === CORE ENTITIES ===
@@ -281,6 +281,19 @@ export interface CreateTransactionData {
   subcategory_id?: string | null;
   comment?: string | null;
   ai_suggested?: boolean;
+}
+
+export interface ReconcileAccountData {
+  date: string;
+  target_balance: number;
+  name?: string;
+}
+
+export interface ReconcileAccountResult {
+  transaction: Transaction | null;
+  previous_balance: number;
+  target_balance: number;
+  adjustment_amount: number;
 }
 
 export interface CreateSpendingGoalData {

@@ -144,3 +144,65 @@ test("getDb migrates existing entity tables to include nullable colors", async (
 
   assert.deepEqual(row, { name: "Legacy Account", color: null });
 });
+
+test("getDb migrates transaction kind constraint to include adjustments", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-kind-migration-test-"));
+  tempRoots.push(tempDir);
+  const dbPath = path.join(tempDir, "budget.db");
+
+  const legacyDb = new Database(dbPath);
+  legacyDb.exec(`
+    CREATE TABLE accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('asset', 'liability')),
+      color TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      deleted_at TEXT
+    );
+
+    CREATE TABLE transactions (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer')),
+      subcategory_id TEXT,
+      comment TEXT,
+      is_initial_balance INTEGER NOT NULL DEFAULT 0,
+      ai_suggested INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      deleted_at TEXT
+    );
+
+    CREATE INDEX idx_transactions_account ON transactions(account_id);
+  `);
+  legacyDb.prepare("INSERT INTO accounts (id, name, type) VALUES (?, ?, ?)").run(
+    "legacy-account",
+    "Legacy Account",
+    "asset",
+  );
+  legacyDb.prepare(
+    "INSERT INTO transactions (id, account_id, date, name, amount, kind) VALUES (?, ?, ?, ?, ?, ?)",
+  ).run("legacy-transaction", "legacy-account", "2026-05-01", "Existing", 10, "income");
+  legacyDb.close();
+
+  process.env.LOCALFIN_DB_PATH = dbPath;
+  const migratedDb = getDb();
+
+  migratedDb.prepare(
+    "INSERT INTO transactions (id, account_id, date, name, amount, kind) VALUES (?, ?, ?, ?, ?, ?)",
+  ).run("adjustment", "legacy-account", "2026-05-02", "Appreciation", 5, "adjustment");
+
+  const rows = migratedDb
+    .prepare("SELECT id, kind FROM transactions ORDER BY date")
+    .all() as Array<{ id: string; kind: string }>;
+
+  assert.deepEqual(rows, [
+    { id: "legacy-transaction", kind: "income" },
+    { id: "adjustment", kind: "adjustment" },
+  ]);
+});

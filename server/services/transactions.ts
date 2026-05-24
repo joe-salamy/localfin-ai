@@ -207,7 +207,7 @@ function normalizeTransactionFields(data: CreateTransactionData): CreateTransact
   return {
     ...data,
     kind,
-    subcategory_id: kind === "transfer" ? null : data.subcategory_id ?? null,
+    subcategory_id: kind === "transfer" || kind === "adjustment" ? null : data.subcategory_id ?? null,
   };
 }
 
@@ -472,13 +472,13 @@ export function updateTransaction(
   if (updates.kind !== undefined) {
     setClauses.push("kind = ?");
     params.push(updates.kind);
-    if (updates.kind === "transfer" && updates.subcategory_id === undefined) {
+    if ((updates.kind === "transfer" || updates.kind === "adjustment") && updates.subcategory_id === undefined) {
       setClauses.push("subcategory_id = ?");
       params.push(null);
     }
   }
   if (updates.subcategory_id !== undefined) {
-    const nextSubcategoryId = nextKind === "transfer" ? null : updates.subcategory_id;
+    const nextSubcategoryId = nextKind === "transfer" || nextKind === "adjustment" ? null : updates.subcategory_id;
     if (nextSubcategoryId) {
       assertActiveSubcategory(nextSubcategoryId);
     }
@@ -523,19 +523,19 @@ export function bulkUpdateTransactions(
   if (updates.kind !== undefined) {
     setClauses.push("kind = ?");
     params.push(updates.kind);
-    if (updates.kind === "transfer" && updates.subcategory_id === undefined) {
+    if ((updates.kind === "transfer" || updates.kind === "adjustment") && updates.subcategory_id === undefined) {
       setClauses.push("subcategory_id = ?");
       params.push(null);
     }
   }
 
   if (updates.subcategory_id !== undefined) {
-    const nextSubcategoryId = updates.kind === "transfer" ? null : updates.subcategory_id;
+    const nextSubcategoryId = updates.kind === "transfer" || updates.kind === "adjustment" ? null : updates.subcategory_id;
     if (nextSubcategoryId) {
       assertActiveSubcategory(nextSubcategoryId);
     }
     if (updates.kind === undefined && nextSubcategoryId !== null) {
-      setClauses.push("subcategory_id = CASE WHEN kind = 'transfer' THEN NULL ELSE ? END");
+      setClauses.push("subcategory_id = CASE WHEN kind IN ('transfer', 'adjustment') THEN NULL ELSE ? END");
     } else {
       setClauses.push("subcategory_id = ?");
     }

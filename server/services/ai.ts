@@ -455,6 +455,7 @@ function resolveAIResults(
       };
       continue;
     }
+    if (kind !== "income" && kind !== "expense") continue;
 
     const subcategory = resolveSubcategoryChoice(
       result.subcategory,

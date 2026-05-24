@@ -39,7 +39,7 @@ const transactionFiltersSchema = z.object({
   categoryIds: optionalQueryStringArray,
   subcategoryId: nonEmptyString.optional(),
   subcategoryIds: optionalQueryStringArray,
-  kind: z.enum(['income', 'expense', 'transfer']).optional(),
+  kind: z.enum(['income', 'expense', 'transfer', 'adjustment']).optional(),
   needsCategory: optionalQueryBoolean,
   startDate: isoDateString.optional(),
   endDate: isoDateString.optional(),
@@ -52,7 +52,7 @@ const createTransactionSchema = z.object({
   date: isoDateString,
   name: nonEmptyString,
   amount: finiteNumber,
-  kind: z.enum(['income', 'expense', 'transfer']).optional(),
+  kind: z.enum(['income', 'expense', 'transfer', 'adjustment']).optional(),
   subcategory_id: nonEmptyString.nullable().optional(),
   comment: z.string().nullable().optional(),
   ai_suggested: z.boolean().optional(),
@@ -61,7 +61,7 @@ const updateTransactionSchema = z.object({
   date: isoDateString.optional(),
   name: nonEmptyString.optional(),
   amount: finiteNumber.optional(),
-  kind: z.enum(['income', 'expense', 'transfer']).optional(),
+  kind: z.enum(['income', 'expense', 'transfer', 'adjustment']).optional(),
   subcategory_id: nonEmptyString.nullable().optional(),
   comment: z.string().nullable().optional(),
   ai_suggested: z.boolean().optional(),
@@ -72,7 +72,7 @@ const bulkCreateSchema = z.object({
 const bulkUpdateSchema = z.object({
   ids: z.array(nonEmptyString).min(1).max(500),
   updates: z.object({
-    kind: z.enum(['income', 'expense', 'transfer']).optional(),
+    kind: z.enum(['income', 'expense', 'transfer', 'adjustment']).optional(),
     subcategory_id: nonEmptyString.nullable().optional(),
   })
     .refine((value) => Object.keys(value).length > 0, 'At least one update field is required'),

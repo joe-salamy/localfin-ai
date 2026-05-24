@@ -107,10 +107,14 @@ function inferKindFromAmount(val: string): TransactionKind {
 
 function resolveKind(value: string): TransactionKind | null {
   const normalized = normaliseClipboardValue(value);
-  if (normalized === "income" || normalized === "expense" || normalized === "transfer") {
+  if (normalized === "income" || normalized === "expense" || normalized === "transfer" || normalized === "adjustment") {
     return normalized;
   }
   return null;
+}
+
+function kindHasSubcategory(kind: TransactionKind): boolean {
+  return kind !== "transfer" && kind !== "adjustment";
 }
 
 function formatAmountDisplay(val: string): string {
@@ -197,11 +201,11 @@ function applyPastedValue(
   if (field === "name") return { ...row, name: value };
   if (field === "amount") {
     const amount = value.replace(/[$,\s]/g, "");
-    return { ...row, amount, kind: row.kind === "transfer" ? "transfer" : inferKindFromAmount(amount) };
+    return { ...row, amount, kind: kindHasSubcategory(row.kind) ? inferKindFromAmount(amount) : row.kind };
   }
   if (field === "kind") {
     const kind = resolveKind(value);
-    return kind ? { ...row, kind, subcategory_id: kind === "transfer" ? "" : row.subcategory_id } : row;
+    return kind ? { ...row, kind, subcategory_id: kindHasSubcategory(kind) ? row.subcategory_id : "" } : row;
   }
   if (field === "comment") return { ...row, comment: value };
   if (field === "account_id") {
@@ -210,7 +214,7 @@ function applyPastedValue(
   }
 
   const subcategoryId = resolveSubcategoryId(value, categories, subcategories);
-  return subcategoryId && row.kind !== "transfer"
+  return subcategoryId && kindHasSubcategory(row.kind)
     ? {
         ...row,
         subcategory_id: subcategoryId,
@@ -360,7 +364,7 @@ export function MultiTransactionTable() {
     setRows((prev) =>
       prev.map((r) =>
         r.id === row.id
-          ? { ...r, kind, subcategory_id: kind === "transfer" ? "" : r.subcategory_id }
+          ? { ...r, kind, subcategory_id: kindHasSubcategory(kind) ? r.subcategory_id : "" }
           : r,
       ),
     );
@@ -498,7 +502,7 @@ export function MultiTransactionTable() {
             ...row,
             kind: cat.kind,
             subcategory_id:
-              cat.kind === "transfer" ? "" : cat.subcategory_id ?? row.subcategory_id,
+              kindHasSubcategory(cat.kind) ? cat.subcategory_id ?? row.subcategory_id : "",
             categorizationSource: cat.source,
             aiSuggestedSubcategoryId:
               cat.source === "ai" ? cat.subcategory_id : null,
@@ -621,7 +625,7 @@ export function MultiTransactionTable() {
         name: r.name,
         amount: displayAmountToNumber(r.amount),
         kind: r.kind,
-        subcategory_id: r.kind === "transfer" ? null : r.subcategory_id || null,
+        subcategory_id: kindHasSubcategory(r.kind) ? r.subcategory_id || null : null,
         comment: r.comment || null,
         ai_suggested: r.categorizationSource === "ai",
       }));
@@ -845,9 +849,9 @@ export function MultiTransactionTable() {
                                 ...r,
                                 amount: e.target.value,
                                 kind:
-                                  r.kind === "transfer"
-                                    ? "transfer"
-                                    : inferKindFromAmount(e.target.value),
+                                    kindHasSubcategory(r.kind)
+                                      ? inferKindFromAmount(e.target.value)
+                                      : r.kind,
                                 isDuplicate: false,
                               }
                             : r,
@@ -882,6 +886,7 @@ export function MultiTransactionTable() {
                     <option value="income">Income</option>
                     <option value="expense">Expense</option>
                     <option value="transfer">Transfer</option>
+                    <option value="adjustment">Adjustment</option>
                   </select>
                 </td>
 
@@ -919,8 +924,8 @@ export function MultiTransactionTable() {
                     onChange={(val) => handleSubcategoryChange(row, val)}
                     categories={categories}
                     subcategories={subcategories}
-                    className={cn("w-36", row.kind === "transfer" && "opacity-60")}
-                    disabled={row.kind === "transfer"}
+                    className={cn("w-36", !kindHasSubcategory(row.kind) && "opacity-60")}
+                    disabled={!kindHasSubcategory(row.kind)}
                     onPaste={(e) => handlePaste(e, idx, "subcategory_id")}
                     onFocus={() => setFocusedRowId(row.id)}
                   />
