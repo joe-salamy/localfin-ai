@@ -23,6 +23,7 @@ const createAccountSchema = z.object({
 const updateAccountSchema = z.object({
   name: nonEmptyString.optional(),
   type: accountTypeSchema.optional(),
+  initial_balance: finiteNumber.optional(),
   color: colorSchema.optional(),
 }).refine((value) => Object.keys(value).length > 0, 'At least one update field is required');
 

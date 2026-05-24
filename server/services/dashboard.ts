@@ -18,6 +18,7 @@ interface AccountRow {
   id: string;
   name: string;
   type: string;
+  initial_balance: number;
   color: string | null;
 }
 
@@ -69,7 +70,7 @@ export function getAccountSummary(
 
   const accounts = db
     .prepare(
-      `SELECT id, name, type, color FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
+      `SELECT id, name, type, initial_balance, color FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
     )
     .all() as AccountRow[];
 
@@ -83,7 +84,7 @@ export function getAccountSummary(
       )
       .get(account.id, effectiveStartDate) as BalanceRow;
 
-    const startingBalance = balanceRow.starting_balance;
+    const startingBalance = account.initial_balance + balanceRow.starting_balance;
 
     // Transactions within range
     const transactions = db
@@ -252,14 +253,19 @@ export function calculateNetWorth(atDate: string): NetWorthSummary {
 
   const rows = db
     .prepare(
-      `SELECT a.type AS account_type, COALESCE(SUM(t.amount), 0) AS total
-     FROM accounts a
-     LEFT JOIN transactions t
-       ON t.account_id = a.id
-       AND t.date <= ?
-       AND t.deleted_at IS NULL
-     WHERE a.deleted_at IS NULL
-     GROUP BY a.type`,
+      `SELECT account_type, COALESCE(SUM(balance), 0) AS total
+     FROM (
+       SELECT a.type AS account_type,
+              a.initial_balance + COALESCE(SUM(t.amount), 0) AS balance
+       FROM accounts a
+       LEFT JOIN transactions t
+         ON t.account_id = a.id
+         AND t.date <= ?
+         AND t.deleted_at IS NULL
+       WHERE a.deleted_at IS NULL
+       GROUP BY a.id
+     )
+     GROUP BY account_type`,
     )
     .all(atDate) as NetWorthRow[];
 

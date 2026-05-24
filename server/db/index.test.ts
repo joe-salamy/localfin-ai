@@ -144,3 +144,80 @@ test("getDb migrates existing entity tables to include nullable colors", async (
 
   assert.deepEqual(row, { name: "Legacy Account", color: null });
 });
+
+test("getDb migrates active initial balance transactions into accounts", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-initial-balance-migration-test-"));
+  tempRoots.push(tempDir);
+  const dbPath = path.join(tempDir, "budget.db");
+
+  const legacyDb = new Database(dbPath);
+  legacyDb.exec(`
+    CREATE TABLE accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('asset', 'liability')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      deleted_at TEXT
+    );
+
+    CREATE TABLE transactions (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'expense',
+      subcategory_id TEXT,
+      comment TEXT,
+      is_initial_balance INTEGER NOT NULL DEFAULT 0,
+      ai_suggested INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      deleted_at TEXT
+    );
+  `);
+  legacyDb.prepare("INSERT INTO accounts (id, name, type) VALUES (?, ?, ?)").run(
+    "brokerage",
+    "Brokerage",
+    "asset",
+  );
+  legacyDb.prepare("INSERT INTO accounts (id, name, type) VALUES (?, ?, ?)").run(
+    "checking",
+    "Checking",
+    "asset",
+  );
+  const insertTransaction = legacyDb.prepare(
+    "INSERT INTO transactions (id, account_id, date, name, amount, kind, is_initial_balance, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  insertTransaction.run("named", "brokerage", "2026-05-06", "Initial Balance", 250, "income", 0, null);
+  insertTransaction.run("flagged", "brokerage", "2026-05-07", "Opening cash", 75, "income", 1, null);
+  insertTransaction.run("regular", "brokerage", "2026-05-08", "Deposit", 25, "income", 0, null);
+  insertTransaction.run("deleted", "checking", "2026-05-01", "Initial Balance", 1000, "income", 0, "2026-05-02T00:00:00.000Z");
+  legacyDb.close();
+
+  process.env.LOCALFIN_DB_PATH = dbPath;
+  let migratedDb = getDb();
+
+  const brokerage = migratedDb
+    .prepare("SELECT initial_balance FROM accounts WHERE id = ?")
+    .get("brokerage") as { initial_balance: number };
+  assert.equal(brokerage.initial_balance, 325);
+
+  const checking = migratedDb
+    .prepare("SELECT initial_balance FROM accounts WHERE id = ?")
+    .get("checking") as { initial_balance: number };
+  assert.equal(checking.initial_balance, 0);
+
+  const remaining = migratedDb
+    .prepare("SELECT id FROM transactions ORDER BY id")
+    .all() as Array<{ id: string }>;
+  assert.deepEqual(remaining.map((row) => row.id), ["deleted", "regular"]);
+
+  closeDbForTests();
+  migratedDb = getDb();
+  const reopened = migratedDb
+    .prepare("SELECT initial_balance FROM accounts WHERE id = ?")
+    .get("brokerage") as { initial_balance: number };
+  assert.equal(reopened.initial_balance, 325);
+});

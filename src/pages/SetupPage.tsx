@@ -148,6 +148,7 @@ function AccountsSection() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState<'asset' | 'liability'>('asset');
+  const [editInitialBalance, setEditInitialBalance] = useState('');
   const [editColor, setEditColor] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<AccountWithBalance | null>(null);
@@ -217,7 +218,13 @@ function AccountsSection() {
     if (!editName.trim()) return;
     setSaving(true);
     try {
-      await updateAccount.mutateAsync({ id, name: editName.trim(), type: editType, color: editColor });
+      await updateAccount.mutateAsync({
+        id,
+        name: editName.trim(),
+        type: editType,
+        initial_balance: editInitialBalance ? parseFloat(editInitialBalance) : 0,
+        color: editColor,
+      });
       toast.success('Account updated');
       setEditId(null);
     } catch {
@@ -280,6 +287,7 @@ function AccountsSection() {
     setEditId(a.id);
     setEditName(a.name);
     setEditType(a.type);
+    setEditInitialBalance(String(a.initial_balance));
     setEditColor(a.color);
   }
 
@@ -394,6 +402,7 @@ function AccountsSection() {
               />
             </th>
             <th className="pb-1 font-medium">Color</th>
+            <th className="pb-1 text-right font-medium">Initial Balance</th>
             <th className="pb-1 text-right font-medium">
               <SortHeader
                 label="Balance"
@@ -440,6 +449,15 @@ function AccountsSection() {
                   <td className="py-1.5 pr-2">
                     <ColorPicker value={editColor} onChange={setEditColor} label={`${a.name} color`} />
                   </td>
+                  <td className="py-1.5 pr-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editInitialBalance}
+                      onChange={(e) => setEditInitialBalance(e.target.value)}
+                      className="h-7 text-right text-sm"
+                    />
+                  </td>
                   <td className="py-1.5 text-right">{formatCurrency(a.current_balance)}</td>
                   <td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">
@@ -470,6 +488,7 @@ function AccountsSection() {
                   <td className="py-1.5">
                     <ColorPicker value={a.color} onChange={(nextColor) => void updateAccount.mutateAsync({ id: a.id, color: nextColor })} label={`${a.name} color`} />
                   </td>
+                  <td className="py-1.5 text-right font-mono">{formatCurrency(a.initial_balance)}</td>
                   <td className="py-1.5 text-right font-mono">{formatCurrency(a.current_balance)}</td>
                   <td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">

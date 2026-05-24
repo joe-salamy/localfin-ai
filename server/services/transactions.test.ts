@@ -59,6 +59,7 @@ function createRecentActivityDb(): Database.Database {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       type TEXT NOT NULL,
+      initial_balance REAL NOT NULL DEFAULT 0,
       color TEXT,
       deleted_at TEXT
     );
@@ -81,14 +82,14 @@ test("recent activity returns one deterministic latest transaction per active ac
   const db = createRecentActivityDb();
 
   db.prepare(
-    "INSERT INTO accounts (id, name, type, deleted_at) VALUES (?, ?, ?, ?)",
-  ).run("checking", "Checking", "asset", null);
+    "INSERT INTO accounts (id, name, type, initial_balance, deleted_at) VALUES (?, ?, ?, ?, ?)",
+  ).run("checking", "Checking", "asset", 1000, null);
   db.prepare(
-    "INSERT INTO accounts (id, name, type, deleted_at) VALUES (?, ?, ?, ?)",
-  ).run("empty", "Empty", "asset", null);
+    "INSERT INTO accounts (id, name, type, initial_balance, deleted_at) VALUES (?, ?, ?, ?, ?)",
+  ).run("empty", "Empty", "asset", 250, null);
   db.prepare(
-    "INSERT INTO accounts (id, name, type, deleted_at) VALUES (?, ?, ?, ?)",
-  ).run("closed", "Closed", "asset", "2026-05-01T00:00:00.000Z");
+    "INSERT INTO accounts (id, name, type, initial_balance, deleted_at) VALUES (?, ?, ?, ?, ?)",
+  ).run("closed", "Closed", "asset", 500, "2026-05-01T00:00:00.000Z");
 
   const insertTransaction = db.prepare(
     "INSERT INTO transactions (id, account_id, date, name, amount, created_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -148,7 +149,7 @@ test("recent activity returns one deterministic latest transaction per active ac
       account_name: "Checking",
       account_type: "asset",
       account_color: null,
-      current_balance: 65,
+      current_balance: 1065,
       last_transaction_id: "same-tie-second",
       last_transaction_date: "2026-05-01",
       last_transaction_name: "Second same timestamp",
@@ -159,7 +160,7 @@ test("recent activity returns one deterministic latest transaction per active ac
       account_name: "Empty",
       account_type: "asset",
       account_color: null,
-      current_balance: 0,
+      current_balance: 250,
       last_transaction_id: null,
       last_transaction_date: null,
       last_transaction_name: null,

@@ -6,6 +6,7 @@ interface AccountRow {
   id: string;
   name: string;
   type: string;
+  initial_balance: number;
   color: string | null;
   created_at: string;
   updated_at: string;
@@ -25,6 +26,7 @@ function rowToAccount(row: AccountRow): Account {
     id: row.id,
     name: row.name,
     type: row.type as AccountType,
+    initial_balance: row.initial_balance,
     color: row.color,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -68,25 +70,9 @@ export function createAccount(data: { name: string; type: AccountType; initial_b
 
   checkNameUniqueness(data.name);
 
-  const insertAccount = db.prepare(
-    'INSERT INTO accounts (id, name, type, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-  );
-
-  const createTransaction = db.transaction(() => {
-    insertAccount.run(id, data.name, data.type, data.color ?? null, now, now);
-
-    const balance = data.initial_balance ?? 0;
-    if (balance !== 0) {
-      const txnId = crypto.randomUUID();
-      const kind = balance >= 0 ? 'income' : 'expense';
-      db.prepare(
-        `INSERT INTO transactions (id, account_id, date, name, amount, kind, is_initial_balance, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`
-      ).run(txnId, id, now.split('T')[0], 'Initial Balance', balance, kind, now, now);
-    }
-  });
-
-  createTransaction();
+  db.prepare(
+    'INSERT INTO accounts (id, name, type, initial_balance, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, data.name, data.type, data.initial_balance ?? 0, data.color ?? null, now, now);
 
   const row = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id) as AccountRow;
   return rowToAccount(row);
@@ -103,7 +89,7 @@ export function getAccounts(): Account[] {
 export function getAccountsWithBalances(): AccountWithBalance[] {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT a.*, COALESCE(SUM(t.amount), 0) AS current_balance
+    SELECT a.*, a.initial_balance + COALESCE(SUM(t.amount), 0) AS current_balance
     FROM accounts a
     LEFT JOIN transactions t ON t.account_id = a.id AND t.deleted_at IS NULL
     WHERE a.deleted_at IS NULL
@@ -121,7 +107,10 @@ export function getAccountById(id: string): Account | undefined {
   return row ? rowToAccount(row) : undefined;
 }
 
-export function updateAccount(id: string, updates: { name?: string; type?: AccountType; color?: string | null }): Account {
+export function updateAccount(
+  id: string,
+  updates: { name?: string; type?: AccountType; initial_balance?: number; color?: string | null },
+): Account {
   const db = getDb();
   const now = new Date().toISOString();
 
@@ -136,11 +125,12 @@ export function updateAccount(id: string, updates: { name?: string; type?: Accou
 
   const name = updates.name ?? existing.name;
   const type = updates.type ?? existing.type;
+  const initialBalance = updates.initial_balance ?? existing.initial_balance;
   const color = updates.color !== undefined ? updates.color : existing.color;
 
   db.prepare(
-    'UPDATE accounts SET name = ?, type = ?, color = ?, updated_at = ? WHERE id = ?'
-  ).run(name, type, color, now, id);
+    'UPDATE accounts SET name = ?, type = ?, initial_balance = ?, color = ?, updated_at = ? WHERE id = ?'
+  ).run(name, type, initialBalance, color, now, id);
 
   const row = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id) as AccountRow;
   return rowToAccount(row);

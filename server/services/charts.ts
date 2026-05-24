@@ -24,6 +24,7 @@ interface AccountRow {
   id: string;
   name: string;
   type: string;
+  initial_balance: number;
   color: string | null;
 }
 
@@ -67,7 +68,7 @@ export function prepareNetWorthData(
   // Get all non-deleted accounts
   const accounts = db
     .prepare(
-      `SELECT id, name, type, color FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
+      `SELECT id, name, type, initial_balance, color FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
     )
     .all() as AccountRow[];
 
@@ -102,7 +103,7 @@ export function prepareNetWorthData(
 
     for (const account of accounts) {
       const row = balanceStmt.get(account.id, dateStr) as { balance: number };
-      const balance = row.balance;
+      const balance = account.initial_balance + row.balance;
       point[account.name] = balance;
 
       if (account.type === "asset") {
