@@ -209,10 +209,17 @@ function requireTransactionKind(
   value: unknown,
   actionType: string,
 ): TransactionKind {
-  if (value === "income" || value === "expense" || value === "transfer") {
+  if (
+    value === "income" ||
+    value === "expense" ||
+    value === "transfer" ||
+    value === "adjustment"
+  ) {
     return value;
   }
-  throw new Error(`${actionType} requires kind income|expense|transfer`);
+  throw new Error(
+    `${actionType} requires kind income|expense|transfer|adjustment`,
+  );
 }
 
 function optionalTransactionKind(
@@ -1524,7 +1531,7 @@ Amount conventions:
 - Spending, purchases, bills, charges, rides, meals, groceries, fuel, hotels, flights, and subscriptions are negative amounts unless the user explicitly wrote a plus sign.
 - Deposits, payroll, reimbursements, refunds, interest, and income are positive amounts unless the user explicitly wrote a minus sign.
 - Preserve explicit + and - signs from the user's request.
-- Transaction kind is separate from amount sign: use kind "income", "expense", or "transfer" when creating or updating transactions. Transfers are money moving between owned accounts, have no subcategory, and still affect account balances.
+- Transaction kind is separate from amount sign: use kind "income", "expense", "transfer", or "adjustment" when creating or updating transactions. Transfers are money moving between owned accounts, have no subcategory, and still affect account balances. Adjustments reconcile account balances or current values, have no subcategory, and still affect account balances.
 
 Failure conventions:
 - If the user asks you to create or update something but it cannot be done because a referenced account/category/subcategory is missing, a date is invalid, or a name conflicts, still return the attempted action so validation can fail visibly.
@@ -1540,10 +1547,10 @@ Allowed action types:
 - update_category: { id? or current_name, name?, type? }
 - create_subcategory: { name, category_id? or category_name, monthly_goal? }
 - update_subcategory: { id? or current_name, name?, category_id? or category_name, monthly_goal? }
-- create_transaction: { account_id? or account_name, date: "YYYY-MM-DD", name, amount, kind?: "income"|"expense"|"transfer", subcategory_id? or subcategory_name?, comment? }
-- search_transactions: { searchQuery, account_id? or account_name?, kind?: "income"|"expense"|"transfer", needsCategory?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit? }
-- update_transaction: { id, date?, name?, amount?, kind?: "income"|"expense"|"transfer", subcategory_id? or subcategory_name?, comment? }
-- bulk_update_transactions: { searchQuery, account_id? or account_name?, kind?: "income"|"expense"|"transfer", needsCategory?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit?, updates: { kind?: "income"|"expense"|"transfer", subcategory_id? or subcategory_name?, comment? } }
+- create_transaction: { account_id? or account_name, date: "YYYY-MM-DD", name, amount, kind?: "income"|"expense"|"transfer"|"adjustment", subcategory_id? or subcategory_name?, comment? }
+- search_transactions: { searchQuery, account_id? or account_name?, kind?: "income"|"expense"|"transfer"|"adjustment", needsCategory?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit? }
+- update_transaction: { id, date?, name?, amount?, kind?: "income"|"expense"|"transfer"|"adjustment", subcategory_id? or subcategory_name?, comment? }
+- bulk_update_transactions: { searchQuery, account_id? or account_name?, kind?: "income"|"expense"|"transfer"|"adjustment", needsCategory?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit?, updates: { kind?: "income"|"expense"|"transfer"|"adjustment", subcategory_id? or subcategory_name?, comment? } }
 - create_goal: { subcategory_id? or subcategory_name, amount, period: "weekly"|"monthly"|"quarterly"|"annual", start_date: "YYYY-MM-DD", end_date? }
 - update_goal: { id? or subcategory_id? or subcategory_name, amount?, period?, start_date?, end_date? }
 

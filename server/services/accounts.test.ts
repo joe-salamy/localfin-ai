@@ -63,6 +63,25 @@ test("reconcileAccount creates depreciation for negative asset adjustments", asy
   assert.equal(result.transaction?.kind, "adjustment");
 });
 
+test("reconcileAccount names liability adjustments by balance direction", async () => {
+  await useIsolatedDb();
+  const account = createAccount({ name: "Credit Card", type: "liability", initial_balance: 500 });
+
+  const increase = reconcileAccount(account.id, {
+    date: "2026-05-24",
+    target_balance: 650,
+  });
+  const decrease = reconcileAccount(account.id, {
+    date: "2026-05-25",
+    target_balance: 400,
+  });
+
+  assert.equal(increase.transaction?.name, "Balance Increase");
+  assert.equal(increase.adjustment_amount, 150);
+  assert.equal(decrease.transaction?.name, "Balance Decrease");
+  assert.equal(decrease.adjustment_amount, -250);
+});
+
 test("reconcileAccount uses balance through the selected date", async () => {
   await useIsolatedDb();
   const account = createAccount({ name: "Taxable Brokerage", type: "asset" });

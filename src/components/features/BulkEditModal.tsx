@@ -30,12 +30,13 @@ export function BulkEditModal({
   const [subcategoryId, setSubcategoryId] = useState('');
   const [kind, setKind] = useState<'unchanged' | TransactionKind>('unchanged');
   const categoryLookup = buildCategoryLookup(categories);
+  const kindHasSubcategory = kind !== 'transfer' && kind !== 'adjustment';
 
   const handleConfirm = () => {
     if (kind !== 'unchanged' || subcategoryId) {
       onConfirm({
         ...(kind !== 'unchanged' ? { kind } : {}),
-        ...(subcategoryId ? { subcategory_id: subcategoryId } : {}),
+        ...(subcategoryId && kindHasSubcategory ? { subcategory_id: subcategoryId } : {}),
       });
     }
   };
@@ -65,13 +66,14 @@ export function BulkEditModal({
         onChange={(e) => {
           const nextKind = e.target.value as typeof kind;
           setKind(nextKind);
-          if (nextKind === 'transfer') setSubcategoryId('');
+          if (nextKind === 'transfer' || nextKind === 'adjustment') setSubcategoryId('');
         }}
         options={[
           { value: 'unchanged', label: 'Leave Type' },
           { value: 'income', label: 'Income' },
           { value: 'expense', label: 'Expense' },
           { value: 'transfer', label: 'Transfer' },
+          { value: 'adjustment', label: 'Adjustment' },
         ]}
       />
       <div className="mt-2" />
@@ -83,7 +85,7 @@ export function BulkEditModal({
           label: formatSubcategoryLabel(s, categoryLookup),
         }))}
         placeholder="Select subcategory..."
-        disabled={kind === 'transfer'}
+        disabled={!kindHasSubcategory}
       />
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={handleClose} disabled={isLoading}>

@@ -557,6 +557,36 @@ test("assistant action execution can reassign a transaction to transfer", async 
   assert.equal(updated[0]?.subcategory_id, null);
 });
 
+test("assistant action execution can reassign a transaction to adjustment", async () => {
+  await useTempDatabase();
+  const testAccount = createAccount({ name: "Adjustment Kind Checking", type: "asset" });
+  const category = createCategory({ name: "Adjustment Kind Essentials", type: "expense" });
+  const other = createSubcategory({
+    name: "Adjustment Kind Other",
+    category_id: category.id,
+  });
+  const transaction = createTransaction({
+    account_id: testAccount.id,
+    date: "2026-05-01",
+    name: "Manual Value Change",
+    amount: 125,
+    subcategory_id: other.id,
+  });
+
+  const result = executeAction({
+    type: "update_transaction",
+    input: {
+      id: transaction.id,
+      kind: "adjustment",
+    },
+  });
+
+  assert.equal(result.status, "success");
+  const updated = getTransactionsWithDetails({ searchQuery: 'name:"Manual Value Change"' });
+  assert.equal(updated[0]?.kind, "adjustment");
+  assert.equal(updated[0]?.subcategory_id, null);
+});
+
 test("assistant tool loop continues only for recoverable failed actions", () => {
   assert.equal(
     shouldContinueToolLoop("Add coffee on my Missing Card account.", [
