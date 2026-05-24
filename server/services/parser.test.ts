@@ -32,7 +32,7 @@ afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-test("statement parsing normalizes credit-card expenses as positive account deltas", async () => {
+test("statement parsing normalizes signed credit-card expenses as positive account deltas", async () => {
   await useIsolatedDb();
   const creditCard = createAccount({
     name: "Parser Credit Card",
@@ -56,12 +56,18 @@ test("statement parsing normalizes credit-card expenses as positive account delt
   });
 
   const result = await parseStatement(
-    "05/02/2026 Coffee Shop -4.00",
+    [
+      "05/02/2026 Coffee Shop -4.00",
+      "05/03/2026 Coffee Shop 4.00",
+    ].join("\n"),
     creditCard.id,
   );
 
-  assert.equal(result.transactions.length, 1);
+  assert.equal(result.transactions.length, 2);
   assert.equal(result.transactions[0]?.kind, "expense");
   assert.equal(result.transactions[0]?.amount, 4);
   assert.equal(result.transactions[0]?.subcategory_id, subcategory.id);
+  assert.equal(result.transactions[1]?.kind, "expense");
+  assert.equal(result.transactions[1]?.amount, 4);
+  assert.equal(result.transactions[1]?.subcategory_id, subcategory.id);
 });

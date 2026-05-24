@@ -539,7 +539,7 @@ export function MultiTransactionTable() {
           account_name:
             accounts.find((account) => account.id === row.account_id)?.name ??
             "Unknown",
-          amount: displayAmountToNumber(row.amount),
+          amount: displayAmountToNumber(normalizeRowAmountDisplay(row, accounts)),
           account_type: getAccountType(row.account_id, accounts),
           date: row.date ? toApiDate(row.date) : undefined,
         })),
