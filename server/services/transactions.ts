@@ -1,11 +1,16 @@
 import crypto from "node:crypto";
 import type {
+  AccountType,
   Transaction,
   TransactionWithDetails,
   TransactionFilters,
   CreateTransactionData,
   TransactionKind,
 } from "../../src/types/index.js";
+import {
+  inferTransactionKindForAccount,
+  normalizeTransactionAmount,
+} from "../../src/lib/transactionAmounts.js";
 import { getDb, toBool, fromBool } from "../db/index.js";
 import { compileTransactionSearch } from "./transaction-search.js";
 
@@ -167,14 +172,15 @@ function buildWhereClause(
   return { clauses, params };
 }
 
-function assertActiveAccount(accountId: string): void {
+function getActiveAccountType(accountId: string): AccountType {
   const db = getDb();
   const account = db
-    .prepare("SELECT 1 FROM accounts WHERE id = ? AND deleted_at IS NULL")
-    .get(accountId);
+    .prepare("SELECT type FROM accounts WHERE id = ? AND deleted_at IS NULL")
+    .get(accountId) as { type: AccountType } | undefined;
   if (!account) {
     throw new Error(`Account with id "${accountId}" not found`);
   }
+  return account.type;
 }
 
 function assertActiveSubcategory(subcategoryId: string): void {
@@ -195,17 +201,17 @@ function assertActiveSubcategory(subcategoryId: string): void {
   }
 }
 
-function inferTransactionKind(amount: number): TransactionKind {
-  return amount >= 0 ? "income" : "expense";
-}
-
-function normalizeTransactionFields(data: CreateTransactionData): CreateTransactionData & {
+function normalizeTransactionFields(
+  data: CreateTransactionData,
+  accountType: AccountType,
+): CreateTransactionData & {
   kind: TransactionKind;
   subcategory_id: string | null;
 } {
-  const kind = data.kind ?? inferTransactionKind(data.amount);
+  const kind = data.kind ?? inferTransactionKindForAccount(data.amount, accountType);
   return {
     ...data,
+    amount: normalizeTransactionAmount(data.amount, accountType, kind),
     kind,
     subcategory_id: kind === "transfer" ? null : data.subcategory_id ?? null,
   };
@@ -217,9 +223,9 @@ export function createTransaction(data: CreateTransactionData): Transaction {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const normalized = normalizeTransactionFields(data);
+  const accountType = getActiveAccountType(data.account_id);
+  const normalized = normalizeTransactionFields(data, accountType);
 
-  assertActiveAccount(normalized.account_id);
   if (normalized.subcategory_id) {
     assertActiveSubcategory(normalized.subcategory_id);
   }
@@ -603,8 +609,8 @@ export function bulkCreateTransactions(
 
   const insertAll = db.transaction(() => {
     for (const data of transactions) {
-      const normalized = normalizeTransactionFields(data);
-      assertActiveAccount(normalized.account_id);
+      const accountType = getActiveAccountType(data.account_id);
+      const normalized = normalizeTransactionFields(data, accountType);
       if (normalized.subcategory_id) {
         assertActiveSubcategory(normalized.subcategory_id);
       }

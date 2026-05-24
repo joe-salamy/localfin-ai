@@ -1,7 +1,9 @@
 import type {
+  AccountType,
   EnrichedTransaction,
   ParsedTransaction,
 } from "../../src/types/index.js";
+import { normalizeTransactionAmount } from "../../src/lib/transactionAmounts.js";
 import { getDb } from "../db/index.js";
 import { categorizeTransactions } from "./ai.js";
 
@@ -258,18 +260,29 @@ export async function parseStatement(
     errors.push(`... and ${failedLines - 5} more unparseable lines`);
   }
 
-  // Check duplicates
-  const duplicateFlags = checkDuplicatesInDb(
-    parsed.map((t) => ({ date: t.date, name: t.name, amount: t.amount })),
-    accountId,
-  );
   const db = getDb();
   const account = db
-    .prepare("SELECT name FROM accounts WHERE id = ? AND deleted_at IS NULL")
-    .get(accountId) as { name: string } | undefined;
+    .prepare("SELECT name, type FROM accounts WHERE id = ? AND deleted_at IS NULL")
+    .get(accountId) as { name: string; type: AccountType } | undefined;
+  if (!account) {
+    return {
+      transactions: [],
+      summary: {
+        total: 0,
+        duplicates: 0,
+        fromLookup: 0,
+        fromAI: 0,
+        uncategorized: 0,
+        needsReview: 0,
+      },
+      format: detectedFormat?.name ?? null,
+      parseSuccessRate: 0,
+      errors: [`Account with id "${accountId}" not found`],
+    };
+  }
 
   const categorizations =
-    parsed.length > 0 && account
+    parsed.length > 0
       ? await categorizeTransactions({
           conversationId,
           transactions: parsed.map((t) => ({
@@ -277,10 +290,31 @@ export async function parseStatement(
             name: t.name,
             account_id: accountId,
             account_name: account.name,
-            amount: t.amount,
+            account_type: account.type,
+            amount: normalizeTransactionAmount(t.amount, account.type, "expense"),
           })),
         })
       : [];
+
+  const normalizedTransactions = parsed.map((t, i) => {
+    const categorization = categorizations[i];
+    const kind = categorization?.kind ?? "expense";
+    return {
+      ...t,
+      amount: normalizeTransactionAmount(t.amount, account.type, kind),
+      kind,
+      categorization,
+    };
+  });
+
+  const duplicateFlags = checkDuplicatesInDb(
+    normalizedTransactions.map((t) => ({
+      date: t.date,
+      name: t.name,
+      amount: t.amount,
+    })),
+    accountId,
+  );
 
   const summary = {
     total: parsed.length,
@@ -291,9 +325,9 @@ export async function parseStatement(
     needsReview: 0,
   };
 
-  const enriched: EnrichedTransaction[] = parsed.map((t, i) => {
+  const enriched: EnrichedTransaction[] = normalizedTransactions.map((t, i) => {
     const isDuplicate = duplicateFlags[i];
-    const categorization = categorizations[i];
+    const { categorization, ...transaction } = t;
     if (isDuplicate) summary.duplicates++;
 
     if (categorization?.source === "lookup" || categorization?.source === "transfer") {
@@ -308,8 +342,7 @@ export async function parseStatement(
     if (t.needsReview) summary.needsReview++;
 
     return {
-      ...t,
-      kind: categorization?.kind ?? (t.amount >= 0 ? "income" : "expense"),
+      ...transaction,
       subcategory_id: categorization?.subcategory_id ?? null,
       subcategory_name: categorization?.subcategory_name ?? null,
       category_name: categorization?.category_name ?? null,

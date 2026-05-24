@@ -18,6 +18,7 @@ const categorizeSchema = z.object({
     name: nonEmptyString,
     account_id: nonEmptyString,
     account_name: nonEmptyString,
+    account_type: z.enum(['asset', 'liability']).optional(),
     amount: finiteNumber,
     date: isoDateString.optional(),
   })).min(1).max(500),
