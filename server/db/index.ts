@@ -60,11 +60,83 @@ function addColumnIfMissing(database: Database.Database, tableName: string, colu
   database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition}`);
 }
 
+function transactionKindConstraintAllowsAdjustment(database: Database.Database): boolean {
+  const row = database
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'transactions'")
+    .get() as { sql: string } | undefined;
+
+  return row?.sql.includes("'adjustment'") ?? false;
+}
+
+function migrateTransactionKindConstraint(database: Database.Database): void {
+  if (transactionKindConstraintAllowsAdjustment(database)) return;
+
+  database.exec(`
+    ALTER TABLE transactions RENAME TO transactions_legacy_kind;
+
+    CREATE TABLE transactions (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer', 'adjustment')),
+      subcategory_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL,
+      comment TEXT,
+      is_initial_balance INTEGER NOT NULL DEFAULT 0,
+      ai_suggested INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      deleted_at TEXT
+    );
+
+    INSERT INTO transactions (
+      id,
+      account_id,
+      date,
+      name,
+      amount,
+      kind,
+      subcategory_id,
+      comment,
+      is_initial_balance,
+      ai_suggested,
+      created_at,
+      updated_at,
+      deleted_at
+    )
+    SELECT
+      id,
+      account_id,
+      date,
+      name,
+      amount,
+      kind,
+      subcategory_id,
+      comment,
+      is_initial_balance,
+      ai_suggested,
+      created_at,
+      updated_at,
+      deleted_at
+    FROM transactions_legacy_kind;
+
+    DROP TABLE transactions_legacy_kind;
+
+    CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date DESC);
+    CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_subcategory ON transactions(subcategory_id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_lookup ON transactions(account_id, name) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_transactions_deleted ON transactions(deleted_at) WHERE deleted_at IS NULL;
+  `);
+}
+
 function migrate(database: Database.Database): void {
   addColumnIfMissing(database, 'accounts', 'color TEXT');
   addColumnIfMissing(database, 'categories', 'color TEXT');
   addColumnIfMissing(database, 'subcategories', 'color TEXT');
-  addColumnIfMissing(database, 'transactions', "kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer'))");
+  addColumnIfMissing(database, 'transactions', "kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer', 'adjustment'))");
+  migrateTransactionKindConstraint(database);
   database.exec(`
     UPDATE transactions
     SET kind = CASE WHEN amount >= 0 THEN 'income' ELSE 'expense' END

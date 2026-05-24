@@ -6,10 +6,11 @@ import {
   getAccountsWithBalances,
   getAccountById,
   updateAccount,
+  reconcileAccount,
   deleteAccount,
   getAccountTransactionCount,
 } from '../services/accounts.js';
-import { finiteNumber, idParamSchema, nonEmptyString, parseRequest } from './validation.js';
+import { finiteNumber, idParamSchema, isoDateString, nonEmptyString, parseRequest } from './validation.js';
 
 const router = Router();
 const accountTypeSchema = z.enum(['asset', 'liability']);
@@ -25,6 +26,11 @@ const updateAccountSchema = z.object({
   type: accountTypeSchema.optional(),
   color: colorSchema.optional(),
 }).refine((value) => Object.keys(value).length > 0, 'At least one update field is required');
+const reconcileAccountSchema = z.object({
+  date: isoDateString,
+  target_balance: finiteNumber,
+  name: nonEmptyString.optional(),
+});
 
 router.get('/', (_req: Request, res: Response) => {
   try {
@@ -71,6 +77,19 @@ router.put('/:id', (req: Request, res: Response) => {
     if (!params || !body) return;
     const data = updateAccount(params.id, body);
     res.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.post('/:id/reconcile', (req: Request, res: Response) => {
+  try {
+    const params = parseRequest(idParamSchema, req.params, res);
+    const body = parseRequest(reconcileAccountSchema, req.body, res);
+    if (!params || !body) return;
+    const data = reconcileAccount(params.id, body);
+    res.status(data.transaction ? 201 : 200).json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(400).json({ success: false, error: message });

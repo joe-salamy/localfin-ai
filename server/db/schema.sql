@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   date TEXT NOT NULL,
   name TEXT NOT NULL,
   amount REAL NOT NULL,
-  kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer')),
+  kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer', 'adjustment')),
   subcategory_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL,
   comment TEXT,
   is_initial_balance INTEGER NOT NULL DEFAULT 0,

@@ -104,10 +104,14 @@ function displayAmountToNumber(val: string): number {
 
 function resolveKind(value: string): TransactionKind | null {
   const normalized = normaliseClipboardValue(value);
-  if (normalized === "income" || normalized === "expense" || normalized === "transfer") {
+  if (normalized === "income" || normalized === "expense" || normalized === "transfer" || normalized === "adjustment") {
     return normalized;
   }
   return null;
+}
+
+function kindHasSubcategory(kind: TransactionKind): boolean {
+  return kind !== "transfer" && kind !== "adjustment";
 }
 
 function formatAmountDisplay(
@@ -237,7 +241,7 @@ function applyPastedValue(
             getAccountType(row.account_id, accounts),
             kind,
           ),
-          subcategory_id: kind === "transfer" ? "" : row.subcategory_id,
+          subcategory_id: kindHasSubcategory(kind) ? row.subcategory_id : "",
         }
       : row;
   }
@@ -258,7 +262,7 @@ function applyPastedValue(
   }
 
   const subcategoryId = resolveSubcategoryId(value, categories, subcategories);
-  return subcategoryId && row.kind !== "transfer"
+  return subcategoryId && kindHasSubcategory(row.kind)
     ? {
         ...row,
         subcategory_id: subcategoryId,
@@ -416,7 +420,7 @@ export function MultiTransactionTable() {
                 getAccountType(r.account_id, accounts),
                 kind,
               ),
-              subcategory_id: kind === "transfer" ? "" : r.subcategory_id,
+              subcategory_id: kindHasSubcategory(kind) ? r.subcategory_id : "",
             }
           : r,
       ),
@@ -556,7 +560,7 @@ export function MultiTransactionTable() {
             ...row,
             kind: cat.kind,
             subcategory_id:
-              cat.kind === "transfer" ? "" : cat.subcategory_id ?? row.subcategory_id,
+              kindHasSubcategory(cat.kind) ? cat.subcategory_id ?? row.subcategory_id : "",
             categorizationSource: cat.source,
             aiSuggestedSubcategoryId:
               cat.source === "ai" ? cat.subcategory_id : null,
@@ -679,7 +683,7 @@ export function MultiTransactionTable() {
         name: r.name,
         amount: displayAmountToNumber(normalizeRowAmountDisplay(r, accounts)),
         kind: r.kind,
-        subcategory_id: r.kind === "transfer" ? null : r.subcategory_id || null,
+        subcategory_id: kindHasSubcategory(r.kind) ? r.subcategory_id || null : null,
         comment: r.comment || null,
         ai_suggested: r.categorizationSource === "ai",
       }));
@@ -936,6 +940,7 @@ export function MultiTransactionTable() {
                     <option value="income">Income</option>
                     <option value="expense">Expense</option>
                     <option value="transfer">Transfer</option>
+                    <option value="adjustment">Adjustment</option>
                   </select>
                 </td>
 
@@ -990,8 +995,8 @@ export function MultiTransactionTable() {
                     onChange={(val) => handleSubcategoryChange(row, val)}
                     categories={categories}
                     subcategories={subcategories}
-                    className={cn("w-36", row.kind === "transfer" && "opacity-60")}
-                    disabled={row.kind === "transfer"}
+                    className={cn("w-36", !kindHasSubcategory(row.kind) && "opacity-60")}
+                    disabled={!kindHasSubcategory(row.kind)}
                     onPaste={(e) => handlePaste(e, idx, "subcategory_id")}
                     onFocus={() => setFocusedRowId(row.id)}
                   />

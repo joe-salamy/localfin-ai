@@ -26,7 +26,7 @@ export function normalizeTransactionAmount(
 export function inferTransactionKindForAccount(
   amount: number,
   accountType: AccountType,
-): Exclude<TransactionKind, "transfer"> {
+): Exclude<TransactionKind, "transfer" | "adjustment"> {
   if (amount === 0) return "expense";
   if (accountType === "liability") {
     return amount > 0 ? "expense" : "income";

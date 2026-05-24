@@ -11,6 +11,7 @@ import {
   Trash2,
   Plus,
   Lock,
+  RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -18,6 +19,7 @@ import { Input } from '@/components/ui/Input';
 import { SimpleSelect } from '@/components/ui/SimpleSelect';
 import { ColorPicker } from '@/components/ui/ColorPicker';
 import { EntityLabel } from '@/components/ui/EntityLabel';
+import { Modal } from '@/components/ui/Modal';
 import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
@@ -43,6 +45,10 @@ function TypeBadge({ type }: { type: string }) {
       {type}
     </span>
   );
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -135,7 +141,7 @@ function CollapsibleSection({
 // ─── Accounts Section ─────────────────────────────────────
 
 function AccountsSection() {
-  const { accounts, isLoading, createAccount, updateAccount, deleteAccount } = useAccounts();
+  const { accounts, isLoading, createAccount, updateAccount, reconcileAccount, deleteAccount } = useAccounts();
   type AccountSortKey = 'name' | 'type' | 'balance';
 
   const [showAdd, setShowAdd] = useState(false);
@@ -151,6 +157,7 @@ function AccountsSection() {
   const [editColor, setEditColor] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<AccountWithBalance | null>(null);
+  const [reconcileTarget, setReconcileTarget] = useState<AccountWithBalance | null>(null);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -403,7 +410,7 @@ function AccountsSection() {
                 onSort={(key) => setSort((current) => nextSort(current, key))}
               />
             </th>
-            <th className="pb-1 text-right font-medium w-20">Actions</th>
+            <th className="pb-1 text-right font-medium w-28">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -473,6 +480,9 @@ function AccountsSection() {
                   <td className="py-1.5 text-right font-mono">{formatCurrency(a.current_balance)}</td>
                   <td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">
+                      <button type="button" onClick={() => setReconcileTarget(a)} className="p-1 text-muted-foreground hover:text-foreground" title="Update current value">
+                        <RefreshCw size={14} />
+                      </button>
                       <button type="button" onClick={() => startEdit(a)} className="p-1 text-muted-foreground hover:text-foreground">
                         <Pencil size={14} />
                       </button>
@@ -539,6 +549,23 @@ function AccountsSection() {
         message={`Are you sure you want to delete "${deleteTarget?.name}"? This cannot be undone.`}
         isLoading={deleting}
       />
+      {reconcileTarget && (
+        <ReconcileAccountModal
+          account={reconcileTarget}
+          onClose={() => setReconcileTarget(null)}
+          onSubmit={async (data) => {
+            const result = await reconcileAccount.mutateAsync({ id: reconcileTarget.id, ...data });
+            const adjustment = result.data?.adjustment_amount ?? 0;
+            if (adjustment === 0) {
+              toast.success('Account already matches that value');
+            } else {
+              toast.success(`Adjustment created: ${formatCurrency(adjustment)}`);
+            }
+            setReconcileTarget(null);
+          }}
+          isLoading={reconcileAccount.isPending}
+        />
+      )}
       <ConfirmDeleteModal
         isOpen={showBulkDelete}
         onClose={() => setShowBulkDelete(false)}
@@ -548,6 +575,85 @@ function AccountsSection() {
         isLoading={deleting}
       />
     </div>
+  );
+}
+
+function ReconcileAccountModal({
+  account,
+  onClose,
+  onSubmit,
+  isLoading,
+}: {
+  account: AccountWithBalance;
+  onClose: () => void;
+  onSubmit: (data: { date: string; target_balance: number }) => Promise<void>;
+  isLoading: boolean;
+}) {
+  const [targetBalance, setTargetBalance] = useState(() => account.current_balance.toFixed(2));
+  const [date, setDate] = useState(() => todayIsoDate());
+
+  const targetValue = targetBalance.trim() ? Number(targetBalance) : NaN;
+  const delta = account && Number.isFinite(targetValue)
+    ? Math.round((targetValue - account.current_balance) * 100) / 100
+    : null;
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!Number.isFinite(targetValue)) {
+      toast.error('Enter a valid target value');
+      return;
+    }
+    await onSubmit({ date, target_balance: targetValue });
+  }
+
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Update Current Value"
+      description={account.name}
+      size="sm"
+    >
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="rounded-md border border-border bg-secondary/30 px-3 py-2 text-sm">
+          <div className="flex justify-between gap-3">
+            <span className="text-muted-foreground">Current balance</span>
+            <span className="font-mono">{formatCurrency(account.current_balance)}</span>
+          </div>
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-muted-foreground">Adjustment</span>
+            <span className={`font-mono ${delta == null || delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {delta == null ? '-' : formatCurrency(delta)}
+            </span>
+          </div>
+        </div>
+        <Input
+          label="Target value"
+          type="number"
+          step="0.01"
+          value={targetBalance}
+          onChange={(event) => setTargetBalance(event.target.value)}
+          required
+        />
+        <Input
+          label="As of date"
+          type="date"
+          value={date}
+          onChange={(event) => setDate(event.target.value)}
+          required
+        />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={isLoading}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={isLoading}>
+            Save Adjustment
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

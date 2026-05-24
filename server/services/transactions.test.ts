@@ -329,6 +329,30 @@ test("needs category filter excludes transfers after subcategory-only updates", 
   assert.equal(getTransactionById(transfer.id)?.subcategory_id, null);
 });
 
+test("needs category filter excludes adjustments", async () => {
+  await useIsolatedDb();
+  const account = createAccount({ name: "Needs Category Adjustment", type: "asset" });
+  const adjustment = createTransaction({
+    account_id: account.id,
+    date: "2026-05-01",
+    name: "Appreciation",
+    amount: 25,
+    kind: "adjustment",
+  });
+  const expense = createTransaction({
+    account_id: account.id,
+    date: "2026-05-02",
+    name: "Uncategorized expense",
+    amount: -20,
+    kind: "expense",
+  });
+
+  const matches = getTransactionsWithDetails({ needsCategory: true });
+
+  assert.deepEqual(matches.map((transaction) => transaction.id), [expense.id]);
+  assert.equal(getTransactionById(adjustment.id)?.subcategory_id, null);
+});
+
 test("multi-select filters use OR within groups and AND across groups", async () => {
   await useIsolatedDb();
   const checking = createAccount({ name: "Multi Checking", type: "asset" });

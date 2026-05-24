@@ -54,6 +54,10 @@ function resolveSubcategoryId(value: string, subcategories: Subcategory[]): stri
   ))?.id ?? null;
 }
 
+function kindHasSubcategory(kind: TransactionKind): boolean {
+  return kind !== 'transfer' && kind !== 'adjustment';
+}
+
 function SortIcon({ column, sortColumn, sortDirection }: { column: string; sortColumn: string; sortDirection: 'asc' | 'desc' }) {
   if (column !== sortColumn) return null;
   return sortDirection === 'asc'
@@ -164,7 +168,7 @@ export function TransactionTable({
         name: editState.name,
         amount: parseFloat(editState.amount),
         kind: editState.kind,
-        subcategory_id: editState.kind === 'transfer' ? null : editState.subcategory_id || null,
+        subcategory_id: kindHasSubcategory(editState.kind) ? editState.subcategory_id || null : null,
         comment: editState.comment || null,
       });
       setEditingId(null);
@@ -307,7 +311,7 @@ export function TransactionTable({
               const isEditing = editingId === t.id;
               const flaggedWords = findMatches(t.name);
               const isFlagged = flaggedWords.length > 0;
-              const amountGradientStyle = t.kind === 'transfer' ? undefined : getGradientStyle(t.amount);
+              const amountGradientStyle = t.kind === 'transfer' || t.kind === 'adjustment' ? undefined : getGradientStyle(t.amount);
               return (
                 <tr
                   key={t.id}
@@ -385,7 +389,7 @@ export function TransactionTable({
                       />
                     ) : (
                       <span
-                        className={t.kind === 'transfer' ? 'text-muted-foreground' : t.amount >= 0 ? 'text-green-400' : 'text-red-400'}
+                        className={t.kind === 'transfer' || t.kind === 'adjustment' ? 'text-muted-foreground' : t.amount >= 0 ? 'text-green-400' : 'text-red-400'}
                         style={amountGradientStyle}
                       >
                         {formatCurrency(t.amount)}
@@ -407,7 +411,7 @@ export function TransactionTable({
                             ...editState,
                             kind: e.target.value as TransactionKind,
                             subcategory_id:
-                              e.target.value === 'transfer'
+                              e.target.value === 'transfer' || e.target.value === 'adjustment'
                                 ? ''
                                 : editState.subcategory_id,
                           })
@@ -417,6 +421,7 @@ export function TransactionTable({
                         <option value="income">Income</option>
                         <option value="expense">Expense</option>
                         <option value="transfer">Transfer</option>
+                        <option value="adjustment">Adjustment</option>
                       </select>
                     ) : (
                       <span className="capitalize text-muted-foreground">{t.kind}</span>
@@ -433,7 +438,7 @@ export function TransactionTable({
                         value={editState.subcategory_id}
                         onChange={(e) => setEditState({ ...editState, subcategory_id: e.target.value })}
                         onPaste={(e) => void applySubcategoryPaste(e, t)}
-                        disabled={editState.kind === 'transfer'}
+                        disabled={!kindHasSubcategory(editState.kind)}
                         className="h-7 w-36 rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       >
                         <option value="">None</option>

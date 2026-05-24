@@ -130,3 +130,29 @@ test("prepareNetWorthData clamps all-time requests to the first transaction date
   assert.equal(data.at(0)?.date, "2026-05-01");
   assert.equal(data.length, 5);
 });
+
+test("charts include adjustments in net worth but exclude them from Sankey flows", async () => {
+  const db = await createChartTestDatabase();
+  db.prepare(
+    "INSERT INTO transactions (id, account_id, date, name, amount, kind, subcategory_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    "adjustment-1",
+    "checking",
+    "2026-05-10",
+    "Appreciation",
+    500,
+    "adjustment",
+    null,
+  );
+
+  const sankey = prepareSankeyData("2026-05-01", "2026-05-31");
+  assert.equal(
+    sankey.links.some((link) => link.value === 500),
+    false,
+  );
+
+  const netWorth = prepareNetWorthData("2026-05-01", "2026-05-31");
+  const afterAdjustment = netWorth.find((point) => point.date === "2026-05-15");
+  assert.equal(afterAdjustment?.Checking, 1300);
+  assert.equal(afterAdjustment?.netWorth, 1300);
+});

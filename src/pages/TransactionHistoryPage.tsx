@@ -278,6 +278,7 @@ export function TransactionHistoryPage() {
               { value: 'income', label: 'Income' },
               { value: 'expense', label: 'Expense' },
               { value: 'transfer', label: 'Transfer' },
+              { value: 'adjustment', label: 'Adjustment' },
               { value: 'needsCategory', label: 'Needs Category' },
             ]}
             className="h-8 text-xs"

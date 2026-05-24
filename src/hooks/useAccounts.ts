@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
-import type { AccountWithBalance, CreateAccountData } from '@/types/index';
+import type { AccountWithBalance, CreateAccountData, ReconcileAccountData, ReconcileAccountResult } from '@/types/index';
 
 export function useAccounts() {
   const queryClient = useQueryClient();
@@ -32,6 +32,12 @@ export function useAccounts() {
     onSuccess: () => invalidateRelated(),
   });
 
+  const reconcileAccount = useMutation({
+    mutationFn: ({ id, ...data }: { id: string } & ReconcileAccountData) =>
+      apiPost<ReconcileAccountResult>(`/accounts/${id}/reconcile`, data),
+    onSuccess: () => invalidateRelated(),
+  });
+
   const deleteAccount = useMutation({
     mutationFn: (id: string) => apiDelete(`/accounts/${id}`),
     onSuccess: () => invalidateRelated(),
@@ -42,6 +48,7 @@ export function useAccounts() {
     isLoading: accountsQuery.isLoading,
     createAccount,
     updateAccount,
+    reconcileAccount,
     deleteAccount,
   };
 }
