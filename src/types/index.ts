@@ -10,6 +10,7 @@ export interface Account {
   id: string;
   name: string;
   type: AccountType;
+  initial_balance: number;
   color: string | null;
   created_at: string;
   updated_at: string;

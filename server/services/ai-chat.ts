@@ -1201,7 +1201,7 @@ export function executeAction(action: AIAction): ExecutedAction {
           throw new Error(
             "update_account requires id or existing account name",
           );
-        if (!hasAnyField(input, ["name", "type"])) {
+        if (!hasAnyField(input, ["name", "type", "initial_balance"])) {
           throw new Error(
             "update_account requires at least one field to update",
           );
@@ -1212,6 +1212,7 @@ export function executeAction(action: AIAction): ExecutedAction {
           result: updateAccount(id, {
             name: asString(input.name),
             type: optionalAccountType(input.type, action.type),
+            initial_balance: asNumber(input.initial_balance),
           }),
         };
       }
@@ -1547,7 +1548,7 @@ Failure conventions:
 
 Allowed action types:
 - create_account: { name, type: "asset"|"liability", initial_balance? }
-- update_account: { id? or current_name, name?, type? }
+- update_account: { id? or current_name, name?, type: "asset"|"liability"?, initial_balance? }
 - create_category: { name, type: "income"|"expense" }
 - update_category: { id? or current_name, name?, type? }
 - create_subcategory: { name, category_id? or category_name, monthly_goal? }

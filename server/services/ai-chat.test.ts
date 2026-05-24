@@ -26,6 +26,7 @@ const account: Account = {
   id: "checking",
   name: "Test Checking",
   type: "asset",
+  initial_balance: 0,
   color: null,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",

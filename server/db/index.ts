@@ -131,17 +131,52 @@ function migrateTransactionKindConstraint(database: Database.Database): void {
   `);
 }
 
+function absorbInitialBalanceTransactions(database: Database.Database): void {
+  database.transaction(() => {
+    database.exec(`
+      UPDATE accounts
+      SET initial_balance = initial_balance + COALESCE((
+        SELECT SUM(t.amount)
+        FROM transactions t
+        WHERE t.account_id = accounts.id
+          AND t.deleted_at IS NULL
+          AND (t.is_initial_balance = 1 OR lower(trim(t.name)) = 'initial balance')
+      ), 0)
+      WHERE EXISTS (
+        SELECT 1
+        FROM transactions t
+        WHERE t.account_id = accounts.id
+          AND t.deleted_at IS NULL
+          AND (t.is_initial_balance = 1 OR lower(trim(t.name)) = 'initial balance')
+      )
+    `);
+
+    database.exec(`
+      DELETE FROM transactions
+      WHERE deleted_at IS NULL
+        AND (is_initial_balance = 1 OR lower(trim(name)) = 'initial balance')
+    `);
+  })();
+}
+
 function migrate(database: Database.Database): void {
+  const hadInitialBalanceColumn = columnExists(database, 'accounts', 'initial_balance');
+  addColumnIfMissing(database, 'accounts', 'initial_balance REAL NOT NULL DEFAULT 0');
   addColumnIfMissing(database, 'accounts', 'color TEXT');
   addColumnIfMissing(database, 'categories', 'color TEXT');
   addColumnIfMissing(database, 'subcategories', 'color TEXT');
   addColumnIfMissing(database, 'transactions', "kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer', 'adjustment'))");
+  addColumnIfMissing(database, 'transactions', 'is_initial_balance INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing(database, 'transactions', 'ai_suggested INTEGER NOT NULL DEFAULT 0');
   migrateTransactionKindConstraint(database);
   database.exec(`
     UPDATE transactions
     SET kind = CASE WHEN amount >= 0 THEN 'income' ELSE 'expense' END
     WHERE kind = 'expense' AND amount >= 0
   `);
+  if (!hadInitialBalanceColumn) {
+    absorbInitialBalanceTransactions(database);
+  }
 }
 
 export function closeDbForTests(): void {

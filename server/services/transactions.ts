@@ -35,6 +35,7 @@ interface TransactionRow {
 interface TransactionWithDetailsRow extends TransactionRow {
   account_name: string | null;
   account_type: string | null;
+  account_initial_balance: number | null;
   account_color: string | null;
   subcategory_name: string | null;
   subcategory_color: string | null;
@@ -297,10 +298,10 @@ export function getTransactionsWithDetails(
   });
 
   let sql = `
-    SELECT t.*, a.name AS account_name, a.type AS account_type, a.color AS account_color,
+    SELECT t.*, a.name AS account_name, a.type AS account_type, a.initial_balance AS account_initial_balance, a.color AS account_color,
            s.name AS subcategory_name, s.color AS subcategory_color, s.category_id,
            c.name AS category_name, c.type AS category_type, c.color AS category_color,
-           (
+           a.initial_balance + (
              SELECT COALESCE(SUM(prior.amount), 0)
              FROM transactions prior
              WHERE prior.account_id = t.account_id
@@ -343,7 +344,7 @@ export function getTransactionById(id: string): TransactionWithDetails | null {
   const row = db
     .prepare(
       `
-    SELECT t.*, a.name AS account_name, a.type AS account_type, a.color AS account_color,
+    SELECT t.*, a.name AS account_name, a.type AS account_type, a.initial_balance AS account_initial_balance, a.color AS account_color,
            s.name AS subcategory_name, s.color AS subcategory_color, s.category_id,
            c.name AS category_name, c.type AS category_type, c.color AS category_color
     FROM transactions t
@@ -389,7 +390,7 @@ export const recentActivityByAccountSql = `
         t.amount,
         t.created_at,
         t.rowid,
-        (
+        a.initial_balance + (
           SELECT COALESCE(SUM(prior.amount), 0)
           FROM transactions prior
           WHERE prior.account_id = t.account_id
@@ -410,6 +411,7 @@ export const recentActivityByAccountSql = `
           ORDER BY t.date DESC, t.created_at DESC, t.rowid DESC
         ) AS rn
       FROM transactions t
+      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
       WHERE t.deleted_at IS NULL
     )
     SELECT
@@ -417,7 +419,7 @@ export const recentActivityByAccountSql = `
       a.name AS account_name,
       a.type AS account_type,
       a.color AS account_color,
-      COALESCE(latest.running_balance, 0) AS current_balance,
+      COALESCE(latest.running_balance, a.initial_balance) AS current_balance,
       latest.id AS last_transaction_id,
       latest.date AS last_transaction_date,
       latest.name AS last_transaction_name,
