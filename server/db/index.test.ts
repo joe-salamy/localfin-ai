@@ -220,4 +220,20 @@ test("getDb migrates active initial balance transactions into accounts", async (
     .prepare("SELECT initial_balance FROM accounts WHERE id = ?")
     .get("brokerage") as { initial_balance: number };
   assert.equal(reopened.initial_balance, 325);
+
+  migratedDb
+    .prepare("INSERT INTO transactions (id, account_id, date, name, amount, kind) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("post-migration-named", "brokerage", "2026-05-09", "Initial Balance", 10, "income");
+
+  closeDbForTests();
+  migratedDb = getDb();
+  const postMigrationRows = migratedDb
+    .prepare("SELECT id FROM transactions WHERE id = ?")
+    .all("post-migration-named") as Array<{ id: string }>;
+  assert.deepEqual(postMigrationRows.map((row) => row.id), ["post-migration-named"]);
+
+  const afterPostMigrationReopen = migratedDb
+    .prepare("SELECT initial_balance FROM accounts WHERE id = ?")
+    .get("brokerage") as { initial_balance: number };
+  assert.equal(afterPostMigrationReopen.initial_balance, 325);
 });

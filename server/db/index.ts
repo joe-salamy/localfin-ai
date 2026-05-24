@@ -89,6 +89,7 @@ function absorbInitialBalanceTransactions(database: Database.Database): void {
 }
 
 function migrate(database: Database.Database): void {
+  const hadInitialBalanceColumn = columnExists(database, 'accounts', 'initial_balance');
   addColumnIfMissing(database, 'accounts', 'initial_balance REAL NOT NULL DEFAULT 0');
   addColumnIfMissing(database, 'accounts', 'color TEXT');
   addColumnIfMissing(database, 'categories', 'color TEXT');
@@ -101,7 +102,9 @@ function migrate(database: Database.Database): void {
     SET kind = CASE WHEN amount >= 0 THEN 'income' ELSE 'expense' END
     WHERE kind = 'expense' AND amount >= 0
   `);
-  absorbInitialBalanceTransactions(database);
+  if (!hadInitialBalanceColumn) {
+    absorbInitialBalanceTransactions(database);
+  }
 }
 
 export function closeDbForTests(): void {
