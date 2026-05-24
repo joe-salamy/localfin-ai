@@ -4,12 +4,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiDelete, apiGet, apiPost, apiStream } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import { readAssistantSettings } from "@/features/assistant-settings/storage";
-import type { EnrichedTransaction, TransactionKind } from "@/types";
+import type { AccountType, EnrichedTransaction, TransactionKind } from "@/types";
 
 interface CategorizeTransaction {
   name: string;
   account_id: string;
   account_name: string;
+  account_type?: AccountType;
   amount: number;
   date?: string;
 }

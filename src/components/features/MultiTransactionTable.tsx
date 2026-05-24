@@ -19,7 +19,8 @@ import { useAI } from "@/hooks/useAI";
 import { useCategories } from "@/hooks/useCategories";
 import { useTransactions } from "@/hooks/useTransactions";
 import { formatDateInput, cn } from "@/lib/utils";
-import type { Category, Subcategory, CreateTransactionData, TransactionKind } from "@/types";
+import { normalizeTransactionAmount } from "@/lib/transactionAmounts";
+import type { AccountType, Category, Subcategory, CreateTransactionData, TransactionKind } from "@/types";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
@@ -101,10 +102,6 @@ function displayAmountToNumber(val: string): number {
   return parseFloat(cleaned) || 0;
 }
 
-function inferKindFromAmount(val: string): TransactionKind {
-  return displayAmountToNumber(val) >= 0 ? "income" : "expense";
-}
-
 function resolveKind(value: string): TransactionKind | null {
   const normalized = normaliseClipboardValue(value);
   if (normalized === "income" || normalized === "expense" || normalized === "transfer") {
@@ -113,10 +110,15 @@ function resolveKind(value: string): TransactionKind | null {
   return null;
 }
 
-function formatAmountDisplay(val: string): string {
-  const num = displayAmountToNumber(val);
+function formatAmountDisplay(
+  val: string,
+  accountType?: AccountType,
+  kind: TransactionKind = "expense",
+): string {
+  const num = accountType
+    ? normalizeTransactionAmount(displayAmountToNumber(val), accountType, kind)
+    : displayAmountToNumber(val);
   if (!num && val === "") return "";
-  // Keep the raw number so user can edit; just normalise decimals
   const negative = num < 0;
   const abs = Math.abs(num).toFixed(2);
   return negative ? `-${abs}` : abs;
@@ -134,7 +136,7 @@ function normaliseClipboardValue(value: string): string {
 
 function resolveAccountId(
   value: string,
-  accounts: { id: string; name: string }[],
+  accounts: { id: string; name: string; type: AccountType }[],
 ): string | null {
   const normalized = normaliseClipboardValue(value);
   if (!normalized) return null;
@@ -144,6 +146,24 @@ function resolveAccountId(
         account.id.toLowerCase() === normalized ||
         account.name.toLowerCase() === normalized,
     )?.id ?? null
+  );
+}
+
+function getAccountType(
+  accountId: string,
+  accounts: { id: string; type: AccountType }[],
+): AccountType | undefined {
+  return accounts.find((account) => account.id === accountId)?.type;
+}
+
+function normalizeRowAmountDisplay(
+  row: TransactionRow,
+  accounts: { id: string; type: AccountType }[],
+): string {
+  return formatAmountDisplay(
+    row.amount,
+    getAccountType(row.account_id, accounts),
+    row.kind,
   );
 }
 
@@ -187,7 +207,7 @@ function applyPastedValue(
   row: TransactionRow,
   field: PasteField,
   value: string,
-  accounts: { id: string; name: string }[],
+  accounts: { id: string; name: string; type: AccountType }[],
   categories: Category[],
   subcategories: Subcategory[],
 ): TransactionRow {
@@ -197,16 +217,44 @@ function applyPastedValue(
   if (field === "name") return { ...row, name: value };
   if (field === "amount") {
     const amount = value.replace(/[$,\s]/g, "");
-    return { ...row, amount, kind: row.kind === "transfer" ? "transfer" : inferKindFromAmount(amount) };
+    return {
+      ...row,
+      amount: formatAmountDisplay(
+        amount,
+        getAccountType(row.account_id, accounts),
+        row.kind,
+      ),
+    };
   }
   if (field === "kind") {
     const kind = resolveKind(value);
-    return kind ? { ...row, kind, subcategory_id: kind === "transfer" ? "" : row.subcategory_id } : row;
+    return kind
+      ? {
+          ...row,
+          kind,
+          amount: formatAmountDisplay(
+            row.amount,
+            getAccountType(row.account_id, accounts),
+            kind,
+          ),
+          subcategory_id: kind === "transfer" ? "" : row.subcategory_id,
+        }
+      : row;
   }
   if (field === "comment") return { ...row, comment: value };
   if (field === "account_id") {
     const accountId = resolveAccountId(value, accounts);
-    return accountId ? { ...row, account_id: accountId } : row;
+    return accountId
+      ? {
+          ...row,
+          account_id: accountId,
+          amount: formatAmountDisplay(
+            row.amount,
+            getAccountType(accountId, accounts),
+            row.kind,
+          ),
+        }
+      : row;
   }
 
   const subcategoryId = resolveSubcategoryId(value, categories, subcategories);
@@ -360,12 +408,21 @@ export function MultiTransactionTable() {
     setRows((prev) =>
       prev.map((r) =>
         r.id === row.id
-          ? { ...r, kind, subcategory_id: kind === "transfer" ? "" : r.subcategory_id }
+          ? {
+              ...r,
+              kind,
+              amount: formatAmountDisplay(
+                r.amount,
+                getAccountType(r.account_id, accounts),
+                kind,
+              ),
+              subcategory_id: kind === "transfer" ? "" : r.subcategory_id,
+            }
           : r,
       ),
     );
     setDuplicatesChecked(false);
-  }, []);
+  }, [accounts]);
 
   const removeRow = useCallback((id: string) => {
     setRows((prev) => {
@@ -483,6 +540,7 @@ export function MultiTransactionTable() {
             accounts.find((account) => account.id === row.account_id)?.name ??
             "Unknown",
           amount: displayAmountToNumber(row.amount),
+          account_type: getAccountType(row.account_id, accounts),
           date: row.date ? toApiDate(row.date) : undefined,
         })),
       });
@@ -583,7 +641,7 @@ export function MultiTransactionTable() {
         const dupPayload = filledRows.map((r) => ({
           date: toApiDate(r.date),
           name: r.name,
-          amount: displayAmountToNumber(r.amount),
+          amount: displayAmountToNumber(normalizeRowAmountDisplay(r, accounts)),
           account_id: r.account_id,
         }));
 
@@ -619,7 +677,7 @@ export function MultiTransactionTable() {
         account_id: r.account_id,
         date: toApiDate(r.date),
         name: r.name,
-        amount: displayAmountToNumber(r.amount),
+        amount: displayAmountToNumber(normalizeRowAmountDisplay(r, accounts)),
         kind: r.kind,
         subcategory_id: r.kind === "transfer" ? null : r.subcategory_id || null,
         comment: r.comment || null,
@@ -637,7 +695,7 @@ export function MultiTransactionTable() {
     } finally {
       setSaving(false);
     }
-  }, [filledRows, findTransactionMatches, duplicatesChecked, checkDuplicates, bulkCreateTransactions]);
+  }, [accounts, filledRows, findTransactionMatches, duplicatesChecked, checkDuplicates, bulkCreateTransactions]);
 
   useShortcut("transactionInput.addRow", addRow);
   useShortcut("transactionInput.aiCategorize", () => {
@@ -844,10 +902,6 @@ export function MultiTransactionTable() {
                             ? {
                                 ...r,
                                 amount: e.target.value,
-                                kind:
-                                  r.kind === "transfer"
-                                    ? "transfer"
-                                    : inferKindFromAmount(e.target.value),
                                 isDuplicate: false,
                               }
                             : r,
@@ -858,7 +912,7 @@ export function MultiTransactionTable() {
                       updateRow(
                         row.id,
                         "amount",
-                        formatAmountDisplay(row.amount),
+                        normalizeRowAmountDisplay(row, accounts),
                       )
                     }
                     onPaste={(e) => handlePaste(e, idx, "amount")}
@@ -892,9 +946,26 @@ export function MultiTransactionTable() {
                       cellRefs.current[idx * 7 + 4] = node;
                     }}
                     value={row.account_id}
-                    onChange={(e) =>
-                      updateRow(row.id, "account_id", e.target.value)
-                    }
+                    onChange={(e) => {
+                      const accountId = e.target.value;
+                      setRows((prev) =>
+                        prev.map((r) =>
+                          r.id === row.id
+                            ? {
+                                ...r,
+                                account_id: accountId,
+                                amount: formatAmountDisplay(
+                                  r.amount,
+                                  getAccountType(accountId, accounts),
+                                  r.kind,
+                                ),
+                                isDuplicate: false,
+                              }
+                            : r,
+                        ),
+                      );
+                      setDuplicatesChecked(false);
+                    }}
                     onPaste={(e) => handlePaste(e, idx, "account_id")}
                     onFocus={() => setFocusedRowId(row.id)}
                     className="h-7 w-32 rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

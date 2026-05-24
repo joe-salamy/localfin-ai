@@ -1,13 +1,15 @@
 import { getDb } from "../db/index.js";
 import { callOpenRouter } from "../ai/openrouter.js";
 import { AI_CONFIG, AI_MODELS } from "../config/app.js";
-import type { TransactionKind } from "../../src/types/index.js";
+import type { AccountType, TransactionKind } from "../../src/types/index.js";
+import { inferTransactionKindForAccount } from "../../src/lib/transactionAmounts.js";
 
 interface CategorizeRequest {
   transactions: {
     name: string;
     account_id: string;
     account_name: string;
+    account_type?: AccountType;
     amount: number;
     date?: string;
   }[];
@@ -38,6 +40,7 @@ interface PastExampleRow {
   name: string;
   amount: number;
   account_name: string;
+  account_type: AccountType;
   kind: TransactionKind;
   subcategory_name: string | null;
   category_name: string | null;
@@ -69,6 +72,7 @@ interface UnknownTransaction {
   name: string;
   account_id: string;
   account_name: string;
+  account_type?: AccountType;
   amount: number;
   date?: string;
 }
@@ -132,7 +136,7 @@ export async function categorizeTransactions(
     unknowns.push({ index: i, ...tx });
     results[i] = {
       transaction_name: tx.name,
-      kind: getTransactionCategoryType(tx.amount),
+      kind: getTransactionCategoryType(tx.amount, tx.account_type),
       subcategory_id: null,
       subcategory_name: null,
       category_name: null,
@@ -157,7 +161,7 @@ export async function categorizeTransactions(
     const pastExamples = db
       .prepare(
         `
-      SELECT t.name, t.amount, t.kind, a.name as account_name, s.name as subcategory_name, c.name as category_name
+      SELECT t.name, t.amount, t.kind, a.name as account_name, a.type as account_type, s.name as subcategory_name, c.name as category_name
       FROM transactions t
       JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
       LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
@@ -353,11 +357,11 @@ export function buildCategorizationMessages(
   const systemMessage = `You are a transaction categorizer for a personal budget app. Categorize each transaction into the most appropriate subcategory.
 
 RULES:
-- Positive amounts are income, negative amounts are expenses
+- Amounts are account-balance deltas: asset-account expenses are negative, asset-account income is positive, liability-account expenses/charges are positive, and liability-account payments/refunds/income are negative
 - Transfers are money moving between owned accounts, including card payments, ACH transfers, autopay payments, and payment-thank-you lines
 - Return kind as a numeric index: 0 = income, 1 = expense, 2 = transfer
 - Transfers must return kind 2 and subcategory null
-- Match the subcategory number to the transaction direction (income subcategories for positive, expense for negative)
+- Match the subcategory number to the transaction kind, not just the numeric sign
 - If unsure, use the "Unassigned" subcategory number for the appropriate type
 - Return numeric values only; do not return category, subcategory, or kind names
 - Return ONLY the JSON, no explanation
@@ -374,7 +378,7 @@ ${exampleLines.join("\n")}
 
   const transactionLines = batch.map(
     (tx, i) =>
-      `- index ${i}: "${tx.name}" ($${tx.amount}) on account "${tx.account_name}"`,
+      `- index ${i}: "${tx.name}" ($${tx.amount}) on ${tx.account_type ?? "asset"} account "${tx.account_name}"`,
   );
 
   const userMessage = `Categorize these transactions:
@@ -404,11 +408,12 @@ export function resolveSubcategoryChoice(
 export function resolveKindChoice(
   choice: unknown,
   transactionAmount: number,
+  accountType?: AccountType,
 ): TransactionKind {
   if (typeof choice === "number" && Number.isInteger(choice)) {
-    return KIND_CHOICES[choice] ?? getTransactionCategoryType(transactionAmount);
+    return KIND_CHOICES[choice] ?? getTransactionCategoryType(transactionAmount, accountType);
   }
-  return getTransactionCategoryType(transactionAmount);
+  return getTransactionCategoryType(transactionAmount, accountType);
 }
 
 function resolveAIResults(
@@ -444,7 +449,11 @@ function resolveAIResults(
     );
     if (batchIndex === null) continue;
 
-    const kind = resolveKindChoice(result.kind, batch[batchIndex].amount);
+    const kind = resolveKindChoice(
+      result.kind,
+      batch[batchIndex].amount,
+      batch[batchIndex].account_type,
+    );
     if (kind === "transfer") {
       indexedResults[batchIndex] = {
         index: batchIndex,
@@ -475,7 +484,10 @@ function resolveAIResults(
   for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
     if (indexedResults[batchIndex]) continue;
 
-    const kind = getTransactionCategoryType(batch[batchIndex].amount);
+    const kind = getTransactionCategoryType(
+      batch[batchIndex].amount,
+      batch[batchIndex].account_type,
+    );
     const subcategory = resolveSubcategoryChoice(null, kind, availableSubcategories);
     if (subcategory) {
       indexedResults[batchIndex] = {
@@ -491,8 +503,11 @@ function resolveAIResults(
   return indexedResults;
 }
 
-function getTransactionCategoryType(amount: number): "income" | "expense" {
-  return amount >= 0 ? "income" : "expense";
+function getTransactionCategoryType(
+  amount: number,
+  accountType: AccountType = "asset",
+): "income" | "expense" {
+  return inferTransactionKindForAccount(amount, accountType);
 }
 
 function isLikelyTransfer(

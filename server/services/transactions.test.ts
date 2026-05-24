@@ -7,6 +7,7 @@ import Database from "better-sqlite3";
 import { createAccount } from "./accounts.js";
 import { createCategory, createSubcategory } from "./categories.js";
 import {
+  bulkCreateTransactions,
   bulkUpdateTransactions,
   createTransaction,
   getTransactionById,
@@ -168,6 +169,89 @@ test("recent activity returns one deterministic latest transaction per active ac
   ]);
 
   db.close();
+});
+
+test("create transaction normalizes amount signs by account type and kind", async () => {
+  await useIsolatedDb();
+  const checking = createAccount({ name: "Sign Checking", type: "asset" });
+  const creditCard = createAccount({ name: "Sign Credit Card", type: "liability" });
+
+  const checkingExpense = createTransaction({
+    account_id: checking.id,
+    date: "2026-05-01",
+    name: "Checking groceries",
+    amount: 75,
+    kind: "expense",
+  });
+  const checkingIncome = createTransaction({
+    account_id: checking.id,
+    date: "2026-05-02",
+    name: "Checking deposit",
+    amount: -75,
+    kind: "income",
+  });
+  const creditExpense = createTransaction({
+    account_id: creditCard.id,
+    date: "2026-05-03",
+    name: "Credit charge",
+    amount: -75,
+    kind: "expense",
+  });
+  const creditIncome = createTransaction({
+    account_id: creditCard.id,
+    date: "2026-05-04",
+    name: "Credit payment",
+    amount: 75,
+    kind: "income",
+  });
+  const transfer = createTransaction({
+    account_id: checking.id,
+    date: "2026-05-05",
+    name: "Transfer",
+    amount: 75,
+    kind: "transfer",
+  });
+
+  assert.equal(checkingExpense.amount, -75);
+  assert.equal(checkingIncome.amount, 75);
+  assert.equal(creditExpense.amount, 75);
+  assert.equal(creditIncome.amount, -75);
+  assert.equal(transfer.amount, 75);
+});
+
+test("bulk create normalizes amount signs by account type and kind", async () => {
+  await useIsolatedDb();
+  const checking = createAccount({ name: "Bulk Sign Checking", type: "asset" });
+  const creditCard = createAccount({ name: "Bulk Sign Credit Card", type: "liability" });
+
+  const created = bulkCreateTransactions([
+    {
+      account_id: checking.id,
+      date: "2026-05-01",
+      name: "Checking expense",
+      amount: 12,
+      kind: "expense",
+    },
+    {
+      account_id: creditCard.id,
+      date: "2026-05-02",
+      name: "Credit expense",
+      amount: -34,
+      kind: "expense",
+    },
+    {
+      account_id: creditCard.id,
+      date: "2026-05-03",
+      name: "Credit payment",
+      amount: 56,
+      kind: "income",
+    },
+  ]);
+
+  const byName = new Map(created.map((transaction) => [transaction.name, transaction]));
+  assert.equal(byName.get("Checking expense")?.amount, -12);
+  assert.equal(byName.get("Credit expense")?.amount, 34);
+  assert.equal(byName.get("Credit payment")?.amount, -56);
 });
 
 test("subcategory-only update keeps existing transfers uncategorized", async () => {

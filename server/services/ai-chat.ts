@@ -1318,15 +1318,20 @@ export function executeAction(action: AIAction): ExecutedAction {
             "create_transaction requires account, date, name, and amount",
           );
         }
+        const subcategoryId =
+          resolveRequestedSubcategory(input, subcategories, action.type) ??
+          null;
+        const kind =
+          optionalTransactionKind(input.kind, action.type) ??
+          categoryTypeForSubcategory(input, categories, subcategories) ??
+          undefined;
         const data: CreateTransactionData = {
           account_id: accountId,
           date,
           name,
           amount,
-          kind: optionalTransactionKind(input.kind, action.type),
-          subcategory_id:
-            resolveRequestedSubcategory(input, subcategories, action.type) ??
-            null,
+          kind,
+          subcategory_id: subcategoryId,
           comment: asNullableString(input.comment) ?? null,
         };
         return {
@@ -1521,9 +1526,9 @@ Return ONLY JSON: { "message": "short user-facing response", "actions": [{ "type
 You may answer questions using the provided context. You may directly perform create/update actions by returning actions. Never delete anything. If a user asks to delete, explain that deletion is not available from chat.
 
 Amount conventions:
-- Spending, purchases, bills, charges, rides, meals, groceries, fuel, hotels, flights, and subscriptions are negative amounts unless the user explicitly wrote a plus sign.
-- Deposits, payroll, reimbursements, refunds, interest, and income are positive amounts unless the user explicitly wrote a minus sign.
-- Preserve explicit + and - signs from the user's request.
+- Amounts are account-balance deltas. Spending, purchases, bills, charges, rides, meals, groceries, fuel, hotels, flights, and subscriptions decrease asset accounts but increase liability accounts.
+- Deposits, payroll, reimbursements, refunds, interest, and income increase asset accounts but decrease liability accounts.
+- Use the user's explicit + and - signs as clues, but choose kind from the transaction meaning; saved amounts are normalized by account type and kind.
 - Transaction kind is separate from amount sign: use kind "income", "expense", or "transfer" when creating or updating transactions. Transfers are money moving between owned accounts, have no subcategory, and still affect account balances.
 
 Failure conventions:

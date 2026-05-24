@@ -117,6 +117,13 @@ test("AI categorization resolves fixed zero-based kind choices", () => {
   assert.equal(resolveKindChoice("2", -25), "expense");
 });
 
+test("AI categorization falls back to account-type-aware kind choices", () => {
+  assert.equal(resolveKindChoice(undefined, 25, "liability"), "expense");
+  assert.equal(resolveKindChoice(undefined, -25, "liability"), "income");
+  assert.equal(resolveKindChoice(undefined, 25, "asset"), "income");
+  assert.equal(resolveKindChoice(undefined, -25, "asset"), "expense");
+});
+
 test("AI categorization prompt asks for numeric kind and subcategory choices", () => {
   const messages = buildCategorizationMessages(
     [
