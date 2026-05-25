@@ -58,9 +58,12 @@ interface SnapshotTransaction {
   date: string;
   name: string;
   amount: number;
+  kind: string;
   account_name: string;
+  account_type: string;
   subcategory_name: string | null;
   category_name: string | null;
+  category_type: string | null;
   comment: string | null;
   deleted_at: string | null;
 }
@@ -250,6 +253,24 @@ function includesText(
 
 function numberEquals(actual: number, expected: number): boolean {
   return Math.abs(actual - expected) < 0.005;
+}
+
+function normalizedExpectedAmount(
+  amount: number,
+  transaction: SnapshotTransaction,
+): number {
+  if (transaction.kind === "transfer" || transaction.kind === "adjustment") {
+    return amount;
+  }
+
+  const absoluteAmount = Math.abs(amount);
+  if (
+    (transaction.account_type === "asset" && transaction.kind === "expense") ||
+    (transaction.account_type === "liability" && transaction.kind === "income")
+  ) {
+    return -absoluteAmount;
+  }
+  return absoluteAmount;
 }
 
 function pass(name: string, details?: string): AssertionResult {
@@ -468,7 +489,7 @@ function assertTransaction(expected: {
         if (expected.date && item.date !== expected.date) return false;
         if (
           expected.amount !== undefined &&
-          !numberEquals(item.amount, expected.amount)
+          !numberEquals(item.amount, normalizedExpectedAmount(expected.amount, item))
         ) {
           return false;
         }
@@ -1316,8 +1337,9 @@ function readSnapshot(db: Database.Database): EvalSnapshot {
       .prepare(
         `
           SELECT t.id, t.date, t.name, t.amount, a.name AS account_name,
+                 a.type AS account_type, t.kind,
                  s.name AS subcategory_name, c.name AS category_name,
-                 t.comment, t.deleted_at
+                 c.type AS category_type, t.comment, t.deleted_at
           FROM transactions t
           JOIN accounts a ON a.id = t.account_id
           LEFT JOIN subcategories s ON s.id = t.subcategory_id

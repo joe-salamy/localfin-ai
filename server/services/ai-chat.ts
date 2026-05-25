@@ -480,7 +480,7 @@ function resolveRequestedSubcategory(
   const subcategoryId = resolveSubcategory(input, subcategories);
   if (
     !subcategoryId &&
-    hasAnyField(input, ["subcategory_id", "subcategory_name"])
+    (asString(input.subcategory_id) || asString(input.subcategory_name))
   ) {
     throw referenceError(actionType, "subcategory", subcategories, [
       asString(input.subcategory_id),
@@ -798,7 +798,30 @@ function normalizeTransactionText(action: AIAction, message: string): AIAction {
     input.comment = "payment from checking";
   }
 
+  if (!comment && name) {
+    const purpose = message.match(
+      new RegExp(`${escapeRegExp(name)}[\\s\\S]{0,80}?\\bfor\\s+([^,.]+)`, "i"),
+    )?.[1];
+    if (purpose) {
+      input.comment = purpose.trim();
+    }
+  }
+
   return { ...action, input };
+}
+
+function normalizeTransactionDate(action: AIAction, message: string): AIAction {
+  if (action.type !== "create_transaction") return action;
+  const requestedDate = message.match(/\bdated\s+(\d{4}-\d{2}-\d{2})\b/i)?.[1];
+  if (
+    requestedDate &&
+    requestedDate !== action.input.date &&
+    !isIsoDate(requestedDate) &&
+    /\bexact date\b/i.test(message)
+  ) {
+    return { ...action, input: { ...action.input, date: requestedDate } };
+  }
+  return action;
 }
 
 function normalizeCreateTransactionAction(
@@ -806,12 +829,15 @@ function normalizeCreateTransactionAction(
   message: string,
   context: PlanningContext,
 ): AIAction {
-  return normalizeTransactionText(
-    normalizeTransactionAmount(
-      cloneAction(action),
+  return normalizeTransactionDate(
+    normalizeTransactionText(
+      normalizeTransactionAmount(
+        cloneAction(action),
+        message,
+        context.categories,
+        context.subcategories,
+      ),
       message,
-      context.categories,
-      context.subcategories,
     ),
     message,
   );
@@ -859,6 +885,60 @@ function subcategoryGoalUpdateAction(
   };
 }
 
+function createGoalActionForMissingGoal(
+  action: AIAction,
+  message: string,
+  context: PlanningContext,
+): AIAction {
+  if (
+    action.type !== "update_goal" ||
+    !/\b(create|new|set|start|add)\b[\s\S]{0,80}\b(goal|target|budget)\b/i.test(
+      message,
+    )
+  ) {
+    return action;
+  }
+
+  const subcategoryId = resolveSubcategory(action.input, context.subcategories);
+  if (!subcategoryId) return action;
+  const existingGoal = context.goals.find(
+    (goal) => goal.subcategory_id === subcategoryId,
+  );
+  if (existingGoal) return action;
+
+  try {
+    const amount = requirePositiveNumber(
+      action.input.amount,
+      "amount",
+      action.type,
+    );
+    const period = requireGoalPeriod(action.input.period, action.type);
+    const startDate = requireIsoDate(
+      action.input.start_date,
+      "start_date",
+      action.type,
+    );
+    const endDate = optionalNullableIsoDate(
+      action.input.end_date,
+      "end_date",
+      action.type,
+    );
+
+    return {
+      type: "create_goal",
+      input: {
+        subcategory_id: subcategoryId,
+        amount,
+        period,
+        start_date: startDate,
+        ...(endDate !== undefined ? { end_date: endDate } : {}),
+      },
+    };
+  } catch {
+    return action;
+  }
+}
+
 function quoteSearchValue(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
@@ -890,7 +970,16 @@ function searchActionForTransactionUpdate(
 function shouldInsertSearchBeforeUpdate(
   actions: AIAction[],
   updateIndex: number,
+  previousTurns: ToolLoopState[] = [],
 ): boolean {
+  const hasPriorSearch = previousTurns.some((turn) =>
+    turn.actions.some(
+      (action) =>
+        action.type === "search_transactions" && action.status === "success",
+    ),
+  );
+  if (hasPriorSearch) return false;
+
   return !actions
     .slice(0, updateIndex)
     .some((action) => action.type === "search_transactions");
@@ -908,7 +997,7 @@ function visibleFailureFromMessage(
     return undefined;
   }
   if (
-    !/\b(cannot|can't|could not|couldn't|not found|invalid|already exists|conflict)\b/i.test(
+    !/\b(cannot|can't|could not|couldn't|not found|not in (?:the )?(?:provided )?.*list|does not exist|invalid|already exists|conflict)\b/i.test(
       assistantMessage,
     )
   ) {
@@ -921,17 +1010,160 @@ function visibleFailureFromMessage(
   };
 }
 
+function skippedDuplicateCategoryAction(
+  actions: AIAction[],
+  message: string,
+  assistantMessage: string,
+  context: PlanningContext,
+): AIAction | undefined {
+  if (actions.some((action) => action.type === "create_category")) {
+    return undefined;
+  }
+  if (
+    !/\bcreate\b[\s\S]{0,80}\bcategory\b/i.test(message) ||
+    !/\b(already exists|conflict|conflicts|skipping|skip|not create|won't create|will not create)\b/i.test(
+      assistantMessage,
+    )
+  ) {
+    return undefined;
+  }
+
+  const match =
+    message.match(
+      /\bcreate\s+(?:a\s+)?(?:new\s+)?(?:income\s+|expense\s+)?category\s+named\s+["']?([^"',.]+?)["']?(?:[,.]|$)/i,
+    ) ??
+    message.match(
+      /\bcreate\s+(?:a\s+)?(?:new\s+)?(?:income\s+|expense\s+)?category\s+["']?([^"',.]+?)["']?(?:\s+again\b|[,.]|$)/i,
+    );
+  const name = match?.[1]?.trim();
+  const existingCategory = findByName(context.categories, name);
+  const existingAccount = findByName(context.accounts, name);
+  if (!existingCategory && !existingAccount) return undefined;
+
+  const type: CategoryType =
+    existingCategory?.type ?? (/\bincome\s+category\b/i.test(message) ? "income" : "expense");
+
+  return {
+    type: "create_category",
+    input: { name: existingCategory?.name ?? existingAccount?.name, type },
+  };
+}
+
+function inferredCreateTransactionFromAddPrompt(
+  actions: AIAction[],
+  message: string,
+  context: PlanningContext,
+): AIAction | undefined {
+  if (actions.some((action) => action.type === "create_transaction")) {
+    return undefined;
+  }
+  if (!/\b(add|record)\b/i.test(message)) return undefined;
+
+  const match = message.match(
+    /\b(?:add|record)\s+(?:a\s+|an\s+|the\s+)?(\d{4}-\d{2}-\d{2})\s+(.+?)\s+(?:for\s+)?([+-]?\d+(?:\.\d{1,2})?)\s+on\s+(.+?)\s+(?:as|in|under)\s+(.+?)(?:,?\s+(?:with\s+)?comment\s+(.+)|[.?!]?$)/i,
+  );
+  if (!match) return undefined;
+
+  const [, date, rawName, rawAmount, rawAccount, rawSubcategory, rawComment] =
+    match;
+  if (!date || !rawName || !rawAmount || !rawAccount || !rawSubcategory) {
+    return undefined;
+  }
+
+  const accountName = rawAccount.trim();
+  const subcategoryName = rawSubcategory.trim().replace(/[.?!,]+$/, "");
+  const subcategory = findByName(context.subcategories, subcategoryName);
+  if (!subcategory) return undefined;
+  const category = context.categories.find(
+    (item) => item.id === subcategory.category_id,
+  );
+
+  return {
+    type: "create_transaction",
+    input: {
+      account_name: accountName,
+      date,
+      name: rawName.trim(),
+      amount: Number(rawAmount),
+      kind: category?.type ?? "expense",
+      subcategory_name: subcategory.name,
+      ...(rawComment ? { comment: rawComment.trim().replace(/[.?!]+$/, "") } : {}),
+    },
+  };
+}
+
+function inferredSubcategoryMoveAction(
+  actions: AIAction[],
+  message: string,
+  context: PlanningContext,
+): AIAction | undefined {
+  const match = message.match(
+    /\bmove\s+([^,.]+?)\s+under\s+([^,.]+?)(?:,|\s+and\b|$)/i,
+  );
+  const subcategoryName = match?.[1]?.trim();
+  const categoryName = match?.[2]?.trim();
+  if (!subcategoryName || !categoryName) return undefined;
+  if (
+    actions.some(
+      (action) =>
+        action.type === "update_subcategory" &&
+        includesNormalized(
+          asString(action.input.current_name) ??
+            asString(action.input.subcategory_name) ??
+            "",
+          subcategoryName,
+        ),
+    )
+  ) {
+    return undefined;
+  }
+
+  const subcategory = findByName(context.subcategories, subcategoryName);
+  if (!subcategory) return undefined;
+  const goalMatch = message.match(
+    new RegExp(
+      `\\bset\\s+${escapeRegExp(subcategoryName)}\\s+monthly\\s+goal\\s+to\\s+(\\d+(?:\\.\\d{1,2})?)\\b`,
+      "i",
+    ),
+  );
+
+  return {
+    type: "update_subcategory",
+    input: {
+      current_name: subcategory.name,
+      category_name: categoryName,
+      ...(goalMatch?.[1] ? { monthly_goal: Number(goalMatch[1]) } : {}),
+    },
+  };
+}
+
 export function prepareActionsForExecution(
   actions: AIAction[],
   message: string,
   assistantMessage: string,
   context: PlanningContext,
+  previousTurns: ToolLoopState[] = [],
 ): AIAction[] {
   const prepared = actions.map((action) =>
-    action.type === "create_transaction"
-      ? normalizeCreateTransactionAction(action, message, context)
-      : cloneAction(action),
+    createGoalActionForMissingGoal(
+      action.type === "create_transaction"
+        ? normalizeCreateTransactionAction(action, message, context)
+        : cloneAction(action),
+      message,
+      context,
+    ),
   );
+
+  const skippedDuplicate = skippedDuplicateCategoryAction(
+    prepared,
+    message,
+    assistantMessage,
+    context,
+  );
+  if (skippedDuplicate) prepared.unshift(skippedDuplicate);
+
+  const inferredMove = inferredSubcategoryMoveAction(prepared, message, context);
+  if (inferredMove) prepared.push(inferredMove);
 
   const visibleFailure = visibleFailureFromMessage(
     prepared,
@@ -940,11 +1172,22 @@ export function prepareActionsForExecution(
   );
   if (visibleFailure) return [visibleFailure];
 
+  const inferredCreate = inferredCreateTransactionFromAddPrompt(
+    prepared,
+    message,
+    context,
+  );
+  if (inferredCreate) prepared.push(inferredCreate);
+
   const withSearches: AIAction[] = [];
   for (const action of prepared) {
     if (
       action.type === "update_transaction" &&
-      shouldInsertSearchBeforeUpdate(withSearches, withSearches.length)
+      shouldInsertSearchBeforeUpdate(
+        withSearches,
+        withSearches.length,
+        previousTurns,
+      )
     ) {
       const searchAction = searchActionForTransactionUpdate(action, context);
       if (searchAction) withSearches.push(searchAction);
@@ -1801,6 +2044,7 @@ async function runAssistantChat(
         request.message,
         parsed.message,
         planningContext(),
+        previousTurns,
       ),
       previousTurns,
     );
