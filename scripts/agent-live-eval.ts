@@ -259,7 +259,7 @@ function normalizedExpectedAmount(
   amount: number,
   transaction: SnapshotTransaction,
 ): number {
-  if (transaction.kind === "transfer" || transaction.kind === "adjustment") {
+  if (transaction.kind === "transfer") {
     return amount;
   }
 
