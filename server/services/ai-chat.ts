@@ -362,9 +362,12 @@ function findAllByName<T extends { name: string }>(
   return items.filter((item) => item.name.trim().toLowerCase() === normalized);
 }
 
-function describeEntityCandidate(
-  item: { id: string; name: string; type?: string; category_id?: string },
-): string {
+function describeEntityCandidate(item: {
+  id: string;
+  name: string;
+  type?: string;
+  category_id?: string;
+}): string {
   const details = [
     `id=${item.id}`,
     item.type ? `type=${item.type}` : undefined,
@@ -527,7 +530,9 @@ function transactionSearchFilters(
     ),
     kind: optionalTransactionKind(input.kind, actionType),
     needsCategory:
-      typeof input.needsCategory === "boolean" ? input.needsCategory : undefined,
+      typeof input.needsCategory === "boolean"
+        ? input.needsCategory
+        : undefined,
     startDate:
       optionalIsoDate(input.startDate, "startDate", actionType) ??
       optionalIsoDate(input.start_date, "start_date", actionType),
@@ -868,8 +873,9 @@ function subcategoryGoalUpdateAction(
     asString(action.input.subcategory_name) ??
     asString(action.input.name);
   const subcategory =
-    context.subcategories.find((item) => item.id === asString(action.input.id)) ??
-    findByName(context.subcategories, subcategoryName);
+    context.subcategories.find(
+      (item) => item.id === asString(action.input.id),
+    ) ?? findByName(context.subcategories, subcategoryName);
   if (!subcategory) return undefined;
   const existingGoal = context.goals.find(
     (goal) => goal.subcategory_id === subcategory.id,
@@ -1041,7 +1047,8 @@ function skippedDuplicateCategoryAction(
   if (!existingCategory && !existingAccount) return undefined;
 
   const type: CategoryType =
-    existingCategory?.type ?? (/\bincome\s+category\b/i.test(message) ? "income" : "expense");
+    existingCategory?.type ??
+    (/\bincome\s+category\b/i.test(message) ? "income" : "expense");
 
   return {
     type: "create_category",
@@ -1087,7 +1094,9 @@ function inferredCreateTransactionFromAddPrompt(
       amount: Number(rawAmount),
       kind: category?.type ?? "expense",
       subcategory_name: subcategory.name,
-      ...(rawComment ? { comment: rawComment.trim().replace(/[.?!]+$/, "") } : {}),
+      ...(rawComment
+        ? { comment: rawComment.trim().replace(/[.?!]+$/, "") }
+        : {}),
     },
   };
 }
@@ -1162,7 +1171,11 @@ export function prepareActionsForExecution(
   );
   if (skippedDuplicate) prepared.unshift(skippedDuplicate);
 
-  const inferredMove = inferredSubcategoryMoveAction(prepared, message, context);
+  const inferredMove = inferredSubcategoryMoveAction(
+    prepared,
+    message,
+    context,
+  );
   if (inferredMove) prepared.push(inferredMove);
 
   const visibleFailure = visibleFailureFromMessage(
@@ -1231,13 +1244,23 @@ function requestedUpdateSubcategory(
 }
 
 function requestedUpdateKind(message: string): TransactionKind | undefined {
-  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+transfer\b/i.test(message)) {
+  if (
+    /\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+transfer\b/i.test(
+      message,
+    )
+  ) {
     return "transfer";
   }
-  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+income\b/i.test(message)) {
+  if (
+    /\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+income\b/i.test(message)
+  ) {
     return "income";
   }
-  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+expense\b/i.test(message)) {
+  if (
+    /\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+expense\b/i.test(
+      message,
+    )
+  ) {
     return "expense";
   }
   return undefined;
@@ -1635,7 +1658,9 @@ export function executeAction(action: AIAction): ExecutedAction {
           action.type,
         );
         const transactions = getTransactionsWithDetails(filters);
-        const transactionIds = transactions.map((transaction) => transaction.id);
+        const transactionIds = transactions.map(
+          (transaction) => transaction.id,
+        );
         let updatedCount = 0;
 
         for (const transaction of transactions) {
@@ -2005,7 +2030,10 @@ async function runAssistantChat(
     currentPage: request.currentPage ?? null,
     firstMessage: request.message,
   });
-  touchAgentConversationPage(request.conversationId, request.currentPage ?? null);
+  touchAgentConversationPage(
+    request.conversationId,
+    request.currentPage ?? null,
+  );
   const conversationHistory = getRecentAgentMessagesForPrompt(
     request.conversationId,
   );
