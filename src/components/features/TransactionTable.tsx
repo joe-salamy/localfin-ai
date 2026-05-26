@@ -13,6 +13,7 @@ import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
 import { useAmountGradient } from '@/features/display-settings/hooks';
 import { useFlaggedWords } from '@/features/flagged-words/hooks';
 import type { Category } from '@/types';
+import { scaleValueColorClass, transactionAmountScaleValue } from '@/lib/financialColorScale';
 
 interface TransactionTableProps {
   transactions: TransactionWithDetails[];
@@ -92,7 +93,12 @@ export function TransactionTable({
   const [focusedId, setFocusedId] = useState<string | null>(transactions[0]?.id ?? null);
   const [tableFocused, setTableFocused] = useState(false);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
-  const getGradientStyle = useAmountGradient(transactions.map((transaction) => transaction.amount));
+  const getGradientStyle = useAmountGradient(
+    transactions.flatMap((transaction) => {
+      const scaleValue = transactionAmountScaleValue(transaction.amount, transaction.kind);
+      return scaleValue == null ? [] : [scaleValue];
+    }),
+  );
   const { findMatches } = useFlaggedWords();
   const categoryLookup = buildCategoryLookup(categories);
 
@@ -311,7 +317,8 @@ export function TransactionTable({
               const isEditing = editingId === t.id;
               const flaggedWords = findMatches(t.name);
               const isFlagged = flaggedWords.length > 0;
-              const amountGradientStyle = t.kind === 'transfer' || t.kind === 'adjustment' ? undefined : getGradientStyle(t.amount);
+              const amountScaleValue = transactionAmountScaleValue(t.amount, t.kind);
+              const amountGradientStyle = amountScaleValue == null ? undefined : getGradientStyle(amountScaleValue);
               return (
                 <tr
                   key={t.id}
@@ -389,7 +396,7 @@ export function TransactionTable({
                       />
                     ) : (
                       <span
-                        className={t.kind === 'transfer' || t.kind === 'adjustment' ? 'text-muted-foreground' : t.amount >= 0 ? 'text-green-400' : 'text-red-400'}
+                        className={amountScaleValue == null ? 'text-muted-foreground' : scaleValueColorClass(amountScaleValue)}
                         style={amountGradientStyle}
                       >
                         {formatCurrency(t.amount)}

@@ -4,14 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { EntityLabel } from '@/components/ui/EntityLabel';
 import { DISPLAY_DATE_FORMAT } from '@/config/constants';
 import { useRecentActivity } from '@/hooks/useTransactions';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { useAmountGradient } from '@/features/display-settings/hooks';
+import { accountChangeScaleValue, scaleValueColorClass } from '@/lib/financialColorScale';
 
 export function RecentAccountTransactionsTable() {
   const { recentActivity, isLoading } = useRecentActivity();
   const getGradientStyle = useAmountGradient(
     recentActivity.flatMap((activity) =>
-      activity.last_transaction_amount == null ? [] : [activity.last_transaction_amount],
+      activity.last_transaction_amount == null
+        ? []
+        : [accountChangeScaleValue(activity.last_transaction_amount, activity.account_type)],
     ),
   );
 
@@ -50,7 +53,11 @@ export function RecentAccountTransactionsTable() {
                   </td>
                 </tr>
               )}
-              {!isLoading && recentActivity.map((activity) => (
+              {!isLoading && recentActivity.map((activity) => {
+                const transactionScaleValue = activity.last_transaction_amount == null
+                  ? null
+                  : accountChangeScaleValue(activity.last_transaction_amount, activity.account_type);
+                return (
                 <tr
                   key={activity.account_id}
                   className="border-b border-border last:border-b-0"
@@ -71,8 +78,8 @@ export function RecentAccountTransactionsTable() {
                       ? '-'
                       : (
                         <span
-                          className={activity.last_transaction_amount >= 0 ? 'text-green-400' : 'text-red-400'}
-                          style={getGradientStyle(activity.last_transaction_amount)}
+                          className={cn(transactionScaleValue != null && scaleValueColorClass(transactionScaleValue))}
+                          style={transactionScaleValue == null ? undefined : getGradientStyle(transactionScaleValue)}
                         >
                           {formatCurrency(activity.last_transaction_amount)}
                         </span>
@@ -82,7 +89,8 @@ export function RecentAccountTransactionsTable() {
                     {formatCurrency(activity.current_balance)}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

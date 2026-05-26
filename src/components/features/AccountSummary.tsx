@@ -7,6 +7,7 @@ import { EntityLabel } from '@/components/ui/EntityLabel';
 import { formatCurrency, cn } from '@/lib/utils';
 import { DISPLAY_DATE_FORMAT } from '@/config/constants';
 import { useAmountGradient } from '@/features/display-settings/hooks';
+import { accountChangeScaleValue, scaleValueColorClass } from '@/lib/financialColorScale';
 
 interface AccountSummaryProps {
   accounts: AccountSummaryType[];
@@ -18,7 +19,9 @@ const cellClass = 'px-2 py-1.5 text-sm whitespace-nowrap';
 
 export function AccountSummaryTable({ accounts, netWorth }: AccountSummaryProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const getSummaryGradientStyle = useAmountGradient(accounts.map((account) => account.total_change));
+  const getSummaryGradientStyle = useAmountGradient(
+    accounts.map((account) => accountChangeScaleValue(account.total_change, account.account_type)),
+  );
 
   const toggle = (id: string) => {
     const next = new Set(expanded);
@@ -85,7 +88,12 @@ function AccountRow({
   onToggle: () => void;
   getSummaryGradientStyle: (amount: number) => CSSProperties | undefined;
 }) {
-  const getGradientStyle = useAmountGradient(account.transactions.map((transaction) => transaction.amount));
+  const getGradientStyle = useAmountGradient(
+    account.transactions.map((transaction) =>
+      accountChangeScaleValue(transaction.amount, account.account_type),
+    ),
+  );
+  const changeScaleValue = accountChangeScaleValue(account.total_change, account.account_type);
 
   return (
     <>
@@ -107,7 +115,7 @@ function AccountRow({
         <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
           {formatCurrency(account.starting_balance)}
         </td>
-        <td className={cn(cellClass, 'text-right font-mono tabular-nums', account.total_change >= 0 ? 'text-green-400' : 'text-red-400')} style={getSummaryGradientStyle(account.total_change)}>
+        <td className={cn(cellClass, 'text-right font-mono tabular-nums', scaleValueColorClass(changeScaleValue))} style={getSummaryGradientStyle(changeScaleValue)}>
           {formatCurrency(account.total_change)}
         </td>
         <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
@@ -129,11 +137,13 @@ function AccountRow({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {account.transactions.map((t) => (
+                  {account.transactions.map((t) => {
+                    const amountScaleValue = accountChangeScaleValue(t.amount, account.account_type);
+                    return (
                     <tr key={t.id} className="hover:bg-secondary/20">
                       <td className={cn(cellClass, 'text-xs')}>{format(parseISO(t.date), DISPLAY_DATE_FORMAT)}</td>
                       <td className={cn(cellClass, 'text-xs')}>{t.name}</td>
-                      <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs', t.amount >= 0 ? 'text-green-400' : 'text-red-400')} style={getGradientStyle(t.amount)}>
+                      <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs', scaleValueColorClass(amountScaleValue))} style={getGradientStyle(amountScaleValue)}>
                         {formatCurrency(t.amount)}
                       </td>
                       <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs')}>
@@ -151,7 +161,8 @@ function AccountRow({
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

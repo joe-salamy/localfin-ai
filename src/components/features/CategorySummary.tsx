@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { EntityLabel } from '@/components/ui/EntityLabel';
 import { formatCurrency, cn } from '@/lib/utils';
 import { useAmountGradient } from '@/features/display-settings/hooks';
+import { categoryDifferenceScaleValue, scaleValueColorClass } from '@/lib/financialColorScale';
 
 interface CategorySummaryProps {
   categories: CategorySummaryType[];
@@ -16,7 +17,11 @@ const cellClass = 'px-2 py-1.5 text-sm whitespace-nowrap';
 export function CategorySummaryTable({ categories }: CategorySummaryProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const getSummaryGradientStyle = useAmountGradient(
-    categories.flatMap((category) => (category.difference == null ? [] : [category.difference])),
+    categories.flatMap((category) =>
+      category.difference == null
+        ? []
+        : [categoryDifferenceScaleValue(category.difference, category.category_type)],
+    ),
   );
 
   const toggle = (id: string) => {
@@ -67,15 +72,16 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
 
 function DifferenceCell({
   value,
+  categoryType,
   getGradientStyle,
 }: {
   value: number | null;
+  categoryType: CategorySummaryType['category_type'];
   getGradientStyle: (amount: number) => CSSProperties | undefined;
 }) {
   if (value == null) return <span className="text-muted-foreground">-</span>;
-  // Positive difference = under budget (good), negative = over budget (bad)
-  const color = value >= 0 ? 'text-green-400' : 'text-red-400';
-  return <span className={cn('font-mono tabular-nums', color)} style={getGradientStyle(value)}>{formatCurrency(value)}</span>;
+  const scaleValue = categoryDifferenceScaleValue(value, categoryType);
+  return <span className={cn('font-mono tabular-nums', scaleValueColorClass(scaleValue))} style={getGradientStyle(scaleValue)}>{formatCurrency(value)}</span>;
 }
 
 function CategoryRow({
@@ -91,7 +97,9 @@ function CategoryRow({
 }) {
   const getSubcategoryGradientStyle = useAmountGradient(
     category.subcategories.flatMap((subcategory) =>
-      subcategory.difference == null ? [] : [subcategory.difference],
+      subcategory.difference == null
+        ? []
+        : [categoryDifferenceScaleValue(subcategory.difference, category.category_type)],
     ),
   );
 
@@ -119,7 +127,7 @@ function CategoryRow({
           {category.goal != null ? formatCurrency(category.goal) : '-'}
         </td>
         <td className={cn(cellClass, 'text-right')}>
-          <DifferenceCell value={category.difference} getGradientStyle={getSummaryGradientStyle} />
+          <DifferenceCell value={category.difference} categoryType={category.category_type} getGradientStyle={getSummaryGradientStyle} />
         </td>
       </tr>
       {isOpen && category.subcategories.length > 0 && (
@@ -148,7 +156,7 @@ function CategoryRow({
                         {s.goal != null ? formatCurrency(s.goal) : '-'}
                       </td>
                       <td className={cn(cellClass, 'text-right text-xs')}>
-                        <DifferenceCell value={s.difference} getGradientStyle={getSubcategoryGradientStyle} />
+                        <DifferenceCell value={s.difference} categoryType={category.category_type} getGradientStyle={getSubcategoryGradientStyle} />
                       </td>
                     </tr>
                   ))}
