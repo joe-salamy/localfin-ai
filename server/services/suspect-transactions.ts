@@ -340,6 +340,30 @@ function rowToFinding(row: FindingRow): SuspectTransactionFinding {
   };
 }
 
+function applyPriorFindingStatuses(findings: SuspectTransactionFinding[]): void {
+  if (findings.length === 0) return;
+
+  const priorStatus = getDb().prepare(`
+    SELECT status
+    FROM suspect_transaction_findings
+    WHERE transaction_id = ?
+      AND reason_codes_json = ?
+      AND status != 'open'
+    ORDER BY updated_at DESC, created_at DESC
+    LIMIT 1
+  `);
+
+  for (const finding of findings) {
+    const row = priorStatus.get(
+      finding.transaction_id,
+      JSON.stringify(finding.reason_codes),
+    ) as { status: SuspectFindingStatus } | undefined;
+    if (row) {
+      finding.status = row.status;
+    }
+  }
+}
+
 export function runSuspectTransactionScan(request: RunSuspectScanRequest = {}): RunSuspectScanResponse {
   const db = getDb();
   const filters: TransactionFilters = request.filters ?? {};
@@ -347,6 +371,7 @@ export function runSuspectTransactionScan(request: RunSuspectScanRequest = {}): 
   const runId = crypto.randomUUID();
   const now = new Date().toISOString();
   const findings = combineDrafts(runId, scoreTransactions(transactions, request.flaggedWords ?? []), now);
+  applyPriorFindingStatuses(findings);
 
   const insertRun = db.prepare(`
     INSERT INTO suspect_scan_runs (id, filters_json, total_scanned, total_findings, created_at)

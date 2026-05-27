@@ -421,3 +421,26 @@ test("suspect finding status updates persist", async (t) => {
   assert.equal(getSuspectTransactionFindings({ status: "open" }).length, 0);
   assert.equal(getSuspectTransactionFindings({ status: "dismissed" }).length, 1);
 });
+
+test("suspect scan carries dismissed findings forward on later scans", async (t) => {
+  await useTempDatabase(t, "localfin-suspect-status-rerun-test-");
+  const { assetAccountId } = createSubcategoryFixture();
+  createTransaction({
+    account_id: assetAccountId,
+    date: "2026-05-14",
+    name: "Monthly Fee",
+    amount: 8,
+    kind: "expense",
+  });
+
+  const firstRun = runSuspectTransactionScan({ flaggedWords: ["fee"] });
+  const finding = firstRun.findings.find((item) => item.reason_codes.includes("flagged_word"));
+  assert.ok(finding);
+
+  updateSuspectTransactionFindingStatus(finding.id, "dismissed");
+  const secondRun = runSuspectTransactionScan({ flaggedWords: ["fee"] });
+  const repeatedFinding = secondRun.findings.find((item) => item.transaction_id === finding.transaction_id);
+
+  assert.equal(repeatedFinding?.status, "dismissed");
+  assert.equal(getSuspectTransactionFindings({ status: "open" }).length, 0);
+});
