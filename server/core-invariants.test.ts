@@ -12,6 +12,11 @@ import {
   getTransactionsWithDetails,
   updateTransaction,
 } from "./services/transactions.js";
+import {
+  getSuspectTransactionFindings,
+  runSuspectTransactionScan,
+  updateSuspectTransactionFindingStatus,
+} from "./services/suspect-transactions.js";
 import { compileTransactionSearch } from "./services/transaction-search.js";
 
 const originalDbPath = process.env.LOCALFIN_DB_PATH;
@@ -310,4 +315,109 @@ test("database migration allows adjustment kind and absorbs legacy initial balan
 
   assert.equal(account.initial_balance, 125);
   assert.equal(initialBalanceRows.count, 0);
+});
+
+test("suspect transaction scan persists explainable duplicate, flagged, and missing category findings", async (t) => {
+  await useTempDatabase(t, "localfin-suspect-scan-test-");
+  const { assetAccountId, subcategoryId } = createSubcategoryFixture();
+
+  createTransaction({
+    account_id: assetAccountId,
+    date: "2026-05-11",
+    name: "Coffee Shop",
+    amount: 4.5,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+  });
+  createTransaction({
+    account_id: assetAccountId,
+    date: "2026-05-11",
+    name: "Coffee Shop",
+    amount: 4.5,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+  });
+  createTransaction({
+    account_id: assetAccountId,
+    date: "2026-05-12",
+    name: "Bank Fee",
+    amount: 12,
+    kind: "expense",
+  });
+
+  const result = runSuspectTransactionScan({ flaggedWords: ["fee"] });
+
+  assert.equal(result.run.total_scanned, 3);
+  assert.equal(result.findings.length, 3);
+  assert.ok(result.findings.some((finding) => finding.reason_codes.includes("exact_duplicate")));
+  assert.ok(result.findings.some((finding) => finding.reason_codes.includes("flagged_word")));
+  assert.ok(result.findings.some((finding) => finding.reason_codes.includes("missing_category")));
+
+  const openFindings = getSuspectTransactionFindings({ status: "open" });
+  assert.equal(openFindings.length, 3);
+  assert.ok(openFindings.every((finding) => finding.transaction));
+});
+
+test("suspect transaction scan detects robust amount outliers and ignores soft-deleted transactions", async (t) => {
+  await useTempDatabase(t, "localfin-suspect-outlier-test-");
+  const { assetAccountId, subcategoryId } = createSubcategoryFixture();
+
+  for (let day = 1; day <= 6; day += 1) {
+    createTransaction({
+      account_id: assetAccountId,
+      date: `2026-04-0${day}`,
+      name: "Grocer",
+      amount: 20 + day,
+      kind: "expense",
+      subcategory_id: subcategoryId,
+    });
+  }
+  const outlier = createTransaction({
+    account_id: assetAccountId,
+    date: "2026-04-10",
+    name: "Grocer",
+    amount: 500,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+  });
+  const deleted = createTransaction({
+    account_id: assetAccountId,
+    date: "2026-04-11",
+    name: "Deleted Fee",
+    amount: 999,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+  });
+  getDb()
+    .prepare("UPDATE transactions SET deleted_at = ? WHERE id = ?")
+    .run("2026-04-12T00:00:00.000Z", deleted.id);
+
+  const result = runSuspectTransactionScan({ flaggedWords: ["fee"] });
+  const outlierFinding = result.findings.find((finding) => finding.transaction_id === outlier.id);
+
+  assert.ok(outlierFinding);
+  assert.ok(outlierFinding.reason_codes.includes("large_amount_outlier"));
+  assert.ok(outlierFinding.reason_codes.includes("merchant_amount_outlier"));
+  assert.ok(result.findings.every((finding) => finding.transaction_id !== deleted.id));
+});
+
+test("suspect finding status updates persist", async (t) => {
+  await useTempDatabase(t, "localfin-suspect-status-test-");
+  const { assetAccountId } = createSubcategoryFixture();
+  createTransaction({
+    account_id: assetAccountId,
+    date: "2026-05-13",
+    name: "ATM Fee",
+    amount: 3,
+    kind: "expense",
+  });
+
+  const result = runSuspectTransactionScan({ flaggedWords: ["fee"] });
+  const finding = result.findings[0];
+  assert.ok(finding);
+
+  const updated = updateSuspectTransactionFindingStatus(finding.id, "dismissed");
+  assert.equal(updated?.status, "dismissed");
+  assert.equal(getSuspectTransactionFindings({ status: "open" }).length, 0);
+  assert.equal(getSuspectTransactionFindings({ status: "dismissed" }).length, 1);
 });

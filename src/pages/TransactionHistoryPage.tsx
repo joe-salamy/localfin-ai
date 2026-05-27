@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useRef } from 'react';
 import type { TransactionFilters, TransactionKind } from '@/types';
 import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
-import { useTransactions } from '@/hooks/useTransactions';
+import { useSuspectTransactionFindings, useTransactions } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { Button } from '@/components/ui/Button';
@@ -14,9 +14,12 @@ import { BulkEditModal } from '@/components/features/BulkEditModal';
 import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
 import { DEFAULT_DATE_RANGE_DAYS, DATE_FORMAT } from '@/config/constants';
 import { dateRangePresets, type DateRangePreset } from '@/lib/dateRangePresets';
+import { formatCurrency } from '@/lib/utils';
 import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
 import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
+import { useFlaggedWords } from '@/features/flagged-words/hooks';
 import type { CommandId } from '@/features/shortcuts/commands';
+import { AlertTriangle, CheckCircle2, EyeOff, ScanSearch } from 'lucide-react';
 
 const today = format(new Date(), DATE_FORMAT);
 const defaultStart = format(subDays(new Date(), DEFAULT_DATE_RANGE_DAYS), DATE_FORMAT);
@@ -56,6 +59,8 @@ export function TransactionHistoryPage() {
 
   // Data hooks
   const { transactions, isLoading, error, updateTransaction, deleteTransaction, bulkUpdateTransactions, bulkDeleteTransactions } = useTransactions(appliedFilters);
+  const suspectReview = useSuspectTransactionFindings({ status: 'open' });
+  const flaggedWords = useFlaggedWords();
   const { accounts } = useAccounts();
   const { categories, subcategories } = useCategories();
 
@@ -194,6 +199,34 @@ export function TransactionHistoryPage() {
   const searchError = error instanceof Error && appliedFilters.searchQuery
     ? error.message
     : null;
+  const openSuspectFindings = suspectReview.findings;
+  const suspectCountBySeverity = useMemo(() => ({
+    high: openSuspectFindings.filter((finding) => finding.severity === 'high').length,
+    medium: openSuspectFindings.filter((finding) => finding.severity === 'medium').length,
+    low: openSuspectFindings.filter((finding) => finding.severity === 'low').length,
+  }), [openSuspectFindings]);
+
+  const runSuspectScan = useCallback(async () => {
+    try {
+      const result = await suspectReview.runSuspectScan.mutateAsync({
+        filters: appliedFilters,
+        flaggedWords: flaggedWords.words,
+      });
+      const count = result.data?.findings.length ?? 0;
+      toast.success(`Scan complete: ${count} finding${count === 1 ? '' : 's'}`);
+    } catch {
+      toast.error('Failed to scan suspect transactions');
+    }
+  }, [appliedFilters, flaggedWords.words, suspectReview.runSuspectScan]);
+
+  const updateFindingStatus = useCallback(async (id: string, status: 'dismissed' | 'resolved') => {
+    try {
+      await suspectReview.updateFindingStatus.mutateAsync({ id, status });
+      toast.success(status === 'dismissed' ? 'Finding dismissed' : 'Finding resolved');
+    } catch {
+      toast.error('Failed to update finding');
+    }
+  }, [suspectReview.updateFindingStatus]);
 
   const applyPreset1 = useCallback(() => dateRangePresets[0] && applyDateRangePreset(dateRangePresets[0]), [applyDateRangePreset]);
   const applyPreset2 = useCallback(() => dateRangePresets[1] && applyDateRangePreset(dateRangePresets[1]), [applyDateRangePreset]);
@@ -326,6 +359,90 @@ export function TransactionHistoryPage() {
         <div className="text-xs text-destructive">{searchError}</div>
       )}
 
+      <div className="rounded-md border border-border bg-secondary/15 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-300" />
+            <div>
+              <div className="text-sm font-medium">Suspect Transactions</div>
+              <div className="text-xs text-muted-foreground">
+                {openSuspectFindings.length === 0
+                  ? 'No open findings in the latest scan.'
+                  : `${openSuspectFindings.length} open findings: ${suspectCountBySeverity.high} high, ${suspectCountBySeverity.medium} medium, ${suspectCountBySeverity.low} low.`}
+              </div>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => void runSuspectScan()}
+            disabled={suspectReview.runSuspectScan.isPending}
+            className="h-8 text-xs"
+          >
+            <ScanSearch className="mr-1 h-3.5 w-3.5" />
+            {suspectReview.runSuspectScan.isPending ? 'Scanning...' : 'Scan Current Filters'}
+          </Button>
+        </div>
+        {openSuspectFindings.length > 0 && (
+          <div className="mt-3 max-h-72 divide-y divide-border overflow-y-auto rounded border border-border bg-background/40">
+            {openSuspectFindings.slice(0, 8).map((finding) => (
+              <div key={finding.id} className="grid gap-2 p-2 text-xs md:grid-cols-[1fr_auto]">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded px-1.5 py-0.5 font-medium uppercase ${
+                      finding.severity === 'high'
+                        ? 'bg-red-500/20 text-red-200'
+                        : finding.severity === 'medium'
+                          ? 'bg-amber-500/20 text-amber-200'
+                          : 'bg-secondary text-muted-foreground'
+                    }`}>
+                      {finding.severity}
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {finding.transaction?.name ?? finding.transaction_id}
+                    </span>
+                    {finding.transaction && (
+                      <span className="font-mono text-muted-foreground">
+                        {finding.transaction.date} {formatCurrency(finding.transaction.amount)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 text-muted-foreground">{finding.evidence.summary}</div>
+                  <div className="mt-1 text-[11px] uppercase text-muted-foreground">
+                    {finding.reason_codes.map((reason) => reason.replaceAll('_', ' ')).join(', ')}
+                  </div>
+                </div>
+                <div className="flex items-start gap-1 md:justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void updateFindingStatus(finding.id, 'dismissed')}
+                    disabled={suspectReview.updateFindingStatus.isPending}
+                    className="h-7 px-2 text-xs"
+                  >
+                    <EyeOff className="mr-1 h-3.5 w-3.5" />
+                    Dismiss
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void updateFindingStatus(finding.id, 'resolved')}
+                    disabled={suspectReview.updateFindingStatus.isPending}
+                    className="h-7 px-2 text-xs"
+                  >
+                    <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                    Resolve
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Action bar */}
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-2 text-xs">
@@ -356,6 +473,7 @@ export function TransactionHistoryPage() {
           onDelete={handleDelete}
           categories={categories}
           subcategories={subcategories}
+          suspectFindings={openSuspectFindings}
         />
       )}
 

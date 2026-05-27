@@ -209,6 +209,64 @@ export interface TransactionFilters {
   offset?: number;
 }
 
+// === SUSPECT TRANSACTION REVIEW ===
+
+export type SuspectFindingStatus = 'open' | 'dismissed' | 'resolved';
+export type SuspectSeverity = 'low' | 'medium' | 'high';
+export type SuspectReasonCode =
+  | 'exact_duplicate'
+  | 'near_duplicate'
+  | 'large_amount_outlier'
+  | 'merchant_amount_outlier'
+  | 'rapid_small_charge_cluster'
+  | 'missing_category'
+  | 'unmatched_transfer_like'
+  | 'flagged_word';
+
+export interface SuspectEvidence {
+  summary: string;
+  details?: Record<string, string | number | boolean | null | string[] | number[]>;
+}
+
+export interface SuspectScanRun {
+  id: string;
+  filters_json: string;
+  total_scanned: number;
+  total_findings: number;
+  created_at: string;
+}
+
+export interface SuspectTransactionFinding {
+  id: string;
+  scan_run_id: string;
+  transaction_id: string;
+  status: SuspectFindingStatus;
+  severity: SuspectSeverity;
+  score: number;
+  reason_codes: SuspectReasonCode[];
+  evidence: SuspectEvidence;
+  created_at: string;
+  updated_at: string;
+  transaction?: TransactionWithDetails;
+}
+
+export interface RunSuspectScanRequest {
+  filters?: TransactionFilters;
+  flaggedWords?: string[];
+}
+
+export interface RunSuspectScanResponse {
+  run: SuspectScanRun;
+  findings: SuspectTransactionFinding[];
+}
+
+export interface SuspectFindingFilters {
+  status?: SuspectFindingStatus;
+  severity?: SuspectSeverity;
+  reason?: SuspectReasonCode;
+  runId?: string;
+}
+
 // === PARSING TYPES ===
 
 export interface ParsedTransaction {

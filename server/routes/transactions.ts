@@ -14,6 +14,11 @@ import {
   checkDuplicates,
   checkTransferMatch,
 } from '../services/transactions.js';
+import {
+  getSuspectTransactionFindings,
+  runSuspectTransactionScan,
+  updateSuspectTransactionFindingStatus,
+} from '../services/suspect-transactions.js';
 import { finiteNumber, idParamSchema, isoDateString, nonEmptyString, parseRequest } from './validation.js';
 
 const optionalQueryBoolean = z.preprocess((value) => {
@@ -94,6 +99,29 @@ const transferCheckSchema = z.object({
   account_id: nonEmptyString.optional(),
   accountId: nonEmptyString.optional(),
 }).refine((value) => value.account_id || value.accountId, 'account_id is required');
+const suspectReasonSchema = z.enum([
+  'exact_duplicate',
+  'near_duplicate',
+  'large_amount_outlier',
+  'merchant_amount_outlier',
+  'rapid_small_charge_cluster',
+  'missing_category',
+  'unmatched_transfer_like',
+  'flagged_word',
+]);
+const suspectScanSchema = z.object({
+  filters: transactionFiltersSchema.optional(),
+  flaggedWords: z.array(z.string()).max(100).optional(),
+});
+const suspectFindingFiltersSchema = z.object({
+  status: z.enum(['open', 'dismissed', 'resolved']).optional(),
+  severity: z.enum(['low', 'medium', 'high']).optional(),
+  reason: suspectReasonSchema.optional(),
+  runId: nonEmptyString.optional(),
+});
+const suspectFindingStatusSchema = z.object({
+  status: z.enum(['open', 'dismissed', 'resolved']),
+});
 
 router.get('/', (req: Request, res: Response) => {
   try {
@@ -171,6 +199,47 @@ router.post('/check-transfer', (req: Request, res: Response) => {
     const body = parseRequest(transferCheckSchema, req.body, res);
     if (!body) return;
     const data = checkTransferMatch(body.amount, body.account_id ?? body.accountId as string, body.date);
+    res.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.post('/suspect-scan', (req: Request, res: Response) => {
+  try {
+    const body = parseRequest(suspectScanSchema, req.body, res);
+    if (!body) return;
+    const data = runSuspectTransactionScan(body);
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.get('/suspect-findings', (req: Request, res: Response) => {
+  try {
+    const filters = parseRequest(suspectFindingFiltersSchema, req.query, res);
+    if (!filters) return;
+    const data = getSuspectTransactionFindings(filters);
+    res.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.put('/suspect-findings/:id', (req: Request, res: Response) => {
+  try {
+    const params = parseRequest(idParamSchema, req.params, res);
+    const body = parseRequest(suspectFindingStatusSchema, req.body, res);
+    if (!params || !body) return;
+    const data = updateSuspectTransactionFindingStatus(params.id, body.status);
+    if (!data) {
+      res.status(404).json({ success: false, error: 'Suspect finding not found' });
+      return;
+    }
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
