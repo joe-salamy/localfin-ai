@@ -20,6 +20,8 @@ export const queryKeys = {
       [...queryKeys.transactions.all, 'detail', id] as const,
     recentActivity: () =>
       [...queryKeys.transactions.all, 'recent-activity'] as const,
+    suspectFindings: (filters?: Record<string, unknown>) =>
+      [...queryKeys.transactions.all, 'suspect-findings', filters] as const,
   },
   dashboard: {
     all: ['dashboard'] as const,

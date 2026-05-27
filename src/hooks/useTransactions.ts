@@ -7,6 +7,11 @@ import type {
   TransactionWithDetails,
   RecentAccountTransaction,
   CreateTransactionData,
+  RunSuspectScanRequest,
+  RunSuspectScanResponse,
+  SuspectFindingFilters,
+  SuspectFindingStatus,
+  SuspectTransactionFinding,
 } from '@/types/index';
 
 function buildQueryString(filters?: TransactionFilters): string {
@@ -121,5 +126,50 @@ export function useRecentActivity() {
   return {
     recentActivity: query.data ?? [],
     isLoading: query.isLoading,
+  };
+}
+
+function buildSuspectFindingQueryString(filters?: SuspectFindingFilters): string {
+  if (!filters) return '';
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value != null) params.set(key, String(value));
+  });
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
+export function useSuspectTransactionFindings(filters?: SuspectFindingFilters) {
+  const queryClient = useQueryClient();
+
+  const findingsQuery = useQuery({
+    queryKey: queryKeys.transactions.suspectFindings(filters as Record<string, unknown>),
+    queryFn: () =>
+      apiGet<SuspectTransactionFinding[]>(
+        `/transactions/suspect-findings${buildSuspectFindingQueryString(filters)}`,
+      ),
+    select: (res) => res.data ?? [],
+  });
+
+  const runSuspectScan = useMutation({
+    mutationFn: (data: RunSuspectScanRequest) =>
+      apiPost<RunSuspectScanResponse>('/transactions/suspect-scan', data),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
+  });
+
+  const updateFindingStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: SuspectFindingStatus }) =>
+      apiPut<SuspectTransactionFinding>(`/transactions/suspect-findings/${id}`, { status }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
+  });
+
+  return {
+    findings: findingsQuery.data ?? [],
+    isLoading: findingsQuery.isLoading,
+    error: findingsQuery.error,
+    runSuspectScan,
+    updateFindingStatus,
   };
 }

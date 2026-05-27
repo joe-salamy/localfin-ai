@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
-import type { TransactionKind, TransactionWithDetails, Subcategory } from '@/types';
+import type { SuspectTransactionFinding, TransactionKind, TransactionWithDetails, Subcategory } from '@/types';
 import { format, parseISO } from 'date-fns';
-import { Pencil, Trash2, Check, X, ArrowUp, ArrowDown } from 'lucide-react';
+import { Pencil, Trash2, Check, X, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
 import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
 import { EntityLabel } from '@/components/ui/EntityLabel';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -26,6 +26,7 @@ interface TransactionTableProps {
   onDelete: (id: string) => Promise<void>;
   categories: Category[];
   subcategories: Subcategory[];
+  suspectFindings?: SuspectTransactionFinding[];
 }
 
 interface EditState {
@@ -84,6 +85,7 @@ export function TransactionTable({
   onDelete,
   categories,
   subcategories,
+  suspectFindings = [],
 }: TransactionTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState>({ date: '', name: '', amount: '', kind: 'expense', subcategory_id: '', comment: '' });
@@ -101,6 +103,19 @@ export function TransactionTable({
   );
   const { findMatches } = useFlaggedWords();
   const categoryLookup = buildCategoryLookup(categories);
+  const suspectFindingsByTransaction = useMemo(() => {
+    const groups = new Map<string, SuspectTransactionFinding[]>();
+    for (const finding of suspectFindings) {
+      if (finding.status !== 'open') continue;
+      const current = groups.get(finding.transaction_id);
+      if (current) {
+        current.push(finding);
+      } else {
+        groups.set(finding.transaction_id, [finding]);
+      }
+    }
+    return groups;
+  }, [suspectFindings]);
 
   const allSelected = transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
   const focusedTransaction = transactions.find((transaction) => transaction.id === focusedId) ?? transactions[0] ?? null;
@@ -319,6 +334,14 @@ export function TransactionTable({
               const isEditing = editingId === t.id;
               const flaggedWords = findMatches(t.name);
               const isFlagged = flaggedWords.length > 0;
+              const openSuspectFindings = suspectFindingsByTransaction.get(t.id) ?? [];
+              const topSuspectSeverity = openSuspectFindings.some((finding) => finding.severity === 'high')
+                ? 'high'
+                : openSuspectFindings.some((finding) => finding.severity === 'medium')
+                  ? 'medium'
+                  : openSuspectFindings.length > 0
+                    ? 'low'
+                    : null;
               const amountScaleValue = transactionAmountScaleValue(t.amount, t.kind);
               const amountGradientStyle = amountScaleValue == null ? undefined : getGradientStyle(amountScaleValue);
               return (
@@ -333,11 +356,16 @@ export function TransactionTable({
                   }}
                   tabIndex={0}
                   onFocus={() => setFocusedId(t.id)}
-                  title={isFlagged ? `Flagged words: ${flaggedWords.join(', ')}` : undefined}
+                  title={openSuspectFindings.length > 0
+                    ? openSuspectFindings.map((finding) => finding.evidence.summary).join(' ')
+                    : isFlagged ? `Flagged words: ${flaggedWords.join(', ')}` : undefined}
                   className={cn(
                     'outline-none hover:bg-secondary/30 focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring',
                     selectedIds.has(t.id) && 'bg-secondary/20',
                     focusedId === t.id && 'bg-secondary/30',
+                    topSuspectSeverity === 'low' && 'bg-amber-500/10 hover:bg-amber-500/15 focus-visible:bg-amber-500/15',
+                    topSuspectSeverity === 'medium' && 'bg-amber-500/20 hover:bg-amber-500/25 focus-visible:bg-amber-500/25',
+                    topSuspectSeverity === 'high' && 'bg-red-500/25 hover:bg-red-500/30 focus-visible:bg-red-500/30',
                     isFlagged && 'bg-red-500/25 hover:bg-red-500/30 focus-visible:bg-red-500/30',
                   )}
                 >
@@ -383,7 +411,15 @@ export function TransactionTable({
                       </div>
                     ) : (
                       <div>
-                        <span>{t.name}</span>
+                        <span className="inline-flex items-center gap-1">
+                          {openSuspectFindings.length > 0 && (
+                            <span className="inline-flex items-center gap-1 rounded border border-amber-400/40 bg-amber-500/15 px-1 py-0.5 text-[10px] font-medium uppercase text-amber-200">
+                              <AlertTriangle className="h-3 w-3" />
+                              {topSuspectSeverity}
+                            </span>
+                          )}
+                          <span>{t.name}</span>
+                        </span>
                         {t.comment && (
                           <span className="block text-xs text-muted-foreground truncate max-w-[200px]">{t.comment}</span>
                         )}
