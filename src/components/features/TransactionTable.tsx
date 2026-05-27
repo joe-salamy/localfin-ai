@@ -261,6 +261,20 @@ export function TransactionTable({
 
   const headerClass = 'px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider';
   const cellClass = 'px-2 py-1.5 text-sm whitespace-nowrap';
+  const renderSortableHeader = (col: (typeof sortableColumns)[number]) => (
+    <th
+      key={col.id}
+      className={cn(
+        headerClass,
+        col.align === 'right' && 'text-right',
+        'cursor-pointer select-none hover:text-foreground',
+      )}
+      onClick={() => onSort(col.id)}
+    >
+      {col.label}
+      <SortIcon column={col.id} sortColumn={sortColumn} sortDirection={sortDirection} />
+    </th>
+  );
 
   return (
     <>
@@ -284,24 +298,12 @@ export function TransactionTable({
                   className="rounded border-border"
                 />
               </th>
-              {sortableColumns.map((col) => (
-                <th
-                  key={col.id}
-                  className={cn(
-                    headerClass,
-                    col.align === 'right' && 'text-right',
-                    'cursor-pointer select-none hover:text-foreground',
-                  )}
-                  onClick={() => onSort(col.id)}
-                >
-                  {col.label}
-                  <SortIcon column={col.id} sortColumn={sortColumn} sortDirection={sortDirection} />
-                </th>
-              ))}
+              {renderSortableHeader(sortableColumns[0])}
+              <th className={headerClass}>Account</th>
+              {sortableColumns.slice(1).map(renderSortableHeader)}
               <th className={headerClass}>Category</th>
               <th className={headerClass}>Type</th>
               <th className={headerClass}>Subcategory</th>
-              <th className={headerClass}>Account</th>
               <th className={cn(headerClass, 'w-20')}>Actions</th>
             </tr>
           </thead>
@@ -358,6 +360,9 @@ export function TransactionTable({
                     ) : (
                       format(parseISO(t.date), DISPLAY_DATE_FORMAT)
                     )}
+                  </td>
+                  <td className={cn(cellClass, 'text-xs')}>
+                    <EntityLabel id={t.account_id} name={t.account_name} color={t.account_color} />
                   </td>
                   <td className={cellClass}>
                     {isEditing ? (
@@ -464,9 +469,6 @@ export function TransactionTable({
                         />
                       </span>
                     )}
-                  </td>
-                  <td className={cn(cellClass, 'text-xs')}>
-                    <EntityLabel id={t.account_id} name={t.account_name} color={t.account_color} />
                   </td>
                   <td className={cellClass}>
                     {isEditing ? (
