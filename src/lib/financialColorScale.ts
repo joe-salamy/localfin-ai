@@ -1,4 +1,4 @@
-import type { AccountType, CategoryType, TransactionKind } from '@/types';
+import type { AccountType, CategoryType, TransactionKind } from '../types';
 
 export function accountChangeScaleValue(amount: number, accountType: AccountType): number {
   return accountType === 'liability' ? -amount : amount;
