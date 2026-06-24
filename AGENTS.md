@@ -24,3 +24,10 @@ LocalFin AI is a local-first personal finance tracker that uses LLM-powered pars
 - In plan mode, include a feature branch name (branched from main) as the first step of every implementation plan.
 - In plan mode, write every implementation plan to `docs/plans/<feature-name>.md` so the plan can be passed to audit skills such as `plan-audit`.
 - Keep READMEs concise.
+
+
+---
+
+<!-- Loadout: worktrees; harness: omp; applied 2026-06-24 -->
+
+- When loading any skill, record the load with `python ./<.harness>/scripts/skill-usage-manager.py record <skill-name> --scope repo --path <skills-dir> --repo <repo-root>`
