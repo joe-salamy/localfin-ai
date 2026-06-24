@@ -449,19 +449,29 @@ export function updateTransaction(
   const existing = db
     .prepare(
       `
-    SELECT t.id, t.kind
+    SELECT t.id, t.kind, t.amount, a.type AS account_type
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
     WHERE t.id = ? AND t.deleted_at IS NULL
   `,
     )
-    .get(id) as { id: string; kind: TransactionKind } | undefined;
+    .get(id) as
+    | { id: string; kind: TransactionKind; amount: number; account_type: AccountType }
+    | undefined;
 
   if (!existing) {
     throw new Error(`Transaction with id "${id}" not found`);
   }
 
   const nextKind = updates.kind ?? existing.kind;
+  const nextAmount =
+    updates.amount !== undefined || updates.kind !== undefined
+      ? normalizeTransactionAmount(
+          updates.amount ?? existing.amount,
+          existing.account_type,
+          nextKind,
+        )
+      : undefined;
   const setClauses: string[] = [];
   const params: unknown[] = [];
 
@@ -473,9 +483,9 @@ export function updateTransaction(
     setClauses.push("name = ?");
     params.push(updates.name);
   }
-  if (updates.amount !== undefined) {
+  if (nextAmount !== undefined) {
     setClauses.push("amount = ?");
-    params.push(updates.amount);
+    params.push(nextAmount);
   }
   if (updates.kind !== undefined) {
     setClauses.push("kind = ?");
@@ -529,12 +539,57 @@ export function bulkUpdateTransactions(
   const setClauses: string[] = [];
 
   if (updates.kind !== undefined) {
-    setClauses.push("kind = ?");
-    params.push(updates.kind);
-    if ((updates.kind === "transfer" || updates.kind === "adjustment") && updates.subcategory_id === undefined) {
-      setClauses.push("subcategory_id = ?");
-      params.push(null);
+    const nextKind = updates.kind;
+    const nextSubcategoryId =
+      updates.subcategory_id !== undefined
+        ? nextKind === "transfer" || nextKind === "adjustment"
+          ? null
+          : updates.subcategory_id
+        : undefined;
+    if (nextSubcategoryId) {
+      assertActiveSubcategory(nextSubcategoryId);
     }
+
+    const rows = db
+      .prepare(
+        `
+        SELECT t.id, t.amount, a.type AS account_type
+        FROM transactions t
+        JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
+        WHERE t.deleted_at IS NULL AND t.id IN (${placeholders})
+      `,
+      )
+      .all(...ids) as { id: string; amount: number; account_type: AccountType }[];
+    const clauses = ["kind = ?", "amount = ?"];
+    if (
+      nextSubcategoryId !== undefined ||
+      nextKind === "transfer" ||
+      nextKind === "adjustment"
+    ) {
+      clauses.push("subcategory_id = ?");
+    }
+    clauses.push("updated_at = ?");
+
+    const stmt = db.prepare(
+      `UPDATE transactions SET ${clauses.join(", ")} WHERE id = ? AND deleted_at IS NULL`,
+    );
+    const updateAll = db.transaction(() => {
+      for (const row of rows) {
+        const amount = normalizeTransactionAmount(row.amount, row.account_type, nextKind);
+        const rowParams: unknown[] = [nextKind, amount];
+        if (
+          nextSubcategoryId !== undefined ||
+          nextKind === "transfer" ||
+          nextKind === "adjustment"
+        ) {
+          rowParams.push(nextSubcategoryId ?? null);
+        }
+        rowParams.push(now, row.id);
+        stmt.run(...rowParams);
+      }
+    });
+    updateAll();
+    return;
   }
 
   if (updates.subcategory_id !== undefined) {

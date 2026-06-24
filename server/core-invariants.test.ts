@@ -8,7 +8,9 @@ import { closeDbForTests, getDb } from "./db/index.js";
 import { createAccount } from "./services/accounts.js";
 import { createCategory, createSubcategory } from "./services/categories.js";
 import {
+  bulkUpdateTransactions,
   createTransaction,
+  getTransactionById,
   getTransactionsWithDetails,
   updateTransaction,
 } from "./services/transactions.js";
@@ -102,6 +104,54 @@ test("create transaction normalizes signs by account type and kind", async (t) =
   assert.equal(assetIncome.amount, 8);
   assert.equal(liabilityExpense.amount, 24);
   assert.equal(liabilityIncome.amount, -7);
+});
+
+test("transaction updates normalize signs by account type and kind", async (t) => {
+  await useTempDatabase(t);
+  const { assetAccountId, liabilityAccountId, subcategoryId } =
+    createSubcategoryFixture();
+
+  const liabilityExpense = createTransaction({
+    account_id: liabilityAccountId,
+    date: "2026-05-05",
+    name: "Liability Expense Update",
+    amount: -24,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+  });
+  const liabilityAmountUpdate = updateTransaction(liabilityExpense.id, {
+    amount: -31,
+  });
+  const liabilityKindUpdate = updateTransaction(liabilityExpense.id, {
+    kind: "income",
+  });
+
+  const assetIncome = createTransaction({
+    account_id: assetAccountId,
+    date: "2026-05-06",
+    name: "Asset Income Update",
+    amount: -8,
+    kind: "income",
+  });
+  const assetKindUpdate = updateTransaction(assetIncome.id, {
+    kind: "expense",
+  });
+
+  const bulkTarget = createTransaction({
+    account_id: liabilityAccountId,
+    date: "2026-05-07",
+    name: "Bulk Liability Kind Update",
+    amount: -45,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+  });
+  bulkUpdateTransactions([bulkTarget.id], { kind: "income" });
+  const bulkUpdated = getTransactionById(bulkTarget.id);
+
+  assert.equal(liabilityAmountUpdate?.amount, 31);
+  assert.equal(liabilityKindUpdate?.amount, -31);
+  assert.equal(assetKindUpdate?.amount, -8);
+  assert.equal(bulkUpdated?.amount, -45);
 });
 
 test("transfer and adjustment transactions remain uncategorized", async (t) => {
