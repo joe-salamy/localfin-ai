@@ -1,9 +1,9 @@
-import Database from "better-sqlite3";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import { seed } from "./seed.js";
-import { DATABASE_CONFIG } from "../config/app.js";
+import Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { seed } from './seed.js';
+import { DATABASE_CONFIG } from '../config/app.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,14 +34,11 @@ export function getDb(): Database.Database {
   db = new Database(dbPath);
 
   // Enable WAL mode and foreign keys
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
 
   // Run schema
-  const schema = fs.readFileSync(
-    path.resolve(__dirname, DATABASE_CONFIG.schemaFileName),
-    "utf-8",
-  );
+  const schema = fs.readFileSync(path.resolve(__dirname, DATABASE_CONFIG.schemaFileName), 'utf-8');
   db.exec(schema);
   migrate(db);
 
@@ -52,34 +49,27 @@ export function getDb(): Database.Database {
   return db;
 }
 
-function columnExists(
-  database: Database.Database,
-  tableName: string,
-  columnName: string,
-): boolean {
-  const rows = database
-    .prepare(`PRAGMA table_info(${tableName})`)
-    .all() as Array<{ name: string }>;
+function columnExists(database: Database.Database, tableName: string, columnName: string): boolean {
+  const rows = database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
   return rows.some((row) => row.name === columnName);
 }
 
-function addColumnIfMissing(
-  database: Database.Database,
-  tableName: string,
-  columnDefinition: string,
-): void {
+function tableExists(database: Database.Database, tableName: string): boolean {
+  const row = database
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(tableName);
+  return Boolean(row);
+}
+
+function addColumnIfMissing(database: Database.Database, tableName: string, columnDefinition: string): void {
   const [columnName] = columnDefinition.split(/\s+/);
   if (!columnName || columnExists(database, tableName, columnName)) return;
   database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition}`);
 }
 
-function transactionKindConstraintAllowsAdjustment(
-  database: Database.Database,
-): boolean {
+function transactionKindConstraintAllowsAdjustment(database: Database.Database): boolean {
   const row = database
-    .prepare(
-      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'transactions'",
-    )
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'transactions'")
     .get() as { sql: string } | undefined;
 
   return row?.sql.includes("'adjustment'") ?? false;
@@ -87,6 +77,16 @@ function transactionKindConstraintAllowsAdjustment(
 
 function migrateTransactionKindConstraint(database: Database.Database): void {
   if (transactionKindConstraintAllowsAdjustment(database)) return;
+
+  const hadTransactionTagsTable = tableExists(database, 'transaction_tags');
+  if (hadTransactionTagsTable) {
+    database.exec(`
+      DROP TABLE IF EXISTS temp.transaction_tags_kind_migration;
+      CREATE TEMP TABLE transaction_tags_kind_migration AS
+        SELECT transaction_id, tag_id, created_at FROM transaction_tags;
+      DROP TABLE transaction_tags;
+    `);
+  }
 
   database.exec(`
     ALTER TABLE transactions RENAME TO transactions_legacy_kind;
@@ -146,6 +146,22 @@ function migrateTransactionKindConstraint(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_transactions_lookup ON transactions(account_id, name) WHERE deleted_at IS NULL;
     CREATE INDEX IF NOT EXISTS idx_transactions_deleted ON transactions(deleted_at) WHERE deleted_at IS NULL;
   `);
+
+  if (hadTransactionTagsTable) {
+    database.exec(`
+      CREATE TABLE transaction_tags (
+        transaction_id TEXT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+        tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (transaction_id, tag_id)
+      );
+      INSERT OR IGNORE INTO transaction_tags (transaction_id, tag_id, created_at)
+        SELECT transaction_id, tag_id, created_at FROM temp.transaction_tags_kind_migration;
+      DROP TABLE temp.transaction_tags_kind_migration;
+      CREATE INDEX IF NOT EXISTS idx_transaction_tags_tag ON transaction_tags(tag_id);
+      CREATE INDEX IF NOT EXISTS idx_transaction_tags_transaction ON transaction_tags(transaction_id);
+    `);
+  }
 }
 
 function absorbInitialBalanceTransactions(database: Database.Database): void {
@@ -174,6 +190,31 @@ function absorbInitialBalanceTransactions(database: Database.Database): void {
         AND (is_initial_balance = 1 OR lower(trim(name)) = 'initial balance')
     `);
   })();
+}
+
+function ensureTagTables(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS tags (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'custom' CHECK(type IN ('custom', 'trip', 'event', 'person', 'reimbursable', 'tax')),
+      color TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT,
+      deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name_type ON tags(lower(trim(name)), type) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_tags_type ON tags(type) WHERE deleted_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS transaction_tags (
+      transaction_id TEXT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+      tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (transaction_id, tag_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_transaction_tags_tag ON transaction_tags(tag_id);
+    CREATE INDEX IF NOT EXISTS idx_transaction_tags_transaction ON transaction_tags(transaction_id);
+  `);
 }
 
 function ensureSuspectScanTables(database: Database.Database): void {
@@ -206,34 +247,14 @@ function ensureSuspectScanTables(database: Database.Database): void {
 }
 
 function migrate(database: Database.Database): void {
-  const hadInitialBalanceColumn = columnExists(
-    database,
-    "accounts",
-    "initial_balance",
-  );
-  addColumnIfMissing(
-    database,
-    "accounts",
-    "initial_balance REAL NOT NULL DEFAULT 0",
-  );
-  addColumnIfMissing(database, "accounts", "color TEXT");
-  addColumnIfMissing(database, "categories", "color TEXT");
-  addColumnIfMissing(database, "subcategories", "color TEXT");
-  addColumnIfMissing(
-    database,
-    "transactions",
-    "kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer', 'adjustment'))",
-  );
-  addColumnIfMissing(
-    database,
-    "transactions",
-    "is_initial_balance INTEGER NOT NULL DEFAULT 0",
-  );
-  addColumnIfMissing(
-    database,
-    "transactions",
-    "ai_suggested INTEGER NOT NULL DEFAULT 0",
-  );
+  const hadInitialBalanceColumn = columnExists(database, 'accounts', 'initial_balance');
+  addColumnIfMissing(database, 'accounts', 'initial_balance REAL NOT NULL DEFAULT 0');
+  addColumnIfMissing(database, 'accounts', 'color TEXT');
+  addColumnIfMissing(database, 'categories', 'color TEXT');
+  addColumnIfMissing(database, 'subcategories', 'color TEXT');
+  addColumnIfMissing(database, 'transactions', "kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer', 'adjustment'))");
+  addColumnIfMissing(database, 'transactions', 'is_initial_balance INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing(database, 'transactions', 'ai_suggested INTEGER NOT NULL DEFAULT 0');
   migrateTransactionKindConstraint(database);
   database.exec(`
     UPDATE transactions
@@ -243,6 +264,7 @@ function migrate(database: Database.Database): void {
   if (!hadInitialBalanceColumn) {
     absorbInitialBalanceTransactions(database);
   }
+  ensureTagTables(database);
   ensureSuspectScanTables(database);
 }
 

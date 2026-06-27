@@ -41,10 +41,10 @@ export function actionCompletesCreate(action: ExecutedAction): boolean {
 export function actionFailureCanBeRetried(action: ExecutedAction): boolean {
   if (action.status !== "error" || !action.error) return false;
   return (
-    /\breferences (?:an unknown|ambiguous) (?:account|category|subcategory)\b/i.test(
+    /\breferences (?:an unknown|ambiguous) (?:account|category|subcategory|tag)\b/i.test(
       action.error,
     ) ||
-    /\b(?:Account|Category|Subcategory) with id ".+" not found\b/i.test(
+    /\b(?:Account|Category|Subcategory|Tag) with id ".+" not found\b/i.test(
       action.error,
     ) ||
     /\brequires id or (?:existing account name|current_name|subcategory)\b/i.test(

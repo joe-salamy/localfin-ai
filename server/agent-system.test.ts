@@ -6,6 +6,7 @@ import test from "node:test";
 import type Database from "better-sqlite3";
 import {
   chatWithAssistant,
+  executeAction,
   streamChatWithAssistant,
 } from "./services/ai-chat.js";
 import { createAccount } from "./services/accounts.js";
@@ -18,6 +19,7 @@ import {
   createTransaction,
   getTransactionsWithDetails,
 } from "./services/transactions.js";
+import { createTag, getTags } from "./services/tags.js";
 import { closeDbForTests, getDb } from "./db/index.js";
 import type { ChatResult } from "./services/ai-chat.js";
 import type { CategoryType } from "../src/types/index.js";
@@ -431,4 +433,192 @@ test("agent refuses deletion and streaming emits a traceable lifecycle", async (
   assert.ok(events.includes("response_delta"));
   assert.ok(events.includes("actions_planned"));
   assert.ok(events.includes("final"));
+});
+
+test("agent creates an explicit trip tag and assigns it to a transaction", async (t) => {
+  const { db } = await createFixture(t);
+  createAccount({ name: "Travel Checking", type: "asset", initial_balance: 2000 });
+  createNamedCategory("Travel", "expense");
+  createNamedSubcategory("Lodging", "Travel");
+  const calls = installOpenRouterMock(() => ({
+    message: "Added the hotel transaction and tagged it for the Cabo trip.",
+    actions: [
+      {
+        type: "create_transaction",
+        input: {
+          account_name: "Travel Checking",
+          date: "2026-06-15",
+          name: "Cabo Hotel",
+          amount: 420,
+          kind: "expense",
+          subcategory_name: "Lodging",
+          tags: [{ name: "Cabo Trip", type: "trip" }],
+        },
+      },
+    ],
+  }));
+
+  const result = await chatWithAssistant({
+    conversationId: "test-explicit-trip-tag",
+    message:
+      "Add a 420 hotel charge on 2026-06-15 from Travel Checking and tag it as Cabo Trip.",
+  });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(
+    result.actions.map((action) => [action.type, action.status]),
+    [["create_transaction", "success"]],
+  );
+  assert.deepEqual(
+    getTags().map((tag) => ({ name: tag.name, type: tag.type })),
+    [{ name: "Cabo Trip", type: "trip" }],
+  );
+  const transaction = getTransactionsWithDetails({
+    searchQuery: '"Cabo Hotel"',
+  })[0];
+  assert.ok(transaction, "expected tagged transaction");
+  assert.deepEqual(
+    transaction.tags.map((tag) => ({ name: tag.name, type: tag.type })),
+    [{ name: "Cabo Trip", type: "trip" }],
+  );
+  const searchAction = executeAction({
+    type: "search_transactions",
+    input: { searchQuery: '"Cabo Hotel"' },
+  });
+  const searchResults = searchAction.result;
+  assert.ok(Array.isArray(searchResults), "expected search result array");
+  assert.deepEqual(searchResults[0]?.tags, [
+    { id: transaction.tags[0]?.id, name: "Cabo Trip", type: "trip" },
+  ]);
+  const tagRow = db
+    .prepare("SELECT name, type FROM tags WHERE name = ?")
+    .get("Cabo Trip");
+  assert.deepEqual(tagRow, { name: "Cabo Trip", type: "trip" });
+  createTransaction({
+    account_id: transaction.account_id,
+    date: "2026-06-16",
+    name: "Cabo Hotel Untagged",
+    amount: 210,
+    kind: "expense",
+    subcategory_id: transaction.subcategory_id,
+  });
+  const tagFilteredSearch = executeAction({
+    type: "search_transactions",
+    input: { searchQuery: '"Cabo Hotel"', tagIds: [transaction.tags[0]?.id] },
+  });
+  const tagFilteredResults = tagFilteredSearch.result;
+  assert.ok(Array.isArray(tagFilteredResults), "expected tag-filtered search results");
+  assert.deepEqual(
+    tagFilteredResults.map((item) => item.id),
+    [transaction.id],
+  );
+});
+
+test("agent update failure does not create explicit add-tag side effects", async (t) => {
+  await createFixture(t);
+
+  const result = executeAction({
+    type: "update_transaction",
+    input: {
+      id: "missing-transaction",
+      add_tag_names: ["Cabo Trip"],
+    },
+  });
+
+  assert.equal(result.status, "error");
+  assert.match(result.error ?? "", /Transaction with id "missing-transaction" not found/);
+  assert.deepEqual(getTags(), []);
+});
+
+test("agent rejects conflicting bulk tag edits when also updating comments", async (t) => {
+  await createFixture(t);
+  const account = createAccount({ name: "Checking", type: "asset" });
+  const categoryId = createNamedCategory("Travel", "expense");
+  const subcategory = createSubcategory({ name: "Hotels", category_id: categoryId });
+  const tag = createTag({ name: "Cabo Trip", type: "trip" });
+  const transaction = createTransaction({
+    account_id: account.id,
+    date: "2026-06-15",
+    name: "Cabo Hotel",
+    amount: 420,
+    kind: "expense",
+    subcategory_id: subcategory.id,
+    tag_ids: [tag.id],
+  });
+
+  const result = executeAction({
+    type: "bulk_update_transactions",
+    input: {
+      searchQuery: '"Cabo Hotel"',
+      updates: {
+        comment: "client trip",
+        add_tag_ids: [tag.id],
+        remove_tag_ids: [tag.id],
+      },
+    },
+  });
+
+  assert.equal(result.status, "error");
+  assert.match(result.error ?? "", /Cannot add and remove the same tag/);
+  const unchanged = getTransactionsWithDetails({ searchQuery: '"Cabo Hotel"' })[0];
+  assert.equal(unchanged?.id, transaction.id);
+  assert.equal(unchanged?.comment, null);
+  assert.deepEqual(unchanged?.tags.map((item) => item.id), [tag.id]);
+});
+
+test("agent does not infer tags without explicit tag wording", async (t) => {
+  await createFixture(t);
+  createAccount({ name: "Travel Checking", type: "asset", initial_balance: 2000 });
+  createNamedCategory("Travel", "expense");
+  createNamedSubcategory("Lodging", "Travel");
+  const calls = installOpenRouterMock(() => ({
+    message: "Added the Cabo hotel transaction.",
+    actions: [
+      {
+        type: "create_transaction",
+        input: {
+          account_name: "Travel Checking",
+          date: "2026-06-15",
+          name: "Hotel in Cabo",
+          amount: 420,
+          kind: "expense",
+          subcategory_name: "Lodging",
+        },
+      },
+    ],
+  }));
+
+  const result = await chatWithAssistant({
+    conversationId: "test-no-inferred-tags",
+    message:
+      "Add a 420 hotel in Cabo on 2026-06-15 from Travel Checking under Lodging.",
+  });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(
+    result.actions.map((action) => [action.type, action.status]),
+    [["create_transaction", "success"]],
+  );
+  assert.equal(getTags().length, 0);
+  const transaction = getTransactionsWithDetails({
+    searchQuery: '"Hotel in Cabo"',
+  })[0];
+  assert.ok(transaction, "expected untagged transaction");
+  assert.deepEqual(transaction.tags, []);
+
+  const firstCall = calls[0];
+  assert.ok(firstCall, "expected OpenRouter call");
+  assert.ok(Array.isArray(firstCall.messages), "expected prompt messages");
+  const systemMessage = firstCall.messages.find((message) => {
+    if (!message || typeof message !== "object") return false;
+    if (!("role" in message)) return false;
+    return message.role === "system";
+  });
+  assert.ok(systemMessage, "expected system prompt");
+  assert.ok(
+    "content" in systemMessage && typeof systemMessage.content === "string",
+    "expected system prompt content",
+  );
+  assert.match(systemMessage.content, /Tags are explicit-only/);
+  assert.match(systemMessage.content, /Do not infer tags from merchants/i);
 });

@@ -7,6 +7,8 @@ import type {
   GoalPeriod,
   SpendingGoalWithDetails,
   Subcategory,
+  Tag,
+  TagType,
   TransactionWithDetails,
 } from "../../../src/types/index.js";
 
@@ -40,6 +42,7 @@ export interface PlanningContext {
   categories: Category[];
   subcategories: Subcategory[];
   goals: SpendingGoalWithDetails[];
+  tags: Tag[];
   recentTransactions: TransactionWithDetails[];
 }
 
@@ -61,6 +64,11 @@ export interface AssistantContext {
     category_name: string | undefined;
     category_type: CategoryType | undefined;
     monthly_goal: number | null;
+  }>;
+  tags: Array<{
+    id: string;
+    name: string;
+    type: TagType;
   }>;
   goals: Array<{
     id: string;

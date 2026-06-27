@@ -1,8 +1,9 @@
 // === ENUMS ===
-export type AccountType = "asset" | "liability";
-export type CategoryType = "income" | "expense";
-export type TransactionKind = "income" | "expense" | "transfer" | "adjustment";
-export type GoalPeriod = "weekly" | "monthly" | "quarterly" | "annual";
+export type AccountType = 'asset' | 'liability';
+export type CategoryType = 'income' | 'expense';
+export type TransactionKind = 'income' | 'expense' | 'transfer' | 'adjustment';
+export type TagType = 'custom' | 'trip' | 'event' | 'person' | 'reimbursable' | 'tax';
+export type GoalPeriod = 'weekly' | 'monthly' | 'quarterly' | 'annual';
 
 // === CORE ENTITIES ===
 
@@ -44,6 +45,16 @@ export interface Subcategory {
   deleted_at: string | null;
 }
 
+export interface Tag {
+  id: string;
+  name: string;
+  type: TagType;
+  color: string | null;
+  created_at: string;
+  updated_at: string | null;
+  deleted_at: string | null;
+}
+
 export interface Transaction {
   id: string;
   account_id: string;
@@ -71,6 +82,7 @@ export interface TransactionWithDetails extends Transaction {
   category_type?: string;
   category_color?: string | null;
   running_balance?: number;
+  tags: Tag[];
 }
 
 export interface RecentAccountTransaction {
@@ -148,6 +160,29 @@ export interface SubcategorySummary {
   difference: number | null;
 }
 
+export interface TagCategorySummary {
+  category_id: string | null;
+  category_name: string | null;
+  category_type: CategoryType | null;
+  category_color: string | null;
+  expense_total: number;
+  income_total: number;
+  net_total: number;
+  transaction_count: number;
+}
+
+export interface TagSummary {
+  tag_id: string;
+  tag_name: string;
+  tag_type: TagType;
+  tag_color: string | null;
+  expense_total: number;
+  income_total: number;
+  net_total: number;
+  transaction_count: number;
+  categories: TagCategorySummary[];
+}
+
 export interface NetWorthSummary {
   total_assets: number;
   total_liabilities: number;
@@ -200,6 +235,7 @@ export interface TransactionFilters {
   categoryIds?: string[];
   subcategoryId?: string;
   subcategoryIds?: string[];
+  tagIds?: string[];
   kind?: TransactionKind;
   needsCategory?: boolean;
   startDate?: string;
@@ -211,24 +247,21 @@ export interface TransactionFilters {
 
 // === SUSPECT TRANSACTION REVIEW ===
 
-export type SuspectFindingStatus = "open" | "dismissed" | "resolved";
-export type SuspectSeverity = "low" | "medium" | "high";
+export type SuspectFindingStatus = 'open' | 'dismissed' | 'resolved';
+export type SuspectSeverity = 'low' | 'medium' | 'high';
 export type SuspectReasonCode =
-  | "exact_duplicate"
-  | "near_duplicate"
-  | "large_amount_outlier"
-  | "merchant_amount_outlier"
-  | "rapid_small_charge_cluster"
-  | "missing_category"
-  | "unmatched_transfer_like"
-  | "flagged_word";
+  | 'exact_duplicate'
+  | 'near_duplicate'
+  | 'large_amount_outlier'
+  | 'merchant_amount_outlier'
+  | 'rapid_small_charge_cluster'
+  | 'missing_category'
+  | 'unmatched_transfer_like'
+  | 'flagged_word';
 
 export interface SuspectEvidence {
   summary: string;
-  details?: Record<
-    string,
-    string | number | boolean | null | string[] | number[]
-  >;
+  details?: Record<string, string | number | boolean | null | string[] | number[]>;
 }
 
 export interface SuspectScanRun {
@@ -286,7 +319,7 @@ export interface EnrichedTransaction extends ParsedTransaction {
   subcategory_id: string | null;
   subcategory_name: string | null;
   category_name: string | null;
-  categorizationSource: "lookup" | "ai" | "none";
+  categorizationSource: 'lookup' | 'ai' | 'none';
   isDuplicate: boolean;
 }
 
@@ -341,8 +374,26 @@ export interface CreateTransactionData {
   amount: number;
   kind?: TransactionKind;
   subcategory_id?: string | null;
+  tag_ids?: string[];
   comment?: string | null;
   ai_suggested?: boolean;
+}
+
+export interface UpdateTransactionData extends Partial<CreateTransactionData> {
+  tag_ids?: string[];
+}
+
+export interface BulkTransactionUpdateData {
+  kind?: TransactionKind;
+  subcategory_id?: string | null;
+  add_tag_ids?: string[];
+  remove_tag_ids?: string[];
+}
+
+export interface CreateTagData {
+  name: string;
+  type?: TagType;
+  color?: string | null;
 }
 
 export interface ReconcileAccountData {

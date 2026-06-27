@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   actionFailureCanBeRetried,
+  buildSearchUpdateFollowUp,
   normalizeMaxAssistantTurns,
   prepareActionsForExecution,
   shouldContinueToolLoop,
@@ -49,6 +50,7 @@ function planningContext(): PlanningContext {
       },
     ],
     goals: [],
+    tags: [],
     recentTransactions: [
       {
         id: "transaction-uber",
@@ -65,6 +67,7 @@ function planningContext(): PlanningContext {
         category_name: "Food",
         category_type: "expense",
         comment: "client pickup",
+        tags: [],
         ai_suggested: false,
         is_initial_balance: false,
         created_at: "2026-05-20T00:00:00.000Z",
@@ -187,4 +190,31 @@ test("prepareActionsForExecution preserves transaction normalization and search 
     String(preparedUpdate[0]?.input.searchQuery),
     /name:"Uber Trip Downtown"/,
   );
+});
+
+test("search repair extracts tag names before target prepositions", () => {
+  const context = planningContext();
+  const target = {
+    ...context.recentTransactions[0]!,
+    id: "transaction-cabo",
+    name: "Cabo Hotel",
+  };
+
+  const followUp = buildSearchUpdateFollowUp(
+    [{ type: "search_transactions", input: { searchQuery: '"Cabo Hotel"' } }],
+    "Find the Cabo Hotel transaction and update it to add tag Reimbursable to it.",
+    {
+      action: { type: "search_transactions", input: { searchQuery: '"Cabo Hotel"' } },
+      executedAction: {
+        type: "search_transactions",
+        input: { searchQuery: '"Cabo Hotel"' },
+        status: "success",
+        result: [target],
+      },
+    },
+    context.subcategories,
+  );
+
+  assert.equal(followUp?.type, "update_transaction");
+  assert.deepEqual(followUp?.input.add_tag_names, ["Reimbursable"]);
 });

@@ -1,10 +1,13 @@
 import crypto from "node:crypto";
 import type {
   AccountType,
+  Tag,
   Transaction,
   TransactionWithDetails,
   TransactionFilters,
   CreateTransactionData,
+  UpdateTransactionData,
+  BulkTransactionUpdateData,
   TransactionKind,
 } from "../../src/types/index.js";
 import {
@@ -13,6 +16,13 @@ import {
 } from "../../src/lib/transactionAmounts.js";
 import { getDb, toBool, fromBool } from "../db/index.js";
 import { compileTransactionSearch } from "./transaction-search.js";
+import {
+  addTransactionTags,
+  assertActiveTags,
+  getTagsForTransactions,
+  removeTransactionTags,
+  replaceTransactionTags,
+} from "./tags.js";
 
 // ---------- Raw DB row types ----------
 
@@ -58,15 +68,6 @@ interface RecentActivityRow {
   last_transaction_amount: number | null;
 }
 
-interface UpdateTransactionData {
-  date?: string;
-  name?: string;
-  amount?: number;
-  kind?: TransactionKind;
-  subcategory_id?: string | null;
-  comment?: string | null;
-  ai_suggested?: boolean;
-}
 
 interface DuplicateCheckItem {
   date: string;
@@ -87,6 +88,7 @@ function rowToTransaction(row: TransactionRow): Transaction {
 
 function rowToTransactionWithDetails(
   row: TransactionWithDetailsRow,
+  tags: Tag[] = [],
 ): TransactionWithDetails {
   return {
     ...rowToTransaction(row),
@@ -100,6 +102,7 @@ function rowToTransactionWithDetails(
     category_type: row.category_type ?? undefined,
     category_color: row.category_color,
     running_balance: row.running_balance ?? undefined,
+    tags,
   };
 }
 
@@ -112,6 +115,7 @@ function buildWhereClause(
   params: unknown[];
 } {
   const p = prefix ? `${prefix}.` : "";
+  const transactionIdColumn = prefix ? `${prefix}.id` : "transactions.id";
   const clauses: string[] = [`${p}deleted_at IS NULL`];
   const params: unknown[] = [];
   const addInClause = (column: string, values?: string[]) => {
@@ -145,6 +149,20 @@ function buildWhereClause(
     params.push(filters.subcategoryId);
   }
   addInClause(`${p}subcategory_id`, filters.subcategoryIds);
+  if (filters.tagIds && filters.tagIds.length > 0) {
+    clauses.push(`
+      EXISTS (
+        SELECT 1
+        FROM transaction_tags filter_tt
+        JOIN tags filter_tag
+          ON filter_tag.id = filter_tt.tag_id
+          AND filter_tag.deleted_at IS NULL
+        WHERE filter_tt.transaction_id = ${transactionIdColumn}
+          AND filter_tt.tag_id IN (${filters.tagIds.map(() => "?").join(", ")})
+      )
+    `);
+    params.push(...filters.tagIds);
+  }
   if (filters.kind) {
     clauses.push(`${p}kind = ?`);
     params.push(filters.kind);
@@ -209,27 +227,24 @@ function normalizeTransactionFields(
   kind: TransactionKind;
   subcategory_id: string | null;
 } {
-  const kind =
-    data.kind ?? inferTransactionKindForAccount(data.amount, accountType);
+  const kind = data.kind ?? inferTransactionKindForAccount(data.amount, accountType);
   return {
     ...data,
     amount: normalizeTransactionAmount(data.amount, accountType, kind),
     kind,
-    subcategory_id:
-      kind === "transfer" || kind === "adjustment"
-        ? null
-        : (data.subcategory_id ?? null),
+    subcategory_id: kind === "transfer" || kind === "adjustment" ? null : data.subcategory_id ?? null,
   };
 }
 
 // ---------- CRUD ----------
 
-export function createTransaction(data: CreateTransactionData): Transaction {
+export function createTransaction(data: CreateTransactionData): TransactionWithDetails {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const accountType = getActiveAccountType(data.account_id);
   const normalized = normalizeTransactionFields(data, accountType);
+  const tagIds = assertActiveTags(data.tag_ids ?? []);
 
   if (normalized.subcategory_id) {
     assertActiveSubcategory(normalized.subcategory_id);
@@ -240,24 +255,30 @@ export function createTransaction(data: CreateTransactionData): Transaction {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
   `);
 
-  stmt.run(
-    id,
-    normalized.account_id,
-    normalized.date,
-    normalized.name,
-    normalized.amount,
-    normalized.kind,
-    normalized.subcategory_id,
-    normalized.comment ?? null,
-    fromBool(normalized.ai_suggested ?? false),
-    now,
-    now,
-  );
+  const createTransactionWithTags = db.transaction(() => {
+    stmt.run(
+      id,
+      normalized.account_id,
+      normalized.date,
+      normalized.name,
+      normalized.amount,
+      normalized.kind,
+      normalized.subcategory_id,
+      normalized.comment ?? null,
+      fromBool(normalized.ai_suggested ?? false),
+      now,
+      now,
+    );
+    replaceTransactionTags(id, tagIds);
+  });
 
-  const row = db
-    .prepare("SELECT * FROM transactions WHERE id = ?")
-    .get(id) as TransactionRow;
-  return rowToTransaction(row);
+  createTransactionWithTags();
+
+  const transaction = getTransactionById(id);
+  if (!transaction) {
+    throw new Error(`Transaction with id "${id}" not found`);
+  }
+  return transaction;
 }
 
 export function getTransactions(
@@ -339,7 +360,8 @@ export function getTransactionsWithDetails(
   }
 
   const rows = db.prepare(sql).all(...params) as TransactionWithDetailsRow[];
-  return rows.map(rowToTransactionWithDetails);
+  const tagMap = getTagsForTransactions(rows.map((row) => row.id));
+  return rows.map((row) => rowToTransactionWithDetails(row, tagMap.get(row.id) ?? []));
 }
 
 export function getTransactionById(id: string): TransactionWithDetails | null {
@@ -360,7 +382,9 @@ export function getTransactionById(id: string): TransactionWithDetails | null {
     )
     .get(id) as TransactionWithDetailsRow | undefined;
 
-  return row ? rowToTransactionWithDetails(row) : null;
+  if (!row) return null;
+  const tagMap = getTagsForTransactions([id]);
+  return rowToTransactionWithDetails(row, tagMap.get(id) ?? []);
 }
 
 export function getRecentTransactionByNameAndAccount(
@@ -447,7 +471,7 @@ export function getRecentActivityByAccount(): RecentActivityRow[] {
 export function updateTransaction(
   id: string,
   updates: UpdateTransactionData,
-): Transaction | null {
+): TransactionWithDetails | null {
   const db = getDb();
 
   const existing = db
@@ -460,12 +484,7 @@ export function updateTransaction(
   `,
     )
     .get(id) as
-    | {
-        id: string;
-        kind: TransactionKind;
-        amount: number;
-        account_type: AccountType;
-      }
+    | { id: string; kind: TransactionKind; amount: number; account_type: AccountType }
     | undefined;
 
   if (!existing) {
@@ -481,6 +500,7 @@ export function updateTransaction(
           nextKind,
         )
       : undefined;
+  const nextTagIds = updates.tag_ids !== undefined ? assertActiveTags(updates.tag_ids) : undefined;
   const setClauses: string[] = [];
   const params: unknown[] = [];
 
@@ -499,19 +519,13 @@ export function updateTransaction(
   if (updates.kind !== undefined) {
     setClauses.push("kind = ?");
     params.push(updates.kind);
-    if (
-      (updates.kind === "transfer" || updates.kind === "adjustment") &&
-      updates.subcategory_id === undefined
-    ) {
+    if ((updates.kind === "transfer" || updates.kind === "adjustment") && updates.subcategory_id === undefined) {
       setClauses.push("subcategory_id = ?");
       params.push(null);
     }
   }
   if (updates.subcategory_id !== undefined) {
-    const nextSubcategoryId =
-      nextKind === "transfer" || nextKind === "adjustment"
-        ? null
-        : updates.subcategory_id;
+    const nextSubcategoryId = nextKind === "transfer" || nextKind === "adjustment" ? null : updates.subcategory_id;
     if (nextSubcategoryId) {
       assertActiveSubcategory(nextSubcategoryId);
     }
@@ -526,32 +540,62 @@ export function updateTransaction(
     setClauses.push("ai_suggested = ?");
     params.push(fromBool(updates.ai_suggested));
   }
-  if (setClauses.length === 0) return getTransactionById(id);
 
-  setClauses.push("updated_at = ?");
-  params.push(new Date().toISOString());
-  params.push(id);
+  const updateTransactionAndTags = db.transaction(() => {
+    if (setClauses.length > 0) {
+      setClauses.push("updated_at = ?");
+      params.push(new Date().toISOString());
+      params.push(id);
 
-  db.prepare(
-    `UPDATE transactions SET ${setClauses.join(", ")} WHERE id = ?`,
-  ).run(...params);
+      db.prepare(
+        `UPDATE transactions SET ${setClauses.join(", ")} WHERE id = ?`,
+      ).run(...params);
+    }
+    if (nextTagIds !== undefined) {
+      replaceTransactionTags(id, nextTagIds);
+    }
+  });
 
+  updateTransactionAndTags();
   return getTransactionById(id);
 }
 
 export function bulkUpdateTransactions(
   ids: string[],
-  updates: { kind?: TransactionKind; subcategory_id?: string | null },
+  updates: BulkTransactionUpdateData,
 ): void {
   if (ids.length === 0) return;
 
   const db = getDb();
   const now = new Date().toISOString();
+  const addTagIds = assertActiveTags(updates.add_tag_ids ?? []);
+  const removeTagIds = assertActiveTags(updates.remove_tag_ids ?? []);
+  const addTagSet = new Set(addTagIds);
+
+  for (const tagId of removeTagIds) {
+    if (addTagSet.has(tagId)) {
+      throw new Error("Cannot add and remove the same tag in one bulk update");
+    }
+  }
+
+  const hasTagUpdates = addTagIds.length > 0 || removeTagIds.length > 0;
+  if (updates.kind === undefined && updates.subcategory_id === undefined && !hasTagUpdates) {
+    throw new Error("At least one update field is required");
+  }
 
   const placeholders = ids.map(() => "?").join(", ");
   const params: unknown[] = [];
-
   const setClauses: string[] = [];
+  const updateRows = db
+    .prepare(
+      `
+      SELECT t.id, t.amount, t.kind, a.type AS account_type
+      FROM transactions t
+      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
+      WHERE t.deleted_at IS NULL AND t.id IN (${placeholders})
+    `,
+    )
+    .all(...ids) as { id: string; amount: number; kind: TransactionKind; account_type: AccountType }[];
 
   if (updates.kind !== undefined) {
     const nextKind = updates.kind;
@@ -565,20 +609,6 @@ export function bulkUpdateTransactions(
       assertActiveSubcategory(nextSubcategoryId);
     }
 
-    const rows = db
-      .prepare(
-        `
-        SELECT t.id, t.amount, a.type AS account_type
-        FROM transactions t
-        JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
-        WHERE t.deleted_at IS NULL AND t.id IN (${placeholders})
-      `,
-      )
-      .all(...ids) as {
-      id: string;
-      amount: number;
-      account_type: AccountType;
-    }[];
     const clauses = ["kind = ?", "amount = ?"];
     if (
       nextSubcategoryId !== undefined ||
@@ -593,12 +623,8 @@ export function bulkUpdateTransactions(
       `UPDATE transactions SET ${clauses.join(", ")} WHERE id = ? AND deleted_at IS NULL`,
     );
     const updateAll = db.transaction(() => {
-      for (const row of rows) {
-        const amount = normalizeTransactionAmount(
-          row.amount,
-          row.account_type,
-          nextKind,
-        );
+      for (const row of updateRows) {
+        const amount = normalizeTransactionAmount(row.amount, row.account_type, nextKind);
         const rowParams: unknown[] = [nextKind, amount];
         if (
           nextSubcategoryId !== undefined ||
@@ -609,6 +635,8 @@ export function bulkUpdateTransactions(
         }
         rowParams.push(now, row.id);
         stmt.run(...rowParams);
+        if (addTagIds.length > 0) addTransactionTags(row.id, addTagIds);
+        if (removeTagIds.length > 0) removeTransactionTags(row.id, removeTagIds);
       }
     });
     updateAll();
@@ -616,38 +644,43 @@ export function bulkUpdateTransactions(
   }
 
   if (updates.subcategory_id !== undefined) {
-    const nextSubcategoryId =
-      updates.kind === "transfer" || updates.kind === "adjustment"
-        ? null
-        : updates.subcategory_id;
+    const nextSubcategoryId = updates.subcategory_id;
     if (nextSubcategoryId) {
       assertActiveSubcategory(nextSubcategoryId);
     }
-    if (updates.kind === undefined && nextSubcategoryId !== null) {
-      setClauses.push(
-        "subcategory_id = CASE WHEN kind IN ('transfer', 'adjustment') THEN NULL ELSE ? END",
-      );
+    if (nextSubcategoryId !== null) {
+      setClauses.push("subcategory_id = CASE WHEN kind IN ('transfer', 'adjustment') THEN NULL ELSE ? END");
     } else {
       setClauses.push("subcategory_id = ?");
     }
     params.push(nextSubcategoryId);
   }
 
-  if (setClauses.length === 0) return;
+  const updateAll = db.transaction(() => {
+    if (setClauses.length > 0) {
+      setClauses.push("updated_at = ?");
+      params.push(now);
+      params.push(...ids);
 
-  setClauses.push("updated_at = ?");
-  params.push(now);
-  params.push(...ids);
+      db.prepare(
+        `UPDATE transactions SET ${setClauses.join(", ")}
+         WHERE deleted_at IS NULL
+           AND id IN (${placeholders})
+           AND EXISTS (
+             SELECT 1 FROM accounts a
+             WHERE a.id = transactions.account_id AND a.deleted_at IS NULL
+           )`,
+      ).run(...params);
+    }
+    if (hasTagUpdates) {
+      for (const row of updateRows) {
+        if (addTagIds.length > 0) addTransactionTags(row.id, addTagIds);
+        if (removeTagIds.length > 0) removeTransactionTags(row.id, removeTagIds);
+      }
+    }
+  });
 
-  db.prepare(
-    `UPDATE transactions SET ${setClauses.join(", ")}
-     WHERE deleted_at IS NULL
-       AND id IN (${placeholders})
-       AND EXISTS (
-         SELECT 1 FROM accounts a
-         WHERE a.id = transactions.account_id AND a.deleted_at IS NULL
-       )`,
-  ).run(...params);
+  updateAll();
 }
 
 export function deleteTransaction(id: string): void {
@@ -679,7 +712,7 @@ export function bulkDeleteTransactions(ids: string[]): void {
 
 export function bulkCreateTransactions(
   transactions: CreateTransactionData[],
-): Transaction[] {
+): TransactionWithDetails[] {
   if (transactions.length === 0) return [];
 
   const db = getDb();
@@ -692,10 +725,12 @@ export function bulkCreateTransactions(
 
   const ids: string[] = [];
 
+
   const insertAll = db.transaction(() => {
     for (const data of transactions) {
       const accountType = getActiveAccountType(data.account_id);
       const normalized = normalizeTransactionFields(data, accountType);
+      const tagIds = assertActiveTags(data.tag_ids ?? []);
       if (normalized.subcategory_id) {
         assertActiveSubcategory(normalized.subcategory_id);
       }
@@ -715,19 +750,19 @@ export function bulkCreateTransactions(
         now,
         now,
       );
+      replaceTransactionTags(id, tagIds);
     }
   });
 
   insertAll();
 
-  const placeholders = ids.map(() => "?").join(", ");
-  const rows = db
-    .prepare(
-      `SELECT * FROM transactions WHERE id IN (${placeholders}) ORDER BY date DESC, created_at DESC`,
-    )
-    .all(...ids) as TransactionRow[];
-
-  return rows.map(rowToTransaction);
+  return ids
+    .map((id) => getTransactionById(id))
+    .filter((transaction): transaction is TransactionWithDetails => transaction !== null)
+    .sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return b.created_at.localeCompare(a.created_at);
+    });
 }
 
 export function checkDuplicates(transactions: DuplicateCheckItem[]): boolean[] {

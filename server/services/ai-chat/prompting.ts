@@ -4,6 +4,7 @@ import { getAccounts } from "../accounts.js";
 import { getCategories, getSubcategories } from "../categories.js";
 import { getSpendingGoalsWithDetails } from "../goals.js";
 import { getTransactionsWithDetails } from "../transactions.js";
+import { getTags } from "../tags.js";
 import { getRecentAgentMessagesForPrompt } from "../agent-conversations.js";
 import type {
   AIAction,
@@ -22,6 +23,7 @@ export function compactContext(): AssistantContext {
   const categories = getCategories();
   const subcategories = getSubcategories();
   const goals = getSpendingGoalsWithDetails();
+  const tags = getTags();
 
   return {
     accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })),
@@ -41,6 +43,11 @@ export function compactContext(): AssistantContext {
         (category) => category.id === s.category_id,
       )?.type,
       monthly_goal: s.monthly_goal,
+    })),
+    tags: tags.map((tag) => ({
+      id: tag.id,
+      name: tag.name,
+      type: tag.type,
     })),
     goals: goals.map((g) => ({
       id: g.id,
@@ -111,14 +118,21 @@ Allowed action types:
 - update_category: { id? or current_name, name?, type? }
 - create_subcategory: { name, category_id? or category_name, monthly_goal? }
 - update_subcategory: { id? or current_name, name?, category_id? or category_name, monthly_goal? }
-- create_transaction: { account_id? or account_name, date: "YYYY-MM-DD", name, amount, kind?: "income"|"expense"|"transfer"|"adjustment", subcategory_id? or subcategory_name?, comment? }
-- search_transactions: { searchQuery, account_id? or account_name?, kind?: "income"|"expense"|"transfer"|"adjustment", needsCategory?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit? }
-- update_transaction: { id, date?, name?, amount?, kind?: "income"|"expense"|"transfer"|"adjustment", subcategory_id? or subcategory_name?, comment? }
-- bulk_update_transactions: { searchQuery, account_id? or account_name?, kind?: "income"|"expense"|"transfer"|"adjustment", needsCategory?, subcategory_id? or subcategory_name?, startDate?, endDate?, limit?, updates: { kind?: "income"|"expense"|"transfer"|"adjustment", subcategory_id? or subcategory_name?, comment? } }
+- create_tag: { name, type?: "custom"|"trip"|"event"|"person"|"reimbursable"|"tax", color? }
+- update_tag: { id? or current_name, name?, type?: "custom"|"trip"|"event"|"person"|"reimbursable"|"tax", color? }
+- create_transaction: { account_id? or account_name, date: "YYYY-MM-DD", name, amount, kind?: "income"|"expense"|"transfer"|"adjustment", subcategory_id? or subcategory_name?, comment?, tag_ids? or tag_names? or tags?: [{ name, type?: "custom"|"trip"|"event"|"person"|"reimbursable"|"tax" }] }
+- search_transactions: { searchQuery, account_id? or account_name?, kind?: "income"|"expense"|"transfer"|"adjustment", needsCategory?, subcategory_id? or subcategory_name?, tag_id? or tag_name? or tag_ids? or tag_names?, startDate?, endDate?, limit? }
+- update_transaction: { id, date?, name?, amount?, kind?: "income"|"expense"|"transfer"|"adjustment", subcategory_id? or subcategory_name?, comment?, tag_ids? or tag_names? or tags?, add_tag_ids? or add_tag_names?, remove_tag_ids? or remove_tag_names? }
+- bulk_update_transactions: { searchQuery, account_id? or account_name?, kind?: "income"|"expense"|"transfer"|"adjustment", needsCategory?, subcategory_id? or subcategory_name?, tag_id? or tag_name? or tag_ids? or tag_names?, startDate?, endDate?, limit?, updates: { kind?: "income"|"expense"|"transfer"|"adjustment", subcategory_id? or subcategory_name?, add_tag_ids? or add_tag_names?, remove_tag_ids? or remove_tag_names? } }
 - create_goal: { subcategory_id? or subcategory_name, amount, period: "weekly"|"monthly"|"quarterly"|"annual", start_date: "YYYY-MM-DD", end_date? }
 - update_goal: { id? or subcategory_id? or subcategory_name, amount?, period?, start_date?, end_date? }
 
-Transaction search supports grep-like logic in searchQuery: quoted phrases, parentheses, AND, OR, NOT, |, -term, and fields name:, comment:, account:, category:, subcategory:, amount/date comparisons such as amount>20 and date>=2026-01-01. Examples: "coffee AND NOT starbucks", "(uber OR lyft) AND amount>20", "account:checking AND category:food AND date>=2026-01-01". Any request phrased as find/search/use criteria and then update must include search_transactions followed by update_transaction. Use search_transactions before update_transaction when the user describes a transaction but does not provide its id.
+
+Tag rules:
+- Tags are explicit-only. Use tag fields only when the user says tag/tagged or explicitly names a tag command such as "tag it as Cabo Trip", "add tag Reimbursable", "remove tag Tax", or "for Cabo Trip trip".
+- Do not infer tags from merchants, locations, categories, transaction names, or words like hotel/trip/event/person unless the user explicitly asks for a tag.
+- Prefer existing tag ids from context. If the user explicitly asks for a tag that does not exist, pass tag_names or tags with the requested name/type so the tool can create it. Default tag type is "custom" unless the user's explicit wording specifies trip/event/person/reimbursable/tax.
+Transaction search supports grep-like logic in searchQuery: quoted phrases, parentheses, AND, OR, NOT, |, -term, and fields name:, comment:, account:, category:, subcategory:, tag:, tags:, amount/date comparisons such as amount>20 and date>=2026-01-01. Examples: "coffee AND NOT starbucks", "(uber OR lyft) AND amount>20", "account:checking AND category:food AND tag:reimbursable AND date>=2026-01-01". Any request phrased as find/search/use criteria and then update must include search_transactions followed by update_transaction. Use search_transactions before update_transaction when the user describes a transaction but does not provide its id.
 For requests to update all/every matching transaction, prefer bulk_update_transactions over search_transactions plus many update_transaction actions. For multiple independent criteria, return one bulk_update_transactions action per criterion.
 
 Use today's date ${new Date().toISOString().slice(0, 10)} when the user says today.`;
@@ -130,6 +144,7 @@ export function planningContext(): PlanningContext {
     categories: getCategories(),
     subcategories: getSubcategories(),
     goals: getSpendingGoalsWithDetails(),
+    tags: getTags(),
     recentTransactions: getTransactionsWithDetails({ limit: 25 }),
   };
 }

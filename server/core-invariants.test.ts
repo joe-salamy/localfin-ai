@@ -14,6 +14,8 @@ import {
   getTransactionsWithDetails,
   updateTransaction,
 } from "./services/transactions.js";
+import { createTag, deleteTag } from "./services/tags.js";
+import { getTagSummary } from "./services/dashboard.js";
 import {
   getSuspectTransactionFindings,
   runSuspectTransactionScan,
@@ -63,6 +65,53 @@ function createSubcategoryFixture(): {
     subcategoryId: subcategory.id,
   };
 }
+
+test("tag migration preserves transaction_tags foreign key after transaction rebuild", async (t) => {
+  const dbPath = await useTempDatabase(t, "localfin-tag-migration-test-");
+  const legacyDb = new Database(dbPath);
+  legacyDb.exec(`
+    CREATE TABLE transactions (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer')),
+      subcategory_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL,
+      comment TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      deleted_at TEXT
+    );
+  `);
+  legacyDb.close();
+
+  const database = getDb();
+  const foreignKeys = database
+    .prepare("PRAGMA foreign_key_list(transaction_tags)")
+    .all() as Array<{ table: string }>;
+  assert.ok(
+    foreignKeys.some((foreignKey) => foreignKey.table === "transactions"),
+    "transaction_tags should reference the migrated transactions table",
+  );
+  assert.equal(
+    foreignKeys.some((foreignKey) => foreignKey.table === "transactions_legacy_kind"),
+    false,
+  );
+
+  const account = createAccount({ name: "Checking", type: "asset" });
+  const tag = createTag({ name: "Migration Tag" });
+  const transaction = createTransaction({
+    account_id: account.id,
+    date: "2026-06-10",
+    name: "Tagged After Migration",
+    amount: 12,
+    kind: "expense",
+    tag_ids: [tag.id],
+  });
+
+  assert.deepEqual(transaction.tags.map((item) => item.id), [tag.id]);
+});
 
 test("create transaction normalizes signs by account type and kind", async (t) => {
   await useTempDatabase(t);
@@ -220,12 +269,14 @@ test("updating a categorized transaction to transfer or adjustment clears its su
 test("transaction search treats SQL and LIKE metacharacters as literal parameters", async (t) => {
   await useTempDatabase(t);
   const { assetAccountId } = createSubcategoryFixture();
+  const percentTag = createTag({ name: "100%", type: "custom" });
   createTransaction({
     account_id: assetAccountId,
     date: "2026-05-09",
     name: "100% Legit",
     amount: 10,
     kind: "income",
+    tag_ids: [percentTag.id],
   });
   createTransaction({
     account_id: assetAccountId,
@@ -234,14 +285,11 @@ test("transaction search treats SQL and LIKE metacharacters as literal parameter
     amount: 10,
     kind: "income",
   });
-
-  const compiled = compileTransactionSearch('name:"%_x\' OR 1=1 --"', {
-    transaction: "t",
-  });
-  assert.equal(
-    compiled.clause,
-    "LOWER(COALESCE(t.name, '')) LIKE ? ESCAPE '\\'",
+  const compiled = compileTransactionSearch(
+    'name:"%_x\' OR 1=1 --"',
+    { transaction: "t" },
   );
+  assert.equal(compiled.clause, "LOWER(COALESCE(t.name, '')) LIKE ? ESCAPE '\\'");
   assert.deepEqual(compiled.params, ["%\\%\\_x' or 1=1 --%"]);
 
   const matches = getTransactionsWithDetails({ searchQuery: 'name:"100%"' });
@@ -249,6 +297,153 @@ test("transaction search treats SQL and LIKE metacharacters as literal parameter
     matches.map((transaction) => transaction.name),
     ["100% Legit"],
   );
+
+  const tagMatches = getTransactionsWithDetails({ searchQuery: 'tag:"100%"' });
+  assert.deepEqual(
+    tagMatches.map((transaction) => transaction.name),
+    ["100% Legit"],
+  );
+});
+
+test("transaction tags create, read, replace, filter, search, and delete cleanly", async (t) => {
+  await useTempDatabase(t);
+  const { assetAccountId, subcategoryId } = createSubcategoryFixture();
+  const cabo = createTag({ name: "Cabo Trip", type: "trip" });
+  const reimbursable = createTag({ name: "Reimbursable", type: "reimbursable" });
+
+  const tagged = createTransaction({
+    account_id: assetAccountId,
+    date: "2026-06-01",
+    name: "Cabo Hotel",
+    amount: 1000,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+    tag_ids: [cabo.id, reimbursable.id],
+  });
+  createTransaction({
+    account_id: assetAccountId,
+    date: "2026-06-02",
+    name: "Local Hotel",
+    amount: 200,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+  });
+
+  const filtered = getTransactionsWithDetails({ tagIds: [cabo.id] });
+  assert.deepEqual(filtered.map((transaction) => transaction.id), [tagged.id]);
+  assert.deepEqual(filtered[0]?.tags.map((tag) => tag.name), ["Cabo Trip", "Reimbursable"]);
+
+  const searchMatches = getTransactionsWithDetails({ searchQuery: 'tag:"Cabo Trip"' });
+  assert.deepEqual(searchMatches.map((transaction) => transaction.id), [tagged.id]);
+
+  const updated = updateTransaction(tagged.id, { tag_ids: [reimbursable.id] });
+  assert.deepEqual(updated?.tags.map((tag) => tag.name), ["Reimbursable"]);
+  assert.equal(getTransactionsWithDetails({ tagIds: [cabo.id] }).length, 0);
+
+  deleteTag(reimbursable.id);
+  assert.deepEqual(getTransactionById(tagged.id)?.tags, []);
+});
+
+test("bulk tag edits add and remove without replacing unrelated tags", async (t) => {
+  await useTempDatabase(t);
+  const { assetAccountId, subcategoryId } = createSubcategoryFixture();
+  const cabo = createTag({ name: "Cabo Trip", type: "trip" });
+  const old = createTag({ name: "Old Project" });
+  const keep = createTag({ name: "Keep Me" });
+  const other = createTag({ name: "Other Tag" });
+  const first = createTransaction({
+    account_id: assetAccountId,
+    date: "2026-06-03",
+    name: "Tagged One",
+    amount: 50,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+    tag_ids: [old.id, keep.id],
+  });
+  const second = createTransaction({
+    account_id: assetAccountId,
+    date: "2026-06-04",
+    name: "Tagged Two",
+    amount: 75,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+    tag_ids: [other.id],
+  });
+
+  bulkUpdateTransactions([first.id, second.id], {
+    add_tag_ids: [cabo.id],
+    remove_tag_ids: [old.id],
+  });
+
+  const firstTags = getTransactionById(first.id)?.tags.map((tag) => tag.name).sort();
+  const secondTags = getTransactionById(second.id)?.tags.map((tag) => tag.name).sort();
+  assert.deepEqual(firstTags, ["Cabo Trip", "Keep Me"]);
+  assert.deepEqual(secondTags, ["Cabo Trip", "Other Tag"]);
+});
+
+test("tag summary reports spend, income, net, and category breakdown", async (t) => {
+  await useTempDatabase(t);
+  const account = createAccount({ name: "Checking", type: "asset" });
+  const expenseCategory = createCategory({ name: "Travel", type: "expense" });
+  const expenseSubcategory = createSubcategory({
+    name: "Hotels",
+    category_id: expenseCategory.id,
+  });
+  const incomeCategory = createCategory({ name: "Work", type: "income" });
+  const incomeSubcategory = createSubcategory({
+    name: "Reimbursements",
+    category_id: incomeCategory.id,
+  });
+  const trip = createTag({ name: "Cabo Trip", type: "trip" });
+
+  createTransaction({
+    account_id: account.id,
+    date: "2026-06-05",
+    name: "Cabo Hotel",
+    amount: 100,
+    kind: "expense",
+    subcategory_id: expenseSubcategory.id,
+    tag_ids: [trip.id],
+  });
+  createTransaction({
+    account_id: account.id,
+    date: "2026-06-06",
+    name: "Cabo Reimbursement",
+    amount: 250,
+    kind: "income",
+    subcategory_id: incomeSubcategory.id,
+    tag_ids: [trip.id],
+  });
+  createTransaction({
+    account_id: account.id,
+    date: "2026-06-07",
+    name: "Untagged Control",
+    amount: 40,
+    kind: "expense",
+    subcategory_id: expenseSubcategory.id,
+  });
+
+  const summary = getTagSummary("2026-06-01", "2026-06-30");
+  const tripSummary = summary.find((tag) => tag.tag_id === trip.id);
+  assert.ok(tripSummary);
+  assert.equal(tripSummary.expense_total, 100);
+  assert.equal(tripSummary.income_total, 250);
+  assert.equal(tripSummary.net_total, 150);
+  assert.equal(tripSummary.transaction_count, 2);
+
+  const expenseBreakdown = tripSummary.categories.find(
+    (category) => category.category_id === expenseCategory.id,
+  );
+  const incomeBreakdown = tripSummary.categories.find(
+    (category) => category.category_id === incomeCategory.id,
+  );
+  assert.equal(expenseBreakdown?.expense_total, 100);
+  assert.equal(expenseBreakdown?.income_total, 0);
+  assert.equal(incomeBreakdown?.expense_total, 0);
+  assert.equal(incomeBreakdown?.income_total, 250);
+
+  const filteredSummary = getTagSummary("2026-06-01", "2026-06-30", [trip.id]);
+  assert.deepEqual(filteredSummary.map((tag) => tag.tag_id), [trip.id]);
 });
 
 test("database migration allows adjustment kind and absorbs legacy initial balance transactions", async (t) => {
@@ -401,21 +596,9 @@ test("suspect transaction scan persists explainable duplicate, flagged, and miss
 
   assert.equal(result.run.total_scanned, 3);
   assert.equal(result.findings.length, 3);
-  assert.ok(
-    result.findings.some((finding) =>
-      finding.reason_codes.includes("exact_duplicate"),
-    ),
-  );
-  assert.ok(
-    result.findings.some((finding) =>
-      finding.reason_codes.includes("flagged_word"),
-    ),
-  );
-  assert.ok(
-    result.findings.some((finding) =>
-      finding.reason_codes.includes("missing_category"),
-    ),
-  );
+  assert.ok(result.findings.some((finding) => finding.reason_codes.includes("exact_duplicate")));
+  assert.ok(result.findings.some((finding) => finding.reason_codes.includes("flagged_word")));
+  assert.ok(result.findings.some((finding) => finding.reason_codes.includes("missing_category")));
 
   const openFindings = getSuspectTransactionFindings({ status: "open" });
   assert.equal(openFindings.length, 3);
@@ -457,16 +640,12 @@ test("suspect transaction scan detects robust amount outliers and ignores soft-d
     .run("2026-04-12T00:00:00.000Z", deleted.id);
 
   const result = runSuspectTransactionScan({ flaggedWords: ["fee"] });
-  const outlierFinding = result.findings.find(
-    (finding) => finding.transaction_id === outlier.id,
-  );
+  const outlierFinding = result.findings.find((finding) => finding.transaction_id === outlier.id);
 
   assert.ok(outlierFinding);
   assert.ok(outlierFinding.reason_codes.includes("large_amount_outlier"));
   assert.ok(outlierFinding.reason_codes.includes("merchant_amount_outlier"));
-  assert.ok(
-    result.findings.every((finding) => finding.transaction_id !== deleted.id),
-  );
+  assert.ok(result.findings.every((finding) => finding.transaction_id !== deleted.id));
 });
 
 test("suspect finding status updates persist", async (t) => {
@@ -484,16 +663,10 @@ test("suspect finding status updates persist", async (t) => {
   const finding = result.findings[0];
   assert.ok(finding);
 
-  const updated = updateSuspectTransactionFindingStatus(
-    finding.id,
-    "dismissed",
-  );
+  const updated = updateSuspectTransactionFindingStatus(finding.id, "dismissed");
   assert.equal(updated?.status, "dismissed");
   assert.equal(getSuspectTransactionFindings({ status: "open" }).length, 0);
-  assert.equal(
-    getSuspectTransactionFindings({ status: "dismissed" }).length,
-    1,
-  );
+  assert.equal(getSuspectTransactionFindings({ status: "dismissed" }).length, 1);
 });
 
 test("suspect scan carries dismissed findings forward on later scans", async (t) => {
@@ -508,16 +681,12 @@ test("suspect scan carries dismissed findings forward on later scans", async (t)
   });
 
   const firstRun = runSuspectTransactionScan({ flaggedWords: ["fee"] });
-  const finding = firstRun.findings.find((item) =>
-    item.reason_codes.includes("flagged_word"),
-  );
+  const finding = firstRun.findings.find((item) => item.reason_codes.includes("flagged_word"));
   assert.ok(finding);
 
   updateSuspectTransactionFindingStatus(finding.id, "dismissed");
   const secondRun = runSuspectTransactionScan({ flaggedWords: ["fee"] });
-  const repeatedFinding = secondRun.findings.find(
-    (item) => item.transaction_id === finding.transaction_id,
-  );
+  const repeatedFinding = secondRun.findings.find((item) => item.transaction_id === finding.transaction_id);
 
   assert.equal(repeatedFinding?.status, "dismissed");
   assert.equal(getSuspectTransactionFindings({ status: "open" }).length, 0);

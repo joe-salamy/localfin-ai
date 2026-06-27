@@ -1,51 +1,51 @@
-import { useCallback, useRef, useState } from "react";
-import { format, subDays } from "date-fns";
-import { TrendingUp, TrendingDown, Wallet } from "lucide-react";
-import { useDashboard } from "@/hooks/useDashboard";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { AccountSummaryTable } from "@/components/features/AccountSummary";
-import { CategorySummaryTable } from "@/components/features/CategorySummary";
-import { NetWorthChart } from "@/components/features/NetWorthChart";
-import { SankeyDiagram } from "@/components/features/SankeyDiagram";
-import { formatCurrency, cn } from "@/lib/utils";
-import { DATE_FORMAT, DEFAULT_DATE_RANGE_DAYS } from "@/config/constants";
-import { dateRangePresets, type DateRangePreset } from "@/lib/dateRangePresets";
-import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
-import { useShortcutMetadata } from "@/features/shortcuts/hooks";
-import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
-import type { CommandId } from "@/features/shortcuts/commands";
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { format, subDays } from 'date-fns';
+import { TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { useDashboard } from '@/hooks/useDashboard';
+import { useTags } from '@/hooks/useTags';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { AccountSummaryTable } from '@/components/features/AccountSummary';
+import { CategorySummaryTable } from '@/components/features/CategorySummary';
+import { TagSummaryTable } from '@/components/features/TagSummary';
+import { NetWorthChart } from '@/components/features/NetWorthChart';
+import { SankeyDiagram } from '@/components/features/SankeyDiagram';
+import { MultiSelect } from '@/components/ui/MultiSelect';
+import { formatCurrency, cn } from '@/lib/utils';
+import { DATE_FORMAT, DEFAULT_DATE_RANGE_DAYS } from '@/config/constants';
+import { dateRangePresets, type DateRangePreset } from '@/lib/dateRangePresets';
+import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
+import { useShortcutMetadata } from '@/features/shortcuts/hooks';
+import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
+import type { CommandId } from '@/features/shortcuts/commands';
 
-const ALL_TIME_START_DATE = "0001-01-01";
+const ALL_TIME_START_DATE = '0001-01-01';
 
 export function DashboardPage() {
   const today = format(new Date(), DATE_FORMAT);
-  const defaultStart = format(
-    subDays(new Date(), DEFAULT_DATE_RANGE_DAYS),
-    DATE_FORMAT,
-  );
+  const defaultStart = format(subDays(new Date(), DEFAULT_DATE_RANGE_DAYS), DATE_FORMAT);
 
   const [startInput, setStartInput] = useState(defaultStart);
   const [endInput, setEndInput] = useState(today);
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(today);
+  const [tagIds, setTagIds] = useState<string[]>([]);
   const startInputRef = useRef<HTMLInputElement>(null);
   const endInputRef = useRef<HTMLInputElement>(null);
 
-  useShortcutScope("dashboard");
+  useShortcutScope('dashboard');
 
   const dashboardStartDate = startDate || ALL_TIME_START_DATE;
   const dashboardEndDate = endDate || today;
 
-  const {
-    accountSummary,
-    netWorth,
-    categorySummary,
-    metrics,
-    netWorthChart,
-    sankeyChart,
-    isLoading,
-  } = useDashboard(dashboardStartDate, dashboardEndDate);
+  const { tags } = useTags();
+  const tagOptions = useMemo(() => tags.map((tag) => ({ value: tag.id, label: tag.name })), [tags]);
+  const dashboardFilters = useMemo(
+    () => ({ tagIds: tagIds.length > 0 ? tagIds : undefined }),
+    [tagIds],
+  );
+  const { accountSummary, netWorth, categorySummary, tagSummary, metrics, netWorthChart, sankeyChart, isLoading } =
+    useDashboard(dashboardStartDate, dashboardEndDate, dashboardFilters);
 
   const applyDates = useCallback(() => {
     setStartDate(startInput);
@@ -60,69 +60,31 @@ export function DashboardPage() {
     setEndDate(range.endDate);
   }, []);
 
-  useShortcut("dashboard.applyDateRange", applyDates);
-  useShortcut(
-    "dashboard.focusStartDate",
-    useCallback(() => startInputRef.current?.focus(), []),
-  );
-  useShortcut(
-    "dashboard.focusEndDate",
-    useCallback(() => endInputRef.current?.focus(), []),
-  );
+  useShortcut('dashboard.applyDateRange', applyDates);
+  useShortcut('dashboard.focusStartDate', useCallback(() => startInputRef.current?.focus(), []));
+  useShortcut('dashboard.focusEndDate', useCallback(() => endInputRef.current?.focus(), []));
 
-  const applyPreset1 = useCallback(
-    () => dateRangePresets[0] && applyDateRangePreset(dateRangePresets[0]),
-    [applyDateRangePreset],
-  );
-  const applyPreset2 = useCallback(
-    () => dateRangePresets[1] && applyDateRangePreset(dateRangePresets[1]),
-    [applyDateRangePreset],
-  );
-  const applyPreset3 = useCallback(
-    () => dateRangePresets[2] && applyDateRangePreset(dateRangePresets[2]),
-    [applyDateRangePreset],
-  );
-  const applyPreset4 = useCallback(
-    () => dateRangePresets[3] && applyDateRangePreset(dateRangePresets[3]),
-    [applyDateRangePreset],
-  );
-  const applyPreset5 = useCallback(
-    () => dateRangePresets[4] && applyDateRangePreset(dateRangePresets[4]),
-    [applyDateRangePreset],
-  );
-  const applyPreset6 = useCallback(
-    () => dateRangePresets[5] && applyDateRangePreset(dateRangePresets[5]),
-    [applyDateRangePreset],
-  );
-  useShortcut("dashboard.preset1", applyPreset1, {
-    enabled: dateRangePresets.length > 0,
-  });
-  useShortcut("dashboard.preset2", applyPreset2, {
-    enabled: dateRangePresets.length > 1,
-  });
-  useShortcut("dashboard.preset3", applyPreset3, {
-    enabled: dateRangePresets.length > 2,
-  });
-  useShortcut("dashboard.preset4", applyPreset4, {
-    enabled: dateRangePresets.length > 3,
-  });
-  useShortcut("dashboard.preset5", applyPreset5, {
-    enabled: dateRangePresets.length > 4,
-  });
-  useShortcut("dashboard.preset6", applyPreset6, {
-    enabled: dateRangePresets.length > 5,
-  });
+  const applyPreset1 = useCallback(() => dateRangePresets[0] && applyDateRangePreset(dateRangePresets[0]), [applyDateRangePreset]);
+  const applyPreset2 = useCallback(() => dateRangePresets[1] && applyDateRangePreset(dateRangePresets[1]), [applyDateRangePreset]);
+  const applyPreset3 = useCallback(() => dateRangePresets[2] && applyDateRangePreset(dateRangePresets[2]), [applyDateRangePreset]);
+  const applyPreset4 = useCallback(() => dateRangePresets[3] && applyDateRangePreset(dateRangePresets[3]), [applyDateRangePreset]);
+  const applyPreset5 = useCallback(() => dateRangePresets[4] && applyDateRangePreset(dateRangePresets[4]), [applyDateRangePreset]);
+  const applyPreset6 = useCallback(() => dateRangePresets[5] && applyDateRangePreset(dateRangePresets[5]), [applyDateRangePreset]);
+  useShortcut('dashboard.preset1', applyPreset1, { enabled: dateRangePresets.length > 0 });
+  useShortcut('dashboard.preset2', applyPreset2, { enabled: dateRangePresets.length > 1 });
+  useShortcut('dashboard.preset3', applyPreset3, { enabled: dateRangePresets.length > 2 });
+  useShortcut('dashboard.preset4', applyPreset4, { enabled: dateRangePresets.length > 3 });
+  useShortcut('dashboard.preset5', applyPreset5, { enabled: dateRangePresets.length > 4 });
+  useShortcut('dashboard.preset6', applyPreset6, { enabled: dateRangePresets.length > 5 });
 
-  const applyShortcut = useShortcutMetadata("dashboard.applyDateRange");
+  const applyShortcut = useShortcutMetadata('dashboard.applyDateRange');
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-muted-foreground">
-              Start
-            </label>
+            <label className="block text-xs font-medium text-muted-foreground">Start</label>
             <input
               ref={startInputRef}
               type="date"
@@ -132,9 +94,7 @@ export function DashboardPage() {
             />
           </div>
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-muted-foreground">
-              End
-            </label>
+            <label className="block text-xs font-medium text-muted-foreground">End</label>
             <input
               ref={endInputRef}
               type="date"
@@ -152,12 +112,21 @@ export function DashboardPage() {
             Apply
             <ShortcutHint commandId="dashboard.applyDateRange" />
           </Button>
+          <div className="w-48 space-y-1">
+            <label className="block text-xs font-medium text-muted-foreground">Tags</label>
+            <MultiSelect
+              value={tagIds}
+              onChange={setTagIds}
+              options={tagOptions}
+              allLabel="All Tags"
+              selectedLabel="tags"
+            />
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {dateRangePresets.map((preset, index) => {
             const range = preset.getRange();
-            const isActive =
-              startDate === range.startDate && endDate === range.endDate;
+            const isActive = startDate === range.startDate && endDate === range.endDate;
             const commandId = `dashboard.preset${index + 1}` as CommandId;
 
             return (
@@ -165,7 +134,7 @@ export function DashboardPage() {
                 key={preset.id}
                 type="button"
                 size="sm"
-                variant={isActive ? "primary" : "secondary"}
+                variant={isActive ? 'primary' : 'secondary'}
                 onClick={() => applyDateRangePreset(preset)}
                 className="h-7 px-2 text-xs"
               >
@@ -176,6 +145,9 @@ export function DashboardPage() {
           })}
         </div>
       </div>
+        <p className="text-xs text-muted-foreground">
+          Filters spend/income summaries, category summary, tag summary, and money flow. Account balances and net worth stay unfiltered.
+        </p>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
@@ -199,9 +171,7 @@ export function DashboardPage() {
               label="Net Change"
               value={metrics?.netChange ?? 0}
               icon={<Wallet className="h-4 w-4" />}
-              colorClass={
-                (metrics?.netChange ?? 0) >= 0 ? "text-income" : "text-expense"
-              }
+              colorClass={(metrics?.netChange ?? 0) >= 0 ? 'text-income' : 'text-expense'}
             />
           </div>
 
@@ -211,10 +181,17 @@ export function DashboardPage() {
               <CardTitle>Account Summary</CardTitle>
             </CardHeader>
             <CardContent>
-              <AccountSummaryTable
-                accounts={accountSummary}
-                netWorth={netWorth}
-              />
+              <AccountSummaryTable accounts={accountSummary} netWorth={netWorth} />
+            </CardContent>
+          </Card>
+
+          {/* Tag Summary */}
+          <Card>
+            <CardHeader className="mb-2">
+              <CardTitle>Tag Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TagSummaryTable tags={tagSummary} />
             </CardContent>
           </Card>
 
@@ -247,9 +224,7 @@ export function DashboardPage() {
               {sankeyChart ? (
                 <SankeyDiagram data={sankeyChart} />
               ) : (
-                <p className="text-sm text-muted-foreground py-4">
-                  No flow data available.
-                </p>
+                <p className="text-sm text-muted-foreground py-4">No flow data available.</p>
               )}
             </CardContent>
           </Card>
@@ -276,12 +251,7 @@ function MetricCard({
         <span className="text-xs text-muted-foreground">{label}</span>
         {icon}
       </div>
-      <p
-        className={cn(
-          "text-lg font-semibold font-mono tabular-nums mt-1",
-          colorClass,
-        )}
-      >
+      <p className={cn('text-lg font-semibold font-mono tabular-nums mt-1', colorClass)}>
         {formatCurrency(value)}
       </p>
     </Card>

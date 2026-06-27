@@ -13,16 +13,25 @@ import {
   updateSpendingGoal,
 } from "../goals.js";
 import {
+  bulkUpdateTransactions,
   createTransaction,
+  getTransactionById,
   getTransactionsWithDetails,
   updateTransaction,
 } from "../transactions.js";
-import type { CreateTransactionData } from "../../../src/types/index.js";
-import type { AIAction, ExecutedAction } from "./types.js";
 import {
-  DEFAULT_BULK_TRANSACTION_LIMIT,
-  MAX_BULK_TRANSACTION_LIMIT,
-} from "./constants.js";
+  createTag,
+  getTags,
+  resolveOrCreateTagsByName,
+  updateTag,
+} from "../tags.js";
+import type {
+  CreateTransactionData,
+  Tag,
+  TagType,
+} from "../../../src/types/index.js";
+import type { AIAction, ExecutedAction } from "./types.js";
+import { DEFAULT_BULK_TRANSACTION_LIMIT, MAX_BULK_TRANSACTION_LIMIT } from "./constants.js";
 import {
   asNullableString,
   asNumber,
@@ -35,6 +44,8 @@ import {
   optionalIsoDate,
   optionalNullableIsoDate,
   optionalNonnegativeNumber,
+  normalizeStringList,
+  optionalTagType,
   optionalPositiveNumber,
   optionalTransactionKind,
   requireAccountType,
@@ -51,18 +62,105 @@ import {
   resolveRequestedCategory,
   resolveRequestedSubcategory,
   resolveSubcategory,
+  resolveTag,
 } from "./entity-resolution.js";
 import {
   categoryTypeForSubcategory,
   transactionSearchFilters,
-  transactionUpdateInput,
 } from "./action-preparation.js";
+
+function tagObjectRequests(
+  value: unknown,
+  actionType: string,
+): Array<{ name: string; type?: TagType }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return undefined;
+      const record = item as Record<string, unknown>;
+      const name = asString(record.name);
+      if (!name) return undefined;
+      const type = optionalTagType(record.type, actionType);
+      return {
+        name,
+        ...(type ? { type } : {}),
+      };
+    })
+    .filter((item): item is { name: string; type?: TagType } => Boolean(item));
+}
+
+function resolveExistingTagIds(
+  input: Record<string, unknown>,
+  tags: Tag[],
+  actionType: string,
+  idFields: string[],
+  nameFields: string[],
+): string[] {
+  const ids = idFields.flatMap((field) => normalizeStringList(input[field]));
+  const names = nameFields.flatMap((field) => normalizeStringList(input[field]));
+  const resolvedNames = names.map((name) =>
+    resolveTag({ tag_name: name, tag_type: input.tag_type }, tags) ??
+    resolveOrCreateTagsByName([
+      { name, type: optionalTagType(input.tag_type, actionType) },
+    ])[0]?.id,
+  );
+  return [...ids, ...resolvedNames].filter((id): id is string => Boolean(id));
+}
+
+function explicitTagIds(
+  input: Record<string, unknown>,
+  tags: Tag[],
+  actionType: string,
+  idFields: string[],
+  nameFields: string[],
+): string[] {
+  const ids = resolveExistingTagIds(
+    input,
+    tags,
+    actionType,
+    idFields,
+    nameFields,
+  );
+  const objects = tagObjectRequests(input.tags, actionType);
+  const objectIds =
+    objects.length > 0
+      ? resolveOrCreateTagsByName(objects).map((tag) => tag.id)
+      : [];
+  return [...ids, ...objectIds];
+}
+
+function existingTagIds(
+  input: Record<string, unknown>,
+  tags: Tag[],
+  actionType: string,
+  idFields: string[],
+  nameFields: string[],
+): string[] {
+  const ids = idFields.flatMap((field) => normalizeStringList(input[field]));
+  const names = nameFields.flatMap((field) => normalizeStringList(input[field]));
+  const resolvedNames = names.map((name) => {
+    const id = resolveTag({ tag_name: name, tag_type: input.tag_type }, tags);
+    if (!id) throw new Error(`${actionType} references an unknown tag "${name}"`);
+    return id;
+  });
+  return [...ids, ...resolvedNames];
+}
+
+function assertNoOverlappingTagEdits(addTagIds: string[], removeTagIds: string[]): void {
+  const addTagSet = new Set(addTagIds);
+  for (const tagId of removeTagIds) {
+    if (addTagSet.has(tagId)) {
+      throw new Error("Cannot add and remove the same tag in one bulk update");
+    }
+  }
+}
 
 export function executeAction(action: AIAction): ExecutedAction {
   const accounts = getAccounts();
   const categories = getCategories();
   const subcategories = getSubcategories();
   const goals = getSpendingGoalsWithDetails();
+  const tags = getTags();
   const input = action.input;
 
   try {
@@ -88,10 +186,11 @@ export function executeAction(action: AIAction): ExecutedAction {
       }
       case "update_account": {
         const id = asString(input.id) ?? resolveAccount(input, accounts);
-        if (!id)
+        if (!id) {
           throw new Error(
             "update_account requires id or existing account name",
           );
+        }
         if (!hasAnyField(input, ["name", "type", "initial_balance"])) {
           throw new Error(
             "update_account requires at least one field to update",
@@ -143,10 +242,11 @@ export function executeAction(action: AIAction): ExecutedAction {
           categories,
           action.type,
         );
-        if (!name || !categoryId)
+        if (!name || !categoryId) {
           throw new Error(
             "create_subcategory requires name and category_id or category_name",
           );
+        }
         return {
           ...action,
           status: "success",
@@ -175,8 +275,9 @@ export function executeAction(action: AIAction): ExecutedAction {
             },
             subcategories,
           );
-        if (!id)
+        if (!id) {
           throw new Error("update_subcategory requires id or current_name");
+        }
         if (
           !hasAnyField(input, [
             "name",
@@ -207,6 +308,46 @@ export function executeAction(action: AIAction): ExecutedAction {
           }),
         };
       }
+      case "create_tag": {
+        const name = asString(input.name);
+        if (!name) throw new Error("create_tag requires name");
+        return {
+          ...action,
+          status: "success",
+          result: createTag({
+            name,
+            type: optionalTagType(input.type, action.type),
+            color: asNullableString(input.color) ?? null,
+          }),
+        };
+      }
+      case "update_tag": {
+        const id =
+          asString(input.id) ??
+          resolveTag(
+            {
+              tag_name:
+                asString(input.current_name) ??
+                asString(input.tag_name) ??
+                asString(input.name),
+              tag_type: asString(input.current_type) ?? asString(input.tag_type),
+            },
+            tags,
+          );
+        if (!id) throw new Error("update_tag requires id or current_name");
+        if (!hasAnyField(input, ["name", "type", "color"])) {
+          throw new Error("update_tag requires at least one field to update");
+        }
+        return {
+          ...action,
+          status: "success",
+          result: updateTag(id, {
+            name: asString(input.name),
+            type: optionalTagType(input.type, action.type),
+            color: asNullableString(input.color),
+          }),
+        };
+      }
       case "create_transaction": {
         const accountId = resolveRequestedAccount(input, accounts, action.type);
         const date = requireIsoDate(input.date, "date", action.type);
@@ -232,6 +373,13 @@ export function executeAction(action: AIAction): ExecutedAction {
           kind,
           subcategory_id: subcategoryId,
           comment: asNullableString(input.comment) ?? null,
+          tag_ids: explicitTagIds(
+            input,
+            tags,
+            action.type,
+            ["tag_ids", "tag_id"],
+            ["tag_names", "tag_name"],
+          ),
         };
         return {
           ...action,
@@ -245,6 +393,7 @@ export function executeAction(action: AIAction): ExecutedAction {
             input,
             accounts,
             subcategories,
+            tags,
             action.type,
             25,
             100,
@@ -264,6 +413,11 @@ export function executeAction(action: AIAction): ExecutedAction {
             account_name: transaction.account_name,
             category_name: transaction.category_name,
             subcategory_name: transaction.subcategory_name,
+            tags: transaction.tags.map((tag) => ({
+              id: tag.id,
+              name: tag.name,
+              type: tag.type,
+            })),
             comment: transaction.comment,
           })),
         };
@@ -273,24 +427,90 @@ export function executeAction(action: AIAction): ExecutedAction {
           input,
           accounts,
           subcategories,
+          tags,
           action.type,
           DEFAULT_BULK_TRANSACTION_LIMIT,
           MAX_BULK_TRANSACTION_LIMIT,
         );
-        const updates = transactionUpdateInput(
-          input,
-          subcategories,
+        const updateInput =
+          input.updates && typeof input.updates === "object"
+            ? (input.updates as Record<string, unknown>)
+            : input;
+        const hasSubcategoryUpdate = hasAnyField(updateInput, [
+          "subcategory_id",
+          "subcategory_name",
+        ]);
+        const hasKindUpdate = hasAnyField(updateInput, ["kind"]);
+        const hasCommentUpdate = hasAnyField(updateInput, ["comment"]);
+        if (
+          !hasKindUpdate &&
+          !hasSubcategoryUpdate &&
+          !hasCommentUpdate &&
+          !hasAnyField(updateInput, [
+            "add_tag_ids",
+            "add_tag_id",
+            "add_tag_names",
+            "add_tag_name",
+            "remove_tag_ids",
+            "remove_tag_id",
+            "remove_tag_names",
+            "remove_tag_name",
+          ])
+        ) {
+          throw new Error(`${action.type} requires at least one update field`);
+        }
+        const filtersResult = getTransactionsWithDetails(filters);
+        const transactionIds = filtersResult.map((transaction) => transaction.id);
+        const kind = hasKindUpdate
+          ? optionalTransactionKind(updateInput.kind, action.type)
+          : undefined;
+        const subcategoryId = hasSubcategoryUpdate
+          ? updateInput.subcategory_id === null
+            ? null
+            : resolveRequestedSubcategory(
+                updateInput,
+                subcategories,
+                action.type,
+              )
+          : undefined;
+        const addTagIds = resolveExistingTagIds(
+          updateInput,
+          tags,
           action.type,
+          ["add_tag_ids", "add_tag_id"],
+          ["add_tag_names", "add_tag_name"],
         );
-        const transactions = getTransactionsWithDetails(filters);
-        const transactionIds = transactions.map(
-          (transaction) => transaction.id,
+        const removeTagIds = existingTagIds(
+          updateInput,
+          tags,
+          action.type,
+          ["remove_tag_ids", "remove_tag_id"],
+          ["remove_tag_names", "remove_tag_name"],
         );
-        let updatedCount = 0;
+        assertNoOverlappingTagEdits(addTagIds, removeTagIds);
 
-        for (const transaction of transactions) {
-          updateTransaction(transaction.id, updates);
-          updatedCount += 1;
+        if (hasCommentUpdate) {
+          for (const transaction of filtersResult) {
+            const currentIds = transaction.tags.map((tag) => tag.id);
+            const nextTagIds = new Set(currentIds);
+            for (const tagId of addTagIds) nextTagIds.add(tagId);
+            for (const tagId of removeTagIds) nextTagIds.delete(tagId);
+            updateTransaction(transaction.id, {
+              ...(hasKindUpdate ? { kind } : {}),
+              ...(hasSubcategoryUpdate ? { subcategory_id: subcategoryId } : {}),
+              comment: asNullableString(updateInput.comment) ?? null,
+              ...(addTagIds.length > 0 || removeTagIds.length > 0
+                ? { tag_ids: Array.from(nextTagIds) }
+                : {}),
+            });
+          }
+        } else {
+          bulkUpdateTransactions(transactionIds, {
+            ...(hasKindUpdate ? { kind } : {}),
+            ...(hasSubcategoryUpdate ? { subcategory_id: subcategoryId } : {}),
+            ...(addTagIds.length > 0 ? { add_tag_ids: addTagIds } : {}),
+            ...(removeTagIds.length > 0 ? { remove_tag_ids: removeTagIds } : {}),
+          });
         }
 
         return {
@@ -298,7 +518,7 @@ export function executeAction(action: AIAction): ExecutedAction {
           status: "success",
           result: {
             matched_count: transactionIds.length,
-            updated_count: updatedCount,
+            updated_count: transactionIds.length,
             transaction_ids: transactionIds,
           },
         };
@@ -306,6 +526,25 @@ export function executeAction(action: AIAction): ExecutedAction {
       case "update_transaction": {
         const id = asString(input.id);
         if (!id) throw new Error("update_transaction requires id");
+        const hasReplacementTags = hasAnyField(input, [
+          "tag_ids",
+          "tag_id",
+          "tag_names",
+          "tag_name",
+          "tags",
+        ]);
+        const hasAddTags = hasAnyField(input, [
+          "add_tag_ids",
+          "add_tag_id",
+          "add_tag_names",
+          "add_tag_name",
+        ]);
+        const hasRemoveTags = hasAnyField(input, [
+          "remove_tag_ids",
+          "remove_tag_id",
+          "remove_tag_names",
+          "remove_tag_name",
+        ]);
         if (
           !hasAnyField(input, [
             "date",
@@ -315,7 +554,10 @@ export function executeAction(action: AIAction): ExecutedAction {
             "subcategory_id",
             "subcategory_name",
             "comment",
-          ])
+          ]) &&
+          !hasReplacementTags &&
+          !hasAddTags &&
+          !hasRemoveTags
         ) {
           throw new Error(
             "update_transaction requires at least one field to update",
@@ -325,16 +567,64 @@ export function executeAction(action: AIAction): ExecutedAction {
           input.subcategory_id === null
             ? null
             : resolveRequestedSubcategory(input, subcategories, action.type);
+        const date = optionalIsoDate(input.date, "date", action.type);
+        const name = asString(input.name);
+        const amount = asNumber(input.amount);
+        const kind = optionalTransactionKind(input.kind, action.type);
+        const comment = asNullableString(input.comment);
+        const existingTransaction = getTransactionById(id);
+        if (!existingTransaction) {
+          throw new Error(`Transaction with id "${id}" not found`);
+        }
+        const replacementTagIds = hasReplacementTags
+          ? explicitTagIds(
+              input,
+              tags,
+              action.type,
+              ["tag_ids", "tag_id"],
+              ["tag_names", "tag_name"],
+            )
+          : undefined;
+        const addTagIds = hasAddTags
+          ? resolveExistingTagIds(
+              input,
+              tags,
+              action.type,
+              ["add_tag_ids", "add_tag_id"],
+              ["add_tag_names", "add_tag_name"],
+            )
+          : [];
+        const removeTagIds = hasRemoveTags
+          ? existingTagIds(
+              input,
+              tags,
+              action.type,
+              ["remove_tag_ids", "remove_tag_id"],
+              ["remove_tag_names", "remove_tag_name"],
+            )
+          : [];
+        const nextTagIds =
+          replacementTagIds ??
+          (hasAddTags || hasRemoveTags
+            ? Array.from(
+                new Set([
+                  ...existingTransaction.tags.map((tag) => tag.id),
+                  ...addTagIds,
+                ]),
+              ).filter((tagId) => !removeTagIds.includes(tagId))
+            : undefined);
+
         return {
           ...action,
           status: "success",
           result: updateTransaction(id, {
-            date: optionalIsoDate(input.date, "date", action.type),
-            name: asString(input.name),
-            amount: asNumber(input.amount),
-            kind: optionalTransactionKind(input.kind, action.type),
+            date,
+            name,
+            amount,
+            kind,
             subcategory_id: subcategoryId,
-            comment: asNullableString(input.comment),
+            comment,
+            ...(nextTagIds ? { tag_ids: nextTagIds } : {}),
           }),
         };
       }

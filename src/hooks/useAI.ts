@@ -4,11 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiDelete, apiGet, apiPost, apiStream } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import { readAssistantSettings } from "@/features/assistant-settings/storage";
-import type {
-  AccountType,
-  EnrichedTransaction,
-  TransactionKind,
-} from "@/types";
+import type { AccountType, EnrichedTransaction, TransactionKind } from "@/types";
 
 interface CategorizeTransaction {
   name: string;
@@ -92,10 +88,7 @@ export interface AgentMessage {
   created_at: string;
 }
 
-export type PlannedChatAction = Omit<
-  ChatActionResult,
-  "status" | "result" | "error"
->;
+export type PlannedChatAction = Omit<ChatActionResult, "status" | "result" | "error">;
 
 export type ChatStreamEvent =
   | { type: "started"; conversationId: string; requestId: string }
@@ -112,23 +105,19 @@ export type ChatStreamEvent =
 export function useAI() {
   const queryClient = useQueryClient();
 
-  const withAssistantSettings = useCallback(
-    (data: ChatRequest): ChatRequest => ({
-      ...data,
-      maxAssistantTurns:
-        data.maxAssistantTurns ?? readAssistantSettings().maxAssistantTurns,
-    }),
-    [],
-  );
+  const withAssistantSettings = useCallback((data: ChatRequest): ChatRequest => ({
+    ...data,
+    maxAssistantTurns:
+      data.maxAssistantTurns ?? readAssistantSettings().maxAssistantTurns,
+  }), []);
 
   const invalidateFinanceData = useCallback(
     () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.subcategories.all,
-        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.subcategories.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.tags.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
       ]),
@@ -153,9 +142,7 @@ export function useAI() {
     onSuccess: () =>
       Promise.all([
         invalidateFinanceData(),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.ai.conversations(),
-        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.ai.conversations() }),
       ]),
   });
 
@@ -177,9 +164,7 @@ export function useAI() {
       apiDelete<{ id: string }>(`/ai/conversations/${conversationId}`),
     onSuccess: (_data, conversationId) =>
       Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.ai.conversations(),
-        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.ai.conversations() }),
         queryClient.removeQueries({
           queryKey: queryKeys.ai.conversationMessages(conversationId),
         }),
@@ -229,9 +214,7 @@ export function useAI() {
               queryKey: queryKeys.ai.conversations(),
             });
             queryClient.removeQueries({
-              queryKey: queryKeys.ai.conversationMessages(
-                event.data.conversationId,
-              ),
+              queryKey: queryKeys.ai.conversationMessages(event.data.conversationId),
             });
           }
         },

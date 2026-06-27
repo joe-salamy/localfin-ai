@@ -1,18 +1,6 @@
-import type {
-  Account,
-  Category,
-  CategoryType,
-  Subcategory,
-  TransactionKind,
-  TransactionWithDetails,
-} from "../../../src/types/index.js";
+import type { Account, Category, CategoryType, Subcategory, Tag, TransactionKind, TransactionWithDetails } from "../../../src/types/index.js";
 import type { getTransactionsWithDetails } from "../transactions.js";
-import type {
-  AIAction,
-  PlanningContext,
-  SearchActionResult,
-  ToolLoopState,
-} from "./types.js";
+import type { AIAction, PlanningContext, SearchActionResult, ToolLoopState } from "./types.js";
 import {
   asNumber,
   asNullableString,
@@ -24,6 +12,7 @@ import {
   optionalNonnegativeNumber,
   optionalNullableIsoDate,
   optionalPositiveInteger,
+  normalizeStringList,
   optionalTransactionKind,
   requireGoalPeriod,
   requireIsoDate,
@@ -33,6 +22,7 @@ import {
   findByName,
   resolveRequestedAccount,
   resolveRequestedSubcategory,
+  resolveRequestedTag,
   resolveSubcategory,
 } from "./entity-resolution.js";
 
@@ -40,6 +30,7 @@ export function transactionSearchFilters(
   input: Record<string, unknown>,
   accounts: Account[],
   subcategories: Subcategory[],
+  tags: Tag[],
   actionType: string,
   defaultLimit: number,
   maxLimit: number,
@@ -51,6 +42,23 @@ export function transactionSearchFilters(
 
   const requestedLimit = optionalPositiveInteger(input.limit);
   const limit = Math.min(requestedLimit ?? defaultLimit, maxLimit);
+  const tagIds = [
+    ...normalizeStringList(input.tag_ids),
+    ...normalizeStringList(input.tag_id),
+    ...normalizeStringList(input.tagIds),
+    ...normalizeStringList(input.tagId),
+    ...normalizeStringList(input.tags),
+  ];
+  const tagNames = [
+    ...normalizeStringList(input.tag_names),
+    ...normalizeStringList(input.tag_name),
+  ];
+  const resolvedTagIds = [
+    ...tagIds,
+    ...tagNames.map((name) =>
+      resolveRequestedTag({ tag_name: name, tag_type: input.tag_type }, tags, actionType),
+    ),
+  ].filter((id): id is string => Boolean(id));
   return {
     searchQuery,
     accountId: resolveRequestedAccount(input, accounts, actionType),
@@ -59,11 +67,10 @@ export function transactionSearchFilters(
       subcategories,
       actionType,
     ),
+    tagIds: resolvedTagIds.length > 0 ? resolvedTagIds : undefined,
     kind: optionalTransactionKind(input.kind, actionType),
     needsCategory:
-      typeof input.needsCategory === "boolean"
-        ? input.needsCategory
-        : undefined,
+      typeof input.needsCategory === "boolean" ? input.needsCategory : undefined,
     startDate:
       optionalIsoDate(input.startDate, "startDate", actionType) ??
       optionalIsoDate(input.start_date, "start_date", actionType),
@@ -77,11 +84,15 @@ export function transactionSearchFilters(
 export function transactionUpdateInput(
   input: Record<string, unknown>,
   subcategories: Subcategory[],
+  tags: Tag[],
   actionType: string,
 ): {
   kind?: TransactionKind;
   subcategory_id?: string | null;
   comment?: string | null;
+  tag_ids?: string[];
+  add_tag_ids?: string[];
+  remove_tag_ids?: string[];
 } {
   const updates = input.updates;
   const updateInput =
@@ -94,8 +105,53 @@ export function transactionUpdateInput(
   ]);
   const hasKindUpdate = hasField(updateInput, "kind");
   const hasCommentUpdate = hasField(updateInput, "comment");
+  const replacementTagIds = [
+    ...normalizeStringList(updateInput.tag_ids),
+    ...normalizeStringList(updateInput.tag_id),
+  ];
+  const replacementTagNames = [
+    ...normalizeStringList(updateInput.tag_names),
+    ...normalizeStringList(updateInput.tag_name),
+  ];
+  const addTagIds = [
+    ...normalizeStringList(updateInput.add_tag_ids),
+    ...normalizeStringList(updateInput.add_tag_id),
+  ];
+  const addTagNames = [
+    ...normalizeStringList(updateInput.add_tag_names),
+    ...normalizeStringList(updateInput.add_tag_name),
+  ];
+  const removeTagIds = [
+    ...normalizeStringList(updateInput.remove_tag_ids),
+    ...normalizeStringList(updateInput.remove_tag_id),
+  ];
+  const removeTagNames = [
+    ...normalizeStringList(updateInput.remove_tag_names),
+    ...normalizeStringList(updateInput.remove_tag_name),
+  ];
+  const hasReplacementTagUpdate =
+    replacementTagIds.length > 0 || replacementTagNames.length > 0;
+  const hasAddTagUpdate = addTagIds.length > 0 || addTagNames.length > 0;
+  const hasRemoveTagUpdate = removeTagIds.length > 0 || removeTagNames.length > 0;
+  const resolveTagNames = (names: string[]): string[] =>
+    names.map((name) =>
+      resolveRequestedTag(
+        { tag_name: name, tag_type: updateInput.tag_type },
+        tags,
+        actionType,
+      ),
+    ).filter((id): id is string => Boolean(id));
+  const resolvedReplacementTagIds = [
+    ...replacementTagIds,
+    ...resolveTagNames(replacementTagNames),
+  ];
+  const resolvedAddTagIds = [...addTagIds, ...resolveTagNames(addTagNames)];
+  const resolvedRemoveTagIds = [
+    ...removeTagIds,
+    ...resolveTagNames(removeTagNames),
+  ];
 
-  if (!hasKindUpdate && !hasSubcategoryUpdate && !hasCommentUpdate) {
+  if (!hasKindUpdate && !hasSubcategoryUpdate && !hasCommentUpdate && !hasReplacementTagUpdate && !hasAddTagUpdate && !hasRemoveTagUpdate) {
     throw new Error(`${actionType} requires at least one update field`);
   }
 
@@ -118,6 +174,11 @@ export function transactionUpdateInput(
     ...(hasCommentUpdate
       ? { comment: asNullableString(updateInput.comment) ?? null }
       : {}),
+    ...(hasReplacementTagUpdate
+      ? { tag_ids: resolvedReplacementTagIds }
+      : {}),
+    ...(hasAddTagUpdate ? { add_tag_ids: resolvedAddTagIds } : {}),
+    ...(hasRemoveTagUpdate ? { remove_tag_ids: resolvedRemoveTagIds } : {}),
   };
 }
 
@@ -151,11 +212,27 @@ export function categoryTypeForSubcategory(
 }
 
 export function promptAnchorsForAction(action: AIAction): string[] {
+  const tagObjectNames = Array.isArray(action.input.tags)
+    ? action.input.tags
+        .map((tag) =>
+          tag && typeof tag === "object"
+            ? asString((tag as Record<string, unknown>).name)
+            : undefined,
+        )
+        .filter((value): value is string => Boolean(value))
+    : [];
   return [
     asString(action.input.name),
     asString(action.input.comment),
     asString(action.input.account_name),
     asString(action.input.subcategory_name),
+    ...normalizeStringList(action.input.tag_name),
+    ...normalizeStringList(action.input.tag_names),
+    ...normalizeStringList(action.input.add_tag_name),
+    ...normalizeStringList(action.input.add_tag_names),
+    ...normalizeStringList(action.input.remove_tag_name),
+    ...normalizeStringList(action.input.remove_tag_names),
+    ...tagObjectNames,
   ].filter((value): value is string => Boolean(value));
 }
 
@@ -225,10 +302,7 @@ export function hasExpenseCue(message: string, action: AIAction): boolean {
   );
 }
 
-export function signedAmountNearIncomeCue(
-  message: string,
-  amount: number,
-): boolean {
+export function signedAmountNearIncomeCue(message: string, amount: number): boolean {
   const absAmount = Math.abs(amount);
   const amountPatterns = Array.from(
     new Set([String(absAmount), absAmount.toFixed(2)]),
@@ -295,10 +369,7 @@ export function normalizeTransactionAmount(
   return action;
 }
 
-export function normalizeTransactionText(
-  action: AIAction,
-  message: string,
-): AIAction {
+export function normalizeTransactionText(action: AIAction, message: string): AIAction {
   if (action.type !== "create_transaction") return action;
   const name = asString(action.input.name);
   const comment = asString(action.input.comment);
@@ -352,10 +423,7 @@ export function normalizeTransactionText(
   return { ...action, input };
 }
 
-export function normalizeTransactionDate(
-  action: AIAction,
-  message: string,
-): AIAction {
+export function normalizeTransactionDate(action: AIAction, message: string): AIAction {
   if (action.type !== "create_transaction") return action;
   const requestedDate = message.match(/\bdated\s+(\d{4}-\d{2}-\d{2})\b/i)?.[1];
   if (
@@ -413,9 +481,8 @@ export function subcategoryGoalUpdateAction(
     asString(action.input.subcategory_name) ??
     asString(action.input.name);
   const subcategory =
-    context.subcategories.find(
-      (item) => item.id === asString(action.input.id),
-    ) ?? findByName(context.subcategories, subcategoryName);
+    context.subcategories.find((item) => item.id === asString(action.input.id)) ??
+    findByName(context.subcategories, subcategoryName);
   if (!subcategory) return undefined;
   const existingGoal = context.goals.find(
     (goal) => goal.subcategory_id === subcategory.id,
@@ -587,8 +654,7 @@ export function skippedDuplicateCategoryAction(
   if (!existingCategory && !existingAccount) return undefined;
 
   const type: CategoryType =
-    existingCategory?.type ??
-    (/\bincome\s+category\b/i.test(message) ? "income" : "expense");
+    existingCategory?.type ?? (/\bincome\s+category\b/i.test(message) ? "income" : "expense");
 
   return {
     type: "create_category",
@@ -634,9 +700,7 @@ export function inferredCreateTransactionFromAddPrompt(
       amount: Number(rawAmount),
       kind: category?.type ?? "expense",
       subcategory_name: subcategory.name,
-      ...(rawComment
-        ? { comment: rawComment.trim().replace(/[.?!]+$/, "") }
-        : {}),
+      ...(rawComment ? { comment: rawComment.trim().replace(/[.?!]+$/, "") } : {}),
     },
   };
 }
@@ -711,11 +775,7 @@ export function prepareActionsForExecution(
   );
   if (skippedDuplicate) prepared.unshift(skippedDuplicate);
 
-  const inferredMove = inferredSubcategoryMoveAction(
-    prepared,
-    message,
-    context,
-  );
+  const inferredMove = inferredSubcategoryMoveAction(prepared, message, context);
   if (inferredMove) prepared.push(inferredMove);
 
   const visibleFailure = visibleFailureFromMessage(
@@ -783,30 +843,49 @@ export function requestedUpdateSubcategory(
   )?.name;
 }
 
-export function requestedUpdateKind(
-  message: string,
-): TransactionKind | undefined {
-  if (
-    /\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+transfer\b/i.test(
-      message,
-    )
-  ) {
+export function requestedUpdateKind(message: string): TransactionKind | undefined {
+  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+transfer\b/i.test(message)) {
     return "transfer";
   }
-  if (
-    /\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+income\b/i.test(message)
-  ) {
+  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+income\b/i.test(message)) {
     return "income";
   }
-  if (
-    /\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+expense\b/i.test(
-      message,
-    )
-  ) {
+  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+expense\b/i.test(message)) {
     return "expense";
   }
   return undefined;
 }
+
+export function requestedUpdateTags(
+  message: string,
+): {
+  add_tag_names?: string[];
+  remove_tag_names?: string[];
+  tag_type?: Tag["type"];
+} {
+  const tagTypeMatch = message.match(
+    /\b(custom|trip|event|person|reimbursable|tax)\s+tag\b|\bfor\s+["']?([A-Za-z][\w -]*?)["']?\s+(custom|trip|event|person|reimbursable|tax)\b/i,
+  );
+  const tagType = (tagTypeMatch?.[1] ?? tagTypeMatch?.[3])?.toLowerCase() as
+    | Tag["type"]
+    | undefined;
+  const typedName = tagTypeMatch?.[2]?.trim().replace(/[.?!,].*$/, "");
+  const removeMatch = message.match(
+    /\b(?:remove|drop)\s+tag\s+["']?([A-Za-z][\w -]*?)["']?(?:\s+(?:from|off)\b|[.,;!?]|$|\s+and\b)/i,
+  );
+  const addMatch = message.match(
+    /\b(?:tag\s+(?:it|this|that|the transaction)?\s+as|add\s+tag|set\s+tag\s+to)\s+["']?([A-Za-z][\w -]*?)["']?(?:\s+(?:to|for|on)\b|[.,;!?]|$|\s+and\b)/i,
+  );
+  const removeName = removeMatch?.[1]?.trim().replace(/[.?!,].*$/, "");
+  const addName = (addMatch?.[1] ?? typedName)?.trim().replace(/[.?!,].*$/, "");
+
+  return {
+    ...(addName ? { add_tag_names: [addName] } : {}),
+    ...(removeName ? { remove_tag_names: [removeName] } : {}),
+    ...(tagType ? { tag_type: tagType } : {}),
+  };
+}
+
 
 export function tokenScore(
   message: string,
@@ -890,7 +969,11 @@ export function buildSearchUpdateFollowUp(
   const comment = requestedUpdateComment(message);
   const subcategoryName = requestedUpdateSubcategory(message, subcategories);
   const kind = requestedUpdateKind(message);
-  if (!comment && !subcategoryName && !kind) {
+  const tagUpdates = requestedUpdateTags(message);
+  const hasTagUpdates =
+    Boolean(tagUpdates.add_tag_names?.length) ||
+    Boolean(tagUpdates.remove_tag_names?.length);
+  if (!comment && !subcategoryName && !kind && !hasTagUpdates) {
     return {
       type: "report_failure",
       input: { reason: "Could not infer requested transaction update." },
@@ -904,6 +987,7 @@ export function buildSearchUpdateFollowUp(
       ...(kind ? { kind } : {}),
       ...(comment ? { comment } : {}),
       ...(subcategoryName ? { subcategory_name: subcategoryName } : {}),
+      ...tagUpdates,
     },
   };
 }

@@ -1,10 +1,5 @@
-import type {
-  Account,
-  Category,
-  SpendingGoalWithDetails,
-  Subcategory,
-} from "../../../src/types/index.js";
-import { asString, hasAnyField } from "./input-validators.js";
+import type { Account, Category, SpendingGoalWithDetails, Subcategory, Tag } from "../../../src/types/index.js";
+import { asString, hasAnyField, optionalTagType } from "./input-validators.js";
 
 export function findByName<T extends { name: string }>(
   items: T[],
@@ -24,12 +19,9 @@ export function findAllByName<T extends { name: string }>(
   return items.filter((item) => item.name.trim().toLowerCase() === normalized);
 }
 
-export function describeEntityCandidate(item: {
-  id: string;
-  name: string;
-  type?: string;
-  category_id?: string;
-}): string {
+export function describeEntityCandidate(
+  item: { id: string; name: string; type?: string; category_id?: string },
+): string {
   const details = [
     `id=${item.id}`,
     item.type ? `type=${item.type}` : undefined,
@@ -154,6 +146,47 @@ export function resolveRequestedSubcategory(
     ]);
   }
   return subcategoryId;
+}
+
+export function resolveTag(
+  input: Record<string, unknown>,
+  tags: Tag[],
+): string | undefined {
+  const requestedType = optionalTagType(input.tag_type ?? input.type, "resolve_tag");
+  const candidates = requestedType
+    ? tags.filter((tag) => tag.type === requestedType)
+    : tags;
+  return resolveEntityReference(
+    candidates,
+    asString(input.tag_id) ?? asString(input.id),
+    asString(input.tag_name) ?? asString(input.name),
+  );
+}
+
+export function resolveRequestedTag(
+  input: Record<string, unknown>,
+  tags: Tag[],
+  actionType: string,
+): string | undefined {
+  if (!hasAnyField(input, ["tag_id", "tag_name", "id", "name"])) {
+    return undefined;
+  }
+
+  const requestedType = optionalTagType(input.tag_type ?? input.type, actionType);
+  const candidates = requestedType
+    ? tags.filter((tag) => tag.type === requestedType)
+    : tags;
+  const id = resolveEntityReference(
+    candidates,
+    asString(input.tag_id) ?? asString(input.id),
+    asString(input.tag_name) ?? asString(input.name),
+  );
+  if (id) return id;
+
+  throw referenceError(actionType, "tag", candidates, [
+    asString(input.tag_id) ?? asString(input.id),
+    asString(input.tag_name) ?? asString(input.name),
+  ]);
 }
 
 export function resolveGoal(

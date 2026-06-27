@@ -11,6 +11,7 @@ export const API_ROUTES = {
   accounts: "/api/accounts",
   categories: "/api/categories",
   subcategories: "/api/subcategories",
+  tags: "/api/tags",
   transactions: "/api/transactions",
   dashboard: "/api/dashboard",
   goals: "/api/goals",
