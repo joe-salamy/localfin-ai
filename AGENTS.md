@@ -8,26 +8,8 @@ LocalFin AI is a local-first personal finance tracker that uses LLM-powered pars
 - Run `npm run typecheck` (or `npx tsc --noEmit`) to verify the project compiles cleanly.
 - Prefer early returns over deeply nested conditionals.
 
-## Plan Mode
+## Rules
 
-- When asking clarifying questions in plan mode, be liberal; when in doubt, ask more rather than fewer.
-
-## Documentation
-
-- Keep READMEs concise.
-- rg isn’t installed in this environment; use PowerShell search.
-
-## Misc
-
-- Never read from, write to, or git diff `scratchpad.md`.
-- When asking clarifying questions in plan mode, be liberal; when in doubt, ask more rather than fewer.
-- In plan mode, include a feature branch name (branched from main) as the first step of every implementation plan.
-- In plan mode, write every implementation plan to `docs/plans/<feature-name>.md` so the plan can be passed to audit skills such as `plan-audit`.
-- Keep READMEs concise.
-
-
----
-
-<!-- Loadout: worktrees; harness: omp; applied 2026-06-24 -->
-
-- When loading any skill, record the load with `python ./<.harness>/scripts/skill-usage-manager.py record <skill-name> --scope repo --path <skills-dir> --repo <repo-root>`
+- Treat `docs/scratchpad.md` as private scratch space. Do not read, search, open, modify, diff, summarize, or quote it. If it appears in broad file listings or git status output, ignore it.
+- When plan mode is active, use the `ask` tool every time before producing a plan. Ask any clarifying questions needed, or ask the user to confirm that no clarification is needed.
+- Before performing any edit, briefly state in chat what files or behavior you intend to change and why. Do not wait for approval.
