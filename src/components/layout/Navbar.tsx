@@ -11,21 +11,58 @@ import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcutMetadata } from "@/features/shortcuts/hooks";
 
 const links = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, commandId: "global.dashboard" },
-  { to: "/setup", label: "Setup", icon: SlidersHorizontal, commandId: "global.setup" },
-  { to: "/transactions/input", label: "Add", icon: Plus, commandId: "global.addTransactions" },
-  { to: "/transactions/history", label: "History", icon: History, commandId: "global.transactionHistory" },
-  { to: "/settings", label: "Settings", icon: Settings, commandId: "global.settings" },
-] as const satisfies ReadonlyArray<{ to: string; label: string; icon: typeof LayoutDashboard; commandId: CommandId }>;
+  {
+    to: "/",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    commandId: "global.dashboard",
+  },
+  {
+    to: "/setup",
+    label: "Setup",
+    icon: SlidersHorizontal,
+    commandId: "global.setup",
+  },
+  {
+    to: "/transactions/input",
+    label: "Add",
+    icon: Plus,
+    commandId: "global.addTransactions",
+  },
+  {
+    to: "/transactions/history",
+    label: "History",
+    icon: History,
+    commandId: "global.transactionHistory",
+  },
+  {
+    to: "/settings",
+    label: "Settings",
+    icon: Settings,
+    commandId: "global.settings",
+  },
+] as const satisfies ReadonlyArray<{
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  commandId: CommandId;
+}>;
 
-function NavLink({ to, label, icon: Icon, commandId, active }: {
+function NavLink({
+  to,
+  label,
+  icon: Icon,
+  commandId,
+  active,
+}: {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
   commandId: CommandId;
   active: boolean;
 }) {
-  const { ariaKeyShortcuts, label: shortcutLabel } = useShortcutMetadata(commandId);
+  const { ariaKeyShortcuts, label: shortcutLabel } =
+    useShortcutMetadata(commandId);
 
   return (
     <Link

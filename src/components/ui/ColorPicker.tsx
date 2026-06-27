@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import * as Popover from '@radix-ui/react-popover';
-import { DEFAULT_ENTITY_COLORS, normalizeColor } from '@/lib/colors';
-import { cn } from '@/lib/utils';
+import { useState } from "react";
+import * as Popover from "@radix-ui/react-popover";
+import { DEFAULT_ENTITY_COLORS, normalizeColor } from "@/lib/colors";
+import { cn } from "@/lib/utils";
 
 interface ColorPickerProps {
   value: string | null | undefined;
@@ -14,7 +14,7 @@ interface ColorPickerProps {
 export function ColorPicker({
   value,
   onChange,
-  label = 'Color',
+  label = "Color",
   className,
   allowClear = true,
 }: ColorPickerProps) {
@@ -27,7 +27,7 @@ export function ColorPicker({
         <button
           type="button"
           className={cn(
-            'inline-flex h-7 items-center gap-1.5 rounded border border-border bg-input px-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            "inline-flex h-7 items-center gap-1.5 rounded border border-border bg-input px-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             className,
           )}
           aria-label={label}
@@ -52,8 +52,10 @@ export function ColorPicker({
                 key={preset}
                 type="button"
                 className={cn(
-                  'h-4 w-4 rounded border transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  normalizeColor(value) === preset ? 'border-foreground' : 'border-border',
+                  "h-4 w-4 rounded border transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  normalizeColor(value) === preset
+                    ? "border-foreground"
+                    : "border-border",
                 )}
                 style={{ backgroundColor: preset }}
                 onClick={() => {

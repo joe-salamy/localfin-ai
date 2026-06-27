@@ -1,5 +1,5 @@
-import { MultiTransactionTable } from '@/components/features/MultiTransactionTable';
-import { RecentAccountTransactionsTable } from '@/components/features/RecentAccountTransactionsTable';
+import { MultiTransactionTable } from "@/components/features/MultiTransactionTable";
+import { RecentAccountTransactionsTable } from "@/components/features/RecentAccountTransactionsTable";
 
 export function TransactionInputPage() {
   return (

@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
-import { toast } from 'sonner';
+import { useCallback, useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import { toast } from "sonner";
 import {
   ArrowDown,
   ArrowUp,
@@ -12,36 +12,41 @@ import {
   Plus,
   Lock,
   RefreshCw,
-} from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { SimpleSelect } from '@/components/ui/SimpleSelect';
-import { ColorPicker } from '@/components/ui/ColorPicker';
-import { EntityLabel } from '@/components/ui/EntityLabel';
-import { Modal } from '@/components/ui/Modal';
-import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
-import { useAccounts } from '@/hooks/useAccounts';
-import { useCategories } from '@/hooks/useCategories';
-import type { AccountWithBalance, Category, Subcategory } from '@/types';
-import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
-import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
+} from "lucide-react";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { SimpleSelect } from "@/components/ui/SimpleSelect";
+import { ColorPicker } from "@/components/ui/ColorPicker";
+import { EntityLabel } from "@/components/ui/EntityLabel";
+import { Modal } from "@/components/ui/Modal";
+import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
+import { useAccounts } from "@/hooks/useAccounts";
+import { useCategories } from "@/hooks/useCategories";
+import type { AccountWithBalance, Category, Subcategory } from "@/types";
+import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
+import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 
 // ─── Helpers ──────────────────────────────────────────────
 
 function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(amount);
 }
 
 function TypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
-    asset: 'bg-emerald-900/50 text-emerald-400',
-    liability: 'bg-red-900/50 text-red-400',
-    income: 'bg-blue-900/50 text-blue-400',
-    expense: 'bg-orange-900/50 text-orange-400',
+    asset: "bg-emerald-900/50 text-emerald-400",
+    liability: "bg-red-900/50 text-red-400",
+    income: "bg-blue-900/50 text-blue-400",
+    expense: "bg-orange-900/50 text-orange-400",
   };
   return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${colors[type] ?? 'bg-secondary text-foreground'}`}>
+    <span
+      className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${colors[type] ?? "bg-secondary text-foreground"}`}
+    >
       {type}
     </span>
   );
@@ -51,7 +56,7 @@ function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
-type SortDirection = 'asc' | 'desc';
+type SortDirection = "asc" | "desc";
 
 interface SortConfig<TKey extends string> {
   key: TKey;
@@ -59,42 +64,46 @@ interface SortConfig<TKey extends string> {
 }
 
 function compareText(a: string, b: string) {
-  return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+  return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
 }
 
 function applySortDirection(value: number, direction: SortDirection) {
-  return direction === 'asc' ? value : -value;
+  return direction === "asc" ? value : -value;
 }
 
 function nextSort<TKey extends string>(
   current: SortConfig<TKey>,
-  key: TKey
+  key: TKey,
 ): SortConfig<TKey> {
-  if (current.key !== key) return { key, direction: 'asc' };
-  return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' };
+  if (current.key !== key) return { key, direction: "asc" };
+  return { key, direction: current.direction === "asc" ? "desc" : "asc" };
 }
 
 function SortHeader<TKey extends string>({
   label,
   sortKey,
   sort,
-  align = 'left',
+  align = "left",
   onSort,
 }: {
   label: string;
   sortKey: TKey;
   sort: SortConfig<TKey>;
-  align?: 'left' | 'right';
+  align?: "left" | "right";
   onSort: (key: TKey) => void;
 }) {
   const active = sort.key === sortKey;
-  const Icon = active ? (sort.direction === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
+  const Icon = active
+    ? sort.direction === "asc"
+      ? ArrowUp
+      : ArrowDown
+    : ArrowUpDown;
 
   return (
     <button
       type="button"
       className={`inline-flex items-center gap-1 font-medium hover:text-foreground ${
-        align === 'right' ? 'justify-end' : ''
+        align === "right" ? "justify-end" : ""
       }`}
       onClick={() => onSort(sortKey)}
       aria-label={`Sort by ${label}`}
@@ -129,7 +138,9 @@ function CollapsibleSection({
       >
         <span className="text-lg font-semibold text-foreground">
           {title}
-          <span className="ml-2 text-sm font-normal text-muted-foreground">({count})</span>
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            ({count})
+          </span>
         </span>
         {open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
       </button>
@@ -141,41 +152,51 @@ function CollapsibleSection({
 // ─── Accounts Section ─────────────────────────────────────
 
 function AccountsSection() {
-  const { accounts, isLoading, createAccount, updateAccount, reconcileAccount, deleteAccount } = useAccounts();
-  type AccountSortKey = 'name' | 'type' | 'balance';
+  const {
+    accounts,
+    isLoading,
+    createAccount,
+    updateAccount,
+    reconcileAccount,
+    deleteAccount,
+  } = useAccounts();
+  type AccountSortKey = "name" | "type" | "balance";
 
   const [showAdd, setShowAdd] = useState(false);
-  const [name, setName] = useState('');
-  const [type, setType] = useState<'asset' | 'liability'>('asset');
-  const [balance, setBalance] = useState('');
+  const [name, setName] = useState("");
+  const [type, setType] = useState<"asset" | "liability">("asset");
+  const [balance, setBalance] = useState("");
   const [color, setColor] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editType, setEditType] = useState<'asset' | 'liability'>('asset');
-  const [editInitialBalance, setEditInitialBalance] = useState('');
+  const [editName, setEditName] = useState("");
+  const [editType, setEditType] = useState<"asset" | "liability">("asset");
+  const [editInitialBalance, setEditInitialBalance] = useState("");
   const [editColor, setEditColor] = useState<string | null>(null);
 
-  const [deleteTarget, setDeleteTarget] = useState<AccountWithBalance | null>(null);
-  const [reconcileTarget, setReconcileTarget] = useState<AccountWithBalance | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AccountWithBalance | null>(
+    null,
+  );
+  const [reconcileTarget, setReconcileTarget] =
+    useState<AccountWithBalance | null>(null);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [sectionFocused, setSectionFocused] = useState(false);
   const [sort, setSort] = useState<SortConfig<AccountSortKey>>({
-    key: 'name',
-    direction: 'asc',
+    key: "name",
+    direction: "asc",
   });
 
   const sortedAccounts = useMemo(() => {
     return [...accounts].sort((a, b) => {
       let result = 0;
 
-      if (sort.key === 'name') {
+      if (sort.key === "name") {
         result = compareText(a.name, b.name);
-      } else if (sort.key === 'type') {
+      } else if (sort.key === "type") {
         result = compareText(a.type, b.type);
       } else {
         result = a.current_balance - b.current_balance;
@@ -185,13 +206,23 @@ function AccountsSection() {
     });
   }, [accounts, sort]);
 
-  const selectableIds = useMemo(() => sortedAccounts.map((a) => a.id), [sortedAccounts]);
+  const selectableIds = useMemo(
+    () => sortedAccounts.map((a) => a.id),
+    [sortedAccounts],
+  );
   const selectedCount = selectedIds.size;
   const allSelected =
-    selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
-  const focusedAccount = sortedAccounts.find((account) => account.id === focusedId) ?? sortedAccounts[0] ?? null;
+    selectableIds.length > 0 &&
+    selectableIds.every((id) => selectedIds.has(id));
+  const focusedAccount =
+    sortedAccounts.find((account) => account.id === focusedId) ??
+    sortedAccounts[0] ??
+    null;
 
-  useShortcutScope('setupAccounts', sectionFocused || showAdd || editId !== null);
+  useShortcutScope(
+    "setupAccounts",
+    sectionFocused || showAdd || editId !== null,
+  );
 
   async function submitAddAccount() {
     if (!name.trim()) return;
@@ -203,14 +234,14 @@ function AccountsSection() {
         initial_balance: balance ? parseFloat(balance) : 0,
         color,
       });
-      toast.success('Account created');
-      setName('');
-      setBalance('');
+      toast.success("Account created");
+      setName("");
+      setBalance("");
       setColor(null);
-      setType('asset');
+      setType("asset");
       setShowAdd(false);
     } catch {
-      toast.error('Failed to create account');
+      toast.error("Failed to create account");
     } finally {
       setSaving(false);
     }
@@ -229,13 +260,15 @@ function AccountsSection() {
         id,
         name: editName.trim(),
         type: editType,
-        initial_balance: editInitialBalance ? parseFloat(editInitialBalance) : 0,
+        initial_balance: editInitialBalance
+          ? parseFloat(editInitialBalance)
+          : 0,
         color: editColor,
       });
-      toast.success('Account updated');
+      toast.success("Account updated");
       setEditId(null);
     } catch {
-      toast.error('Failed to update account');
+      toast.error("Failed to update account");
     } finally {
       setSaving(false);
     }
@@ -246,7 +279,7 @@ function AccountsSection() {
     setDeleting(true);
     try {
       await deleteAccount.mutateAsync(deleteTarget.id);
-      toast.success('Account deleted');
+      toast.success("Account deleted");
       setSelectedIds((current) => {
         const next = new Set(current);
         next.delete(deleteTarget.id);
@@ -254,7 +287,7 @@ function AccountsSection() {
       });
       setDeleteTarget(null);
     } catch {
-      toast.error('Failed to delete account');
+      toast.error("Failed to delete account");
     } finally {
       setDeleting(false);
     }
@@ -265,9 +298,11 @@ function AccountsSection() {
     setDeleting(true);
     const ids = Array.from(selectedIds);
     try {
-      const results = await Promise.allSettled(ids.map((id) => deleteAccount.mutateAsync(id)));
+      const results = await Promise.allSettled(
+        ids.map((id) => deleteAccount.mutateAsync(id)),
+      );
       const deletedIds = new Set(
-        ids.filter((_, index) => results[index]?.status === 'fulfilled')
+        ids.filter((_, index) => results[index]?.status === "fulfilled"),
       );
 
       setSelectedIds((current) => {
@@ -280,10 +315,12 @@ function AccountsSection() {
         toast.success(`${deletedIds.size} accounts deleted`);
         setShowBulkDelete(false);
       } else if (deletedIds.size > 0) {
-        toast.warning(`${deletedIds.size} accounts deleted; ${ids.length - deletedIds.size} failed`);
+        toast.warning(
+          `${deletedIds.size} accounts deleted; ${ids.length - deletedIds.size} failed`,
+        );
         setShowBulkDelete(false);
       } else {
-        toast.error('Failed to delete selected accounts');
+        toast.error("Failed to delete selected accounts");
       }
     } finally {
       setDeleting(false);
@@ -326,31 +363,59 @@ function AccountsSection() {
     setEditId(null);
   }, []);
 
-  useShortcut('setup.accounts.add', useCallback(() => setShowAdd(true), []));
-  useShortcut('setup.accounts.save', () => {
+  useShortcut(
+    "setup.accounts.add",
+    useCallback(() => setShowAdd(true), []),
+  );
+  useShortcut("setup.accounts.save", () => {
     if (showAdd) {
       void submitAddAccount();
     } else if (editId) {
       void handleUpdate(editId);
     }
   });
-  useShortcut('setup.accounts.cancel', cancelAccountForm, { enabled: showAdd || editId !== null });
-  useShortcut('setup.accounts.editFocused', useCallback(() => {
-    if (focusedAccount) startEdit(focusedAccount);
-  }, [focusedAccount]));
-  useShortcut('setup.accounts.deleteFocused', useCallback(() => {
-    if (focusedAccount) setDeleteTarget(focusedAccount);
-  }, [focusedAccount]));
-  useShortcut('setup.accounts.bulkDelete', useCallback(() => setShowBulkDelete(true), []), { enabled: selectedCount > 0 });
-  useShortcut('setup.accounts.selectAll', toggleAllSelected);
-  useShortcut('setup.accounts.toggleFocused', useCallback(() => {
-    if (focusedAccount) toggleSelected(focusedAccount.id);
-  }, [focusedAccount]));
-  useShortcut('setup.accounts.sortName', useCallback(() => setSort((current) => nextSort(current, 'name')), []));
-  useShortcut('setup.accounts.sortType', useCallback(() => setSort((current) => nextSort(current, 'type')), []));
-  useShortcut('setup.accounts.sortBalance', useCallback(() => setSort((current) => nextSort(current, 'balance')), []));
+  useShortcut("setup.accounts.cancel", cancelAccountForm, {
+    enabled: showAdd || editId !== null,
+  });
+  useShortcut(
+    "setup.accounts.editFocused",
+    useCallback(() => {
+      if (focusedAccount) startEdit(focusedAccount);
+    }, [focusedAccount]),
+  );
+  useShortcut(
+    "setup.accounts.deleteFocused",
+    useCallback(() => {
+      if (focusedAccount) setDeleteTarget(focusedAccount);
+    }, [focusedAccount]),
+  );
+  useShortcut(
+    "setup.accounts.bulkDelete",
+    useCallback(() => setShowBulkDelete(true), []),
+    { enabled: selectedCount > 0 },
+  );
+  useShortcut("setup.accounts.selectAll", toggleAllSelected);
+  useShortcut(
+    "setup.accounts.toggleFocused",
+    useCallback(() => {
+      if (focusedAccount) toggleSelected(focusedAccount.id);
+    }, [focusedAccount]),
+  );
+  useShortcut(
+    "setup.accounts.sortName",
+    useCallback(() => setSort((current) => nextSort(current, "name")), []),
+  );
+  useShortcut(
+    "setup.accounts.sortType",
+    useCallback(() => setSort((current) => nextSort(current, "type")), []),
+  );
+  useShortcut(
+    "setup.accounts.sortBalance",
+    useCallback(() => setSort((current) => nextSort(current, "balance")), []),
+  );
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
+  if (isLoading)
+    return <p className="text-sm text-muted-foreground">Loading...</p>;
 
   return (
     <div
@@ -364,7 +429,7 @@ function AccountsSection() {
       {selectedCount > 0 && (
         <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
-            {selectedCount} account{selectedCount === 1 ? '' : 's'} selected
+            {selectedCount} account{selectedCount === 1 ? "" : "s"} selected
           </span>
           <Button
             type="button"
@@ -429,7 +494,7 @@ function AccountsSection() {
               tabIndex={0}
               onFocus={() => setFocusedId(a.id)}
               className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
-                focusedId === a.id ? 'bg-secondary/20' : ''
+                focusedId === a.id ? "bg-secondary/20" : ""
               }`}
             >
               {editId === a.id ? (
@@ -445,16 +510,22 @@ function AccountsSection() {
                   <td className="py-1.5 pr-2">
                     <SimpleSelect
                       value={editType}
-                      onChange={(e) => setEditType(e.target.value as 'asset' | 'liability')}
+                      onChange={(e) =>
+                        setEditType(e.target.value as "asset" | "liability")
+                      }
                       options={[
-                        { value: 'asset', label: 'Asset' },
-                        { value: 'liability', label: 'Liability' },
+                        { value: "asset", label: "Asset" },
+                        { value: "liability", label: "Liability" },
                       ]}
                       className="h-7 text-sm"
                     />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <ColorPicker value={editColor} onChange={setEditColor} label={`${a.name} color`} />
+                    <ColorPicker
+                      value={editColor}
+                      onChange={setEditColor}
+                      label={`${a.name} color`}
+                    />
                   </td>
                   <td className="py-1.5 pr-2">
                     <Input
@@ -465,13 +536,25 @@ function AccountsSection() {
                       className="h-7 text-right text-sm"
                     />
                   </td>
-                  <td className="py-1.5 text-right">{formatCurrency(a.current_balance)}</td>
+                  <td className="py-1.5 text-right">
+                    {formatCurrency(a.current_balance)}
+                  </td>
                   <td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">
-                      <Button size="sm" className="h-6 px-2 text-xs" onClick={() => handleUpdate(a.id)} loading={saving}>
+                      <Button
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => handleUpdate(a.id)}
+                        loading={saving}
+                      >
                         Save
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditId(null)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setEditId(null)}
+                      >
                         Cancel
                       </Button>
                     </div>
@@ -491,21 +574,49 @@ function AccountsSection() {
                   <td className="py-1.5">
                     <EntityLabel id={a.id} name={a.name} color={a.color} />
                   </td>
-                  <td className="py-1.5"><TypeBadge type={a.type} /></td>
                   <td className="py-1.5">
-                    <ColorPicker value={a.color} onChange={(nextColor) => void updateAccount.mutateAsync({ id: a.id, color: nextColor })} label={`${a.name} color`} />
+                    <TypeBadge type={a.type} />
                   </td>
-                  <td className="py-1.5 text-right font-mono">{formatCurrency(a.initial_balance)}</td>
-                  <td className="py-1.5 text-right font-mono">{formatCurrency(a.current_balance)}</td>
+                  <td className="py-1.5">
+                    <ColorPicker
+                      value={a.color}
+                      onChange={(nextColor) =>
+                        void updateAccount.mutateAsync({
+                          id: a.id,
+                          color: nextColor,
+                        })
+                      }
+                      label={`${a.name} color`}
+                    />
+                  </td>
+                  <td className="py-1.5 text-right font-mono">
+                    {formatCurrency(a.initial_balance)}
+                  </td>
+                  <td className="py-1.5 text-right font-mono">
+                    {formatCurrency(a.current_balance)}
+                  </td>
                   <td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">
-                      <button type="button" onClick={() => setReconcileTarget(a)} className="p-1 text-muted-foreground hover:text-foreground" title="Update current value">
+                      <button
+                        type="button"
+                        onClick={() => setReconcileTarget(a)}
+                        className="p-1 text-muted-foreground hover:text-foreground"
+                        title="Update current value"
+                      >
                         <RefreshCw size={14} />
                       </button>
-                      <button type="button" onClick={() => startEdit(a)} className="p-1 text-muted-foreground hover:text-foreground">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(a)}
+                        className="p-1 text-muted-foreground hover:text-foreground"
+                      >
                         <Pencil size={14} />
                       </button>
-                      <button type="button" onClick={() => setDeleteTarget(a)} className="p-1 text-muted-foreground hover:text-red-400">
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(a)}
+                        className="p-1 text-muted-foreground hover:text-red-400"
+                      >
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -528,10 +639,10 @@ function AccountsSection() {
           />
           <SimpleSelect
             value={type}
-            onChange={(e) => setType(e.target.value as 'asset' | 'liability')}
+            onChange={(e) => setType(e.target.value as "asset" | "liability")}
             options={[
-              { value: 'asset', label: 'Asset' },
-              { value: 'liability', label: 'Liability' },
+              { value: "asset", label: "Asset" },
+              { value: "liability", label: "Liability" },
             ]}
             className="h-8 w-36 text-sm"
           />
@@ -543,9 +654,23 @@ function AccountsSection() {
             onChange={(e) => setBalance(e.target.value)}
             className="h-8 w-36 text-sm"
           />
-          <ColorPicker value={color} onChange={setColor} label="New account color" />
-          <Button type="submit" size="sm" className="h-8" loading={saving}>Add</Button>
-          <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setShowAdd(false)}>Cancel</Button>
+          <ColorPicker
+            value={color}
+            onChange={setColor}
+            label="New account color"
+          />
+          <Button type="submit" size="sm" className="h-8" loading={saving}>
+            Add
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            onClick={() => setShowAdd(false)}
+          >
+            Cancel
+          </Button>
         </form>
       ) : (
         <Button
@@ -573,12 +698,17 @@ function AccountsSection() {
           account={reconcileTarget}
           onClose={() => setReconcileTarget(null)}
           onSubmit={async (data) => {
-            const result = await reconcileAccount.mutateAsync({ id: reconcileTarget.id, ...data });
+            const result = await reconcileAccount.mutateAsync({
+              id: reconcileTarget.id,
+              ...data,
+            });
             const adjustment = result.data?.adjustment_amount ?? 0;
             if (adjustment === 0) {
-              toast.success('Account already matches that value');
+              toast.success("Account already matches that value");
             } else {
-              toast.success(`Adjustment created: ${formatCurrency(adjustment)}`);
+              toast.success(
+                `Adjustment created: ${formatCurrency(adjustment)}`,
+              );
             }
             setReconcileTarget(null);
           }}
@@ -590,7 +720,7 @@ function AccountsSection() {
         onClose={() => setShowBulkDelete(false)}
         onConfirm={handleBulkDelete}
         title="Delete Accounts"
-        message={`Delete ${selectedCount} selected account${selectedCount === 1 ? '' : 's'}? This cannot be undone.`}
+        message={`Delete ${selectedCount} selected account${selectedCount === 1 ? "" : "s"}? This cannot be undone.`}
         isLoading={deleting}
       />
     </div>
@@ -608,18 +738,21 @@ function ReconcileAccountModal({
   onSubmit: (data: { date: string; target_balance: number }) => Promise<void>;
   isLoading: boolean;
 }) {
-  const [targetBalance, setTargetBalance] = useState(() => account.current_balance.toFixed(2));
+  const [targetBalance, setTargetBalance] = useState(() =>
+    account.current_balance.toFixed(2),
+  );
   const [date, setDate] = useState(() => todayIsoDate());
 
   const targetValue = targetBalance.trim() ? Number(targetBalance) : NaN;
-  const delta = account && Number.isFinite(targetValue)
-    ? Math.round((targetValue - account.current_balance) * 100) / 100
-    : null;
+  const delta =
+    account && Number.isFinite(targetValue)
+      ? Math.round((targetValue - account.current_balance) * 100) / 100
+      : null;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!Number.isFinite(targetValue)) {
-      toast.error('Enter a valid target value');
+      toast.error("Enter a valid target value");
       return;
     }
     await onSubmit({ date, target_balance: targetValue });
@@ -639,12 +772,16 @@ function ReconcileAccountModal({
         <div className="rounded-md border border-border bg-secondary/30 px-3 py-2 text-sm">
           <div className="flex justify-between gap-3">
             <span className="text-muted-foreground">Current balance</span>
-            <span className="font-mono">{formatCurrency(account.current_balance)}</span>
+            <span className="font-mono">
+              {formatCurrency(account.current_balance)}
+            </span>
           </div>
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-muted-foreground">Adjustment</span>
-            <span className={`font-mono ${delta == null || delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {delta == null ? '-' : formatCurrency(delta)}
+            <span
+              className={`font-mono ${delta == null || delta >= 0 ? "text-green-400" : "text-red-400"}`}
+            >
+              {delta == null ? "-" : formatCurrency(delta)}
             </span>
           </div>
         </div>
@@ -664,7 +801,12 @@ function ReconcileAccountModal({
           required
         />
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={isLoading}>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onClose}
+            disabled={isLoading}
+          >
             Cancel
           </Button>
           <Button type="submit" loading={isLoading}>
@@ -679,18 +821,24 @@ function ReconcileAccountModal({
 // ─── Categories Section ───────────────────────────────────
 
 function CategoriesSection() {
-  const { categories, isLoading, createCategory, updateCategory, deleteCategory } = useCategories();
-  type CategorySortKey = 'name' | 'type';
+  const {
+    categories,
+    isLoading,
+    createCategory,
+    updateCategory,
+    deleteCategory,
+  } = useCategories();
+  type CategorySortKey = "name" | "type";
 
   const [showAdd, setShowAdd] = useState(false);
-  const [name, setName] = useState('');
-  const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [name, setName] = useState("");
+  const [type, setType] = useState<"income" | "expense">("expense");
   const [color, setColor] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editType, setEditType] = useState<'income' | 'expense'>('expense');
+  const [editName, setEditName] = useState("");
+  const [editType, setEditType] = useState<"income" | "expense">("expense");
   const [editColor, setEditColor] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
@@ -700,41 +848,50 @@ function CategoriesSection() {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [sectionFocused, setSectionFocused] = useState(false);
   const [sort, setSort] = useState<SortConfig<CategorySortKey>>({
-    key: 'name',
-    direction: 'asc',
+    key: "name",
+    direction: "asc",
   });
 
   const sortedCategories = useMemo(() => {
     return [...categories].sort((a, b) => {
       const result =
-        sort.key === 'name' ? compareText(a.name, b.name) : compareText(a.type, b.type);
+        sort.key === "name"
+          ? compareText(a.name, b.name)
+          : compareText(a.type, b.type);
       return applySortDirection(result, sort.direction);
     });
   }, [categories, sort]);
 
   const selectableIds = useMemo(
     () => sortedCategories.filter((c) => !c.is_system).map((c) => c.id),
-    [sortedCategories]
+    [sortedCategories],
   );
   const selectedCount = selectedIds.size;
   const allSelected =
-    selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
-  const focusedCategory = sortedCategories.find((category) => category.id === focusedId) ?? sortedCategories.find((category) => !category.is_system) ?? null;
+    selectableIds.length > 0 &&
+    selectableIds.every((id) => selectedIds.has(id));
+  const focusedCategory =
+    sortedCategories.find((category) => category.id === focusedId) ??
+    sortedCategories.find((category) => !category.is_system) ??
+    null;
 
-  useShortcutScope('setupCategories', sectionFocused || showAdd || editId !== null);
+  useShortcutScope(
+    "setupCategories",
+    sectionFocused || showAdd || editId !== null,
+  );
 
   async function submitAddCategory() {
     if (!name.trim()) return;
     setSaving(true);
     try {
       await createCategory.mutateAsync({ name: name.trim(), type, color });
-      toast.success('Category created');
-      setName('');
+      toast.success("Category created");
+      setName("");
       setColor(null);
-      setType('expense');
+      setType("expense");
       setShowAdd(false);
     } catch {
-      toast.error('Failed to create category');
+      toast.error("Failed to create category");
     } finally {
       setSaving(false);
     }
@@ -749,11 +906,16 @@ function CategoriesSection() {
     if (!editName.trim()) return;
     setSaving(true);
     try {
-      await updateCategory.mutateAsync({ id, name: editName.trim(), type: editType, color: editColor });
-      toast.success('Category updated');
+      await updateCategory.mutateAsync({
+        id,
+        name: editName.trim(),
+        type: editType,
+        color: editColor,
+      });
+      toast.success("Category updated");
       setEditId(null);
     } catch {
-      toast.error('Failed to update category');
+      toast.error("Failed to update category");
     } finally {
       setSaving(false);
     }
@@ -764,7 +926,7 @@ function CategoriesSection() {
     setDeleting(true);
     try {
       await deleteCategory.mutateAsync(deleteTarget.id);
-      toast.success('Category deleted');
+      toast.success("Category deleted");
       setSelectedIds((current) => {
         const next = new Set(current);
         next.delete(deleteTarget.id);
@@ -772,7 +934,7 @@ function CategoriesSection() {
       });
       setDeleteTarget(null);
     } catch {
-      toast.error('Failed to delete category');
+      toast.error("Failed to delete category");
     } finally {
       setDeleting(false);
     }
@@ -783,9 +945,11 @@ function CategoriesSection() {
     setDeleting(true);
     const ids = Array.from(selectedIds);
     try {
-      const results = await Promise.allSettled(ids.map((id) => deleteCategory.mutateAsync(id)));
+      const results = await Promise.allSettled(
+        ids.map((id) => deleteCategory.mutateAsync(id)),
+      );
       const deletedIds = new Set(
-        ids.filter((_, index) => results[index]?.status === 'fulfilled')
+        ids.filter((_, index) => results[index]?.status === "fulfilled"),
       );
 
       setSelectedIds((current) => {
@@ -798,10 +962,12 @@ function CategoriesSection() {
         toast.success(`${deletedIds.size} categories deleted`);
         setShowBulkDelete(false);
       } else if (deletedIds.size > 0) {
-        toast.warning(`${deletedIds.size} categories deleted; ${ids.length - deletedIds.size} failed`);
+        toast.warning(
+          `${deletedIds.size} categories deleted; ${ids.length - deletedIds.size} failed`,
+        );
         setShowBulkDelete(false);
       } else {
-        toast.error('Failed to delete selected categories');
+        toast.error("Failed to delete selected categories");
       }
     } finally {
       setDeleting(false);
@@ -843,30 +1009,58 @@ function CategoriesSection() {
     setEditId(null);
   }, []);
 
-  useShortcut('setup.categories.add', useCallback(() => setShowAdd(true), []));
-  useShortcut('setup.categories.save', () => {
+  useShortcut(
+    "setup.categories.add",
+    useCallback(() => setShowAdd(true), []),
+  );
+  useShortcut("setup.categories.save", () => {
     if (showAdd) {
       void submitAddCategory();
     } else if (editId) {
       void handleUpdate(editId);
     }
   });
-  useShortcut('setup.categories.cancel', cancelCategoryForm, { enabled: showAdd || editId !== null });
-  useShortcut('setup.categories.editFocused', useCallback(() => {
-    if (focusedCategory && !focusedCategory.is_system) startEdit(focusedCategory);
-  }, [focusedCategory]));
-  useShortcut('setup.categories.deleteFocused', useCallback(() => {
-    if (focusedCategory && !focusedCategory.is_system) setDeleteTarget(focusedCategory);
-  }, [focusedCategory]));
-  useShortcut('setup.categories.bulkDelete', useCallback(() => setShowBulkDelete(true), []), { enabled: selectedCount > 0 });
-  useShortcut('setup.categories.selectAll', toggleAllSelected);
-  useShortcut('setup.categories.toggleFocused', useCallback(() => {
-    if (focusedCategory && !focusedCategory.is_system) toggleSelected(focusedCategory.id);
-  }, [focusedCategory]));
-  useShortcut('setup.categories.sortName', useCallback(() => setSort((current) => nextSort(current, 'name')), []));
-  useShortcut('setup.categories.sortType', useCallback(() => setSort((current) => nextSort(current, 'type')), []));
+  useShortcut("setup.categories.cancel", cancelCategoryForm, {
+    enabled: showAdd || editId !== null,
+  });
+  useShortcut(
+    "setup.categories.editFocused",
+    useCallback(() => {
+      if (focusedCategory && !focusedCategory.is_system)
+        startEdit(focusedCategory);
+    }, [focusedCategory]),
+  );
+  useShortcut(
+    "setup.categories.deleteFocused",
+    useCallback(() => {
+      if (focusedCategory && !focusedCategory.is_system)
+        setDeleteTarget(focusedCategory);
+    }, [focusedCategory]),
+  );
+  useShortcut(
+    "setup.categories.bulkDelete",
+    useCallback(() => setShowBulkDelete(true), []),
+    { enabled: selectedCount > 0 },
+  );
+  useShortcut("setup.categories.selectAll", toggleAllSelected);
+  useShortcut(
+    "setup.categories.toggleFocused",
+    useCallback(() => {
+      if (focusedCategory && !focusedCategory.is_system)
+        toggleSelected(focusedCategory.id);
+    }, [focusedCategory]),
+  );
+  useShortcut(
+    "setup.categories.sortName",
+    useCallback(() => setSort((current) => nextSort(current, "name")), []),
+  );
+  useShortcut(
+    "setup.categories.sortType",
+    useCallback(() => setSort((current) => nextSort(current, "type")), []),
+  );
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
+  if (isLoading)
+    return <p className="text-sm text-muted-foreground">Loading...</p>;
 
   return (
     <div
@@ -880,7 +1074,7 @@ function CategoriesSection() {
       {selectedCount > 0 && (
         <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
-            {selectedCount} categor{selectedCount === 1 ? 'y' : 'ies'} selected
+            {selectedCount} categor{selectedCount === 1 ? "y" : "ies"} selected
           </span>
           <Button
             type="button"
@@ -934,7 +1128,7 @@ function CategoriesSection() {
               tabIndex={0}
               onFocus={() => setFocusedId(c.id)}
               className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
-                focusedId === c.id ? 'bg-secondary/20' : ''
+                focusedId === c.id ? "bg-secondary/20" : ""
               }`}
             >
               {editId === c.id ? (
@@ -950,23 +1144,39 @@ function CategoriesSection() {
                   <td className="py-1.5 pr-2">
                     <SimpleSelect
                       value={editType}
-                      onChange={(e) => setEditType(e.target.value as 'income' | 'expense')}
+                      onChange={(e) =>
+                        setEditType(e.target.value as "income" | "expense")
+                      }
                       options={[
-                        { value: 'income', label: 'Income' },
-                        { value: 'expense', label: 'Expense' },
+                        { value: "income", label: "Income" },
+                        { value: "expense", label: "Expense" },
                       ]}
                       className="h-7 text-sm"
                     />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <ColorPicker value={editColor} onChange={setEditColor} label={`${c.name} color`} />
+                    <ColorPicker
+                      value={editColor}
+                      onChange={setEditColor}
+                      label={`${c.name} color`}
+                    />
                   </td>
                   <td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">
-                      <Button size="sm" className="h-6 px-2 text-xs" onClick={() => handleUpdate(c.id)} loading={saving}>
+                      <Button
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => handleUpdate(c.id)}
+                        loading={saving}
+                      >
                         Save
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditId(null)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setEditId(null)}
+                      >
                         Cancel
                       </Button>
                     </div>
@@ -987,19 +1197,43 @@ function CategoriesSection() {
                   </td>
                   <td className="py-1.5">
                     <EntityLabel id={c.id} name={c.name} color={c.color} />
-                    {c.is_system && <Lock size={12} className="ml-1.5 inline text-muted-foreground" />}
+                    {c.is_system && (
+                      <Lock
+                        size={12}
+                        className="ml-1.5 inline text-muted-foreground"
+                      />
+                    )}
                   </td>
-                  <td className="py-1.5"><TypeBadge type={c.type} /></td>
                   <td className="py-1.5">
-                    <ColorPicker value={c.color} onChange={(nextColor) => void updateCategory.mutateAsync({ id: c.id, color: nextColor })} label={`${c.name} color`} />
+                    <TypeBadge type={c.type} />
+                  </td>
+                  <td className="py-1.5">
+                    <ColorPicker
+                      value={c.color}
+                      onChange={(nextColor) =>
+                        void updateCategory.mutateAsync({
+                          id: c.id,
+                          color: nextColor,
+                        })
+                      }
+                      label={`${c.name} color`}
+                    />
                   </td>
                   <td className="py-1.5 text-right">
                     {!c.is_system && (
                       <div className="flex justify-end gap-1">
-                        <button type="button" onClick={() => startEdit(c)} className="p-1 text-muted-foreground hover:text-foreground">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(c)}
+                          className="p-1 text-muted-foreground hover:text-foreground"
+                        >
                           <Pencil size={14} />
                         </button>
-                        <button type="button" onClick={() => setDeleteTarget(c)} className="p-1 text-muted-foreground hover:text-red-400">
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(c)}
+                          className="p-1 text-muted-foreground hover:text-red-400"
+                        >
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -1022,16 +1256,30 @@ function CategoriesSection() {
           />
           <SimpleSelect
             value={type}
-            onChange={(e) => setType(e.target.value as 'income' | 'expense')}
+            onChange={(e) => setType(e.target.value as "income" | "expense")}
             options={[
-              { value: 'income', label: 'Income' },
-              { value: 'expense', label: 'Expense' },
+              { value: "income", label: "Income" },
+              { value: "expense", label: "Expense" },
             ]}
             className="h-8 w-36 text-sm"
           />
-          <ColorPicker value={color} onChange={setColor} label="New category color" />
-          <Button type="submit" size="sm" className="h-8" loading={saving}>Add</Button>
-          <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setShowAdd(false)}>Cancel</Button>
+          <ColorPicker
+            value={color}
+            onChange={setColor}
+            label="New category color"
+          />
+          <Button type="submit" size="sm" className="h-8" loading={saving}>
+            Add
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            onClick={() => setShowAdd(false)}
+          >
+            Cancel
+          </Button>
         </form>
       ) : (
         <Button
@@ -1058,7 +1306,7 @@ function CategoriesSection() {
         onClose={() => setShowBulkDelete(false)}
         onConfirm={handleBulkDelete}
         title="Delete Categories"
-        message={`Delete ${selectedCount} selected categor${selectedCount === 1 ? 'y' : 'ies'}? All subcategories under them will also be removed.`}
+        message={`Delete ${selectedCount} selected categor${selectedCount === 1 ? "y" : "ies"}? All subcategories under them will also be removed.`}
         isLoading={deleting}
       />
     </div>
@@ -1076,21 +1324,24 @@ function SubcategoriesSection() {
     updateSubcategory,
     deleteSubcategory,
   } = useCategories();
-  type SubcategorySortKey = 'name' | 'category' | 'monthlyGoal';
+  type SubcategorySortKey = "name" | "category" | "monthlyGoal";
 
-  const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const categoryMap = useMemo(
+    () => new Map(categories.map((c) => [c.id, c])),
+    [categories],
+  );
 
   const [showAdd, setShowAdd] = useState(false);
-  const [name, setName] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [goal, setGoal] = useState('');
+  const [name, setName] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [goal, setGoal] = useState("");
   const [color, setColor] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editCategoryId, setEditCategoryId] = useState('');
-  const [editGoal, setEditGoal] = useState('');
+  const [editName, setEditName] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState("");
+  const [editGoal, setEditGoal] = useState("");
   const [editColor, setEditColor] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Subcategory | null>(null);
@@ -1100,8 +1351,8 @@ function SubcategoriesSection() {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [sectionFocused, setSectionFocused] = useState(false);
   const [sort, setSort] = useState<SortConfig<SubcategorySortKey>>({
-    key: 'name',
-    direction: 'asc',
+    key: "name",
+    direction: "asc",
   });
 
   const categoryOptions = categories.map((c) => ({
@@ -1115,10 +1366,10 @@ function SubcategoriesSection() {
       const categoryB = categoryMap.get(b.category_id);
       let result = 0;
 
-      if (sort.key === 'name') {
+      if (sort.key === "name") {
         result = compareText(a.name, b.name);
-      } else if (sort.key === 'category') {
-        result = compareText(categoryA?.name ?? '', categoryB?.name ?? '');
+      } else if (sort.key === "category") {
+        result = compareText(categoryA?.name ?? "", categoryB?.name ?? "");
       } else {
         const goalA = a.monthly_goal ?? Number.POSITIVE_INFINITY;
         const goalB = b.monthly_goal ?? Number.POSITIVE_INFINITY;
@@ -1131,14 +1382,21 @@ function SubcategoriesSection() {
 
   const selectableIds = useMemo(
     () => sortedSubcategories.filter((s) => !s.is_system).map((s) => s.id),
-    [sortedSubcategories]
+    [sortedSubcategories],
   );
   const selectedCount = selectedIds.size;
   const allSelected =
-    selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
-  const focusedSubcategory = sortedSubcategories.find((subcategory) => subcategory.id === focusedId) ?? sortedSubcategories.find((subcategory) => !subcategory.is_system) ?? null;
+    selectableIds.length > 0 &&
+    selectableIds.every((id) => selectedIds.has(id));
+  const focusedSubcategory =
+    sortedSubcategories.find((subcategory) => subcategory.id === focusedId) ??
+    sortedSubcategories.find((subcategory) => !subcategory.is_system) ??
+    null;
 
-  useShortcutScope('setupSubcategories', sectionFocused || showAdd || editId !== null);
+  useShortcutScope(
+    "setupSubcategories",
+    sectionFocused || showAdd || editId !== null,
+  );
 
   async function submitAddSubcategory() {
     if (!name.trim() || !categoryId) return;
@@ -1150,14 +1408,14 @@ function SubcategoriesSection() {
         monthly_goal: goal ? parseFloat(goal) : null,
         color,
       });
-      toast.success('Subcategory created');
-      setName('');
-      setCategoryId('');
-      setGoal('');
+      toast.success("Subcategory created");
+      setName("");
+      setCategoryId("");
+      setGoal("");
       setColor(null);
       setShowAdd(false);
     } catch {
-      toast.error('Failed to create subcategory');
+      toast.error("Failed to create subcategory");
     } finally {
       setSaving(false);
     }
@@ -1179,10 +1437,10 @@ function SubcategoriesSection() {
         monthly_goal: editGoal ? parseFloat(editGoal) : null,
         color: editColor,
       });
-      toast.success('Subcategory updated');
+      toast.success("Subcategory updated");
       setEditId(null);
     } catch {
-      toast.error('Failed to update subcategory');
+      toast.error("Failed to update subcategory");
     } finally {
       setSaving(false);
     }
@@ -1193,7 +1451,7 @@ function SubcategoriesSection() {
     setDeleting(true);
     try {
       await deleteSubcategory.mutateAsync(deleteTarget.id);
-      toast.success('Subcategory deleted');
+      toast.success("Subcategory deleted");
       setSelectedIds((current) => {
         const next = new Set(current);
         next.delete(deleteTarget.id);
@@ -1201,7 +1459,7 @@ function SubcategoriesSection() {
       });
       setDeleteTarget(null);
     } catch {
-      toast.error('Failed to delete subcategory');
+      toast.error("Failed to delete subcategory");
     } finally {
       setDeleting(false);
     }
@@ -1212,9 +1470,11 @@ function SubcategoriesSection() {
     setDeleting(true);
     const ids = Array.from(selectedIds);
     try {
-      const results = await Promise.allSettled(ids.map((id) => deleteSubcategory.mutateAsync(id)));
+      const results = await Promise.allSettled(
+        ids.map((id) => deleteSubcategory.mutateAsync(id)),
+      );
       const deletedIds = new Set(
-        ids.filter((_, index) => results[index]?.status === 'fulfilled')
+        ids.filter((_, index) => results[index]?.status === "fulfilled"),
       );
 
       setSelectedIds((current) => {
@@ -1227,10 +1487,12 @@ function SubcategoriesSection() {
         toast.success(`${deletedIds.size} subcategories deleted`);
         setShowBulkDelete(false);
       } else if (deletedIds.size > 0) {
-        toast.warning(`${deletedIds.size} subcategories deleted; ${ids.length - deletedIds.size} failed`);
+        toast.warning(
+          `${deletedIds.size} subcategories deleted; ${ids.length - deletedIds.size} failed`,
+        );
         setShowBulkDelete(false);
       } else {
-        toast.error('Failed to delete selected subcategories');
+        toast.error("Failed to delete selected subcategories");
       }
     } finally {
       setDeleting(false);
@@ -1241,7 +1503,7 @@ function SubcategoriesSection() {
     setEditId(s.id);
     setEditName(s.name);
     setEditCategoryId(s.category_id);
-    setEditGoal(s.monthly_goal != null ? String(s.monthly_goal) : '');
+    setEditGoal(s.monthly_goal != null ? String(s.monthly_goal) : "");
     setEditColor(s.color);
   }
 
@@ -1273,31 +1535,65 @@ function SubcategoriesSection() {
     setEditId(null);
   }, []);
 
-  useShortcut('setup.subcategories.add', useCallback(() => setShowAdd(true), []));
-  useShortcut('setup.subcategories.save', () => {
+  useShortcut(
+    "setup.subcategories.add",
+    useCallback(() => setShowAdd(true), []),
+  );
+  useShortcut("setup.subcategories.save", () => {
     if (showAdd) {
       void submitAddSubcategory();
     } else if (editId) {
       void handleUpdate(editId);
     }
   });
-  useShortcut('setup.subcategories.cancel', cancelSubcategoryForm, { enabled: showAdd || editId !== null });
-  useShortcut('setup.subcategories.editFocused', useCallback(() => {
-    if (focusedSubcategory && !focusedSubcategory.is_system) startEdit(focusedSubcategory);
-  }, [focusedSubcategory]));
-  useShortcut('setup.subcategories.deleteFocused', useCallback(() => {
-    if (focusedSubcategory && !focusedSubcategory.is_system) setDeleteTarget(focusedSubcategory);
-  }, [focusedSubcategory]));
-  useShortcut('setup.subcategories.bulkDelete', useCallback(() => setShowBulkDelete(true), []), { enabled: selectedCount > 0 });
-  useShortcut('setup.subcategories.selectAll', toggleAllSelected);
-  useShortcut('setup.subcategories.toggleFocused', useCallback(() => {
-    if (focusedSubcategory && !focusedSubcategory.is_system) toggleSelected(focusedSubcategory.id);
-  }, [focusedSubcategory]));
-  useShortcut('setup.subcategories.sortName', useCallback(() => setSort((current) => nextSort(current, 'name')), []));
-  useShortcut('setup.subcategories.sortCategory', useCallback(() => setSort((current) => nextSort(current, 'category')), []));
-  useShortcut('setup.subcategories.sortGoal', useCallback(() => setSort((current) => nextSort(current, 'monthlyGoal')), []));
+  useShortcut("setup.subcategories.cancel", cancelSubcategoryForm, {
+    enabled: showAdd || editId !== null,
+  });
+  useShortcut(
+    "setup.subcategories.editFocused",
+    useCallback(() => {
+      if (focusedSubcategory && !focusedSubcategory.is_system)
+        startEdit(focusedSubcategory);
+    }, [focusedSubcategory]),
+  );
+  useShortcut(
+    "setup.subcategories.deleteFocused",
+    useCallback(() => {
+      if (focusedSubcategory && !focusedSubcategory.is_system)
+        setDeleteTarget(focusedSubcategory);
+    }, [focusedSubcategory]),
+  );
+  useShortcut(
+    "setup.subcategories.bulkDelete",
+    useCallback(() => setShowBulkDelete(true), []),
+    { enabled: selectedCount > 0 },
+  );
+  useShortcut("setup.subcategories.selectAll", toggleAllSelected);
+  useShortcut(
+    "setup.subcategories.toggleFocused",
+    useCallback(() => {
+      if (focusedSubcategory && !focusedSubcategory.is_system)
+        toggleSelected(focusedSubcategory.id);
+    }, [focusedSubcategory]),
+  );
+  useShortcut(
+    "setup.subcategories.sortName",
+    useCallback(() => setSort((current) => nextSort(current, "name")), []),
+  );
+  useShortcut(
+    "setup.subcategories.sortCategory",
+    useCallback(() => setSort((current) => nextSort(current, "category")), []),
+  );
+  useShortcut(
+    "setup.subcategories.sortGoal",
+    useCallback(
+      () => setSort((current) => nextSort(current, "monthlyGoal")),
+      [],
+    ),
+  );
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
+  if (isLoading)
+    return <p className="text-sm text-muted-foreground">Loading...</p>;
 
   return (
     <div
@@ -1311,7 +1607,8 @@ function SubcategoriesSection() {
       {selectedCount > 0 && (
         <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
-            {selectedCount} subcategor{selectedCount === 1 ? 'y' : 'ies'} selected
+            {selectedCount} subcategor{selectedCount === 1 ? "y" : "ies"}{" "}
+            selected
           </span>
           <Button
             type="button"
@@ -1376,7 +1673,7 @@ function SubcategoriesSection() {
                 tabIndex={0}
                 onFocus={() => setFocusedId(s.id)}
                 className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
-                  focusedId === s.id ? 'bg-secondary/20' : ''
+                  focusedId === s.id ? "bg-secondary/20" : ""
                 }`}
               >
                 {editId === s.id ? (
@@ -1408,14 +1705,28 @@ function SubcategoriesSection() {
                       />
                     </td>
                     <td className="py-1.5 pr-2">
-                      <ColorPicker value={editColor} onChange={setEditColor} label={`${s.name} color`} />
+                      <ColorPicker
+                        value={editColor}
+                        onChange={setEditColor}
+                        label={`${s.name} color`}
+                      />
                     </td>
                     <td className="py-1.5 text-right">
                       <div className="flex justify-end gap-1">
-                        <Button size="sm" className="h-6 px-2 text-xs" onClick={() => handleUpdate(s.id)} loading={saving}>
+                        <Button
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => handleUpdate(s.id)}
+                          loading={saving}
+                        >
                           Save
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditId(null)}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setEditId(null)}
+                        >
                           Cancel
                         </Button>
                       </div>
@@ -1436,30 +1747,61 @@ function SubcategoriesSection() {
                     </td>
                     <td className="py-1.5">
                       <EntityLabel id={s.id} name={s.name} color={s.color} />
-                      {s.is_system && <Lock size={12} className="ml-1.5 inline text-muted-foreground" />}
+                      {s.is_system && (
+                        <Lock
+                          size={12}
+                          className="ml-1.5 inline text-muted-foreground"
+                        />
+                      )}
                     </td>
                     <td className="py-1.5">
                       {parentCat ? (
                         <>
-                          <EntityLabel id={parentCat.id} name={parentCat.name} color={parentCat.color} /> <TypeBadge type={parentCat.type} />
+                          <EntityLabel
+                            id={parentCat.id}
+                            name={parentCat.name}
+                            color={parentCat.color}
+                          />{" "}
+                          <TypeBadge type={parentCat.type} />
                         </>
                       ) : (
                         <span className="text-muted-foreground">Unknown</span>
                       )}
                     </td>
                     <td className="py-1.5 text-right font-mono">
-                      {s.monthly_goal != null ? formatCurrency(s.monthly_goal) : <span className="text-muted-foreground">--</span>}
+                      {s.monthly_goal != null ? (
+                        formatCurrency(s.monthly_goal)
+                      ) : (
+                        <span className="text-muted-foreground">--</span>
+                      )}
                     </td>
                     <td className="py-1.5">
-                      <ColorPicker value={s.color} onChange={(nextColor) => void updateSubcategory.mutateAsync({ id: s.id, color: nextColor })} label={`${s.name} color`} />
+                      <ColorPicker
+                        value={s.color}
+                        onChange={(nextColor) =>
+                          void updateSubcategory.mutateAsync({
+                            id: s.id,
+                            color: nextColor,
+                          })
+                        }
+                        label={`${s.name} color`}
+                      />
                     </td>
                     <td className="py-1.5 text-right">
                       {!s.is_system && (
                         <div className="flex justify-end gap-1">
-                          <button type="button" onClick={() => startEdit(s)} className="p-1 text-muted-foreground hover:text-foreground">
+                          <button
+                            type="button"
+                            onClick={() => startEdit(s)}
+                            className="p-1 text-muted-foreground hover:text-foreground"
+                          >
                             <Pencil size={14} />
                           </button>
-                          <button type="button" onClick={() => setDeleteTarget(s)} className="p-1 text-muted-foreground hover:text-red-400">
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(s)}
+                            className="p-1 text-muted-foreground hover:text-red-400"
+                          >
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -1496,9 +1838,23 @@ function SubcategoriesSection() {
             onChange={(e) => setGoal(e.target.value)}
             className="h-8 w-36 text-sm"
           />
-          <ColorPicker value={color} onChange={setColor} label="New subcategory color" />
-          <Button type="submit" size="sm" className="h-8" loading={saving}>Add</Button>
-          <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setShowAdd(false)}>Cancel</Button>
+          <ColorPicker
+            value={color}
+            onChange={setColor}
+            label="New subcategory color"
+          />
+          <Button type="submit" size="sm" className="h-8" loading={saving}>
+            Add
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            onClick={() => setShowAdd(false)}
+          >
+            Cancel
+          </Button>
         </form>
       ) : (
         <Button
@@ -1525,7 +1881,7 @@ function SubcategoriesSection() {
         onClose={() => setShowBulkDelete(false)}
         onConfirm={handleBulkDelete}
         title="Delete Subcategories"
-        message={`Delete ${selectedCount} selected subcategor${selectedCount === 1 ? 'y' : 'ies'}? This cannot be undone.`}
+        message={`Delete ${selectedCount} selected subcategor${selectedCount === 1 ? "y" : "ies"}? This cannot be undone.`}
         isLoading={deleting}
       />
     </div>
@@ -1541,24 +1897,48 @@ export function SetupPage() {
   const [categoriesOpen, setCategoriesOpen] = useState(true);
   const [subcategoriesOpen, setSubcategoriesOpen] = useState(true);
 
-  useShortcutScope('setup');
-  useShortcut('setup.toggleAccounts', useCallback(() => setAccountsOpen((open) => !open), []));
-  useShortcut('setup.toggleCategories', useCallback(() => setCategoriesOpen((open) => !open), []));
-  useShortcut('setup.toggleSubcategories', useCallback(() => setSubcategoriesOpen((open) => !open), []));
+  useShortcutScope("setup");
+  useShortcut(
+    "setup.toggleAccounts",
+    useCallback(() => setAccountsOpen((open) => !open), []),
+  );
+  useShortcut(
+    "setup.toggleCategories",
+    useCallback(() => setCategoriesOpen((open) => !open), []),
+  );
+  useShortcut(
+    "setup.toggleSubcategories",
+    useCallback(() => setSubcategoriesOpen((open) => !open), []),
+  );
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Setup</h1>
 
-      <CollapsibleSection title="Accounts" count={accounts?.length ?? 0} open={accountsOpen} onOpenChange={setAccountsOpen}>
+      <CollapsibleSection
+        title="Accounts"
+        count={accounts?.length ?? 0}
+        open={accountsOpen}
+        onOpenChange={setAccountsOpen}
+      >
         <AccountsSection />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Categories" count={categories?.length ?? 0} open={categoriesOpen} onOpenChange={setCategoriesOpen}>
+      <CollapsibleSection
+        title="Categories"
+        count={categories?.length ?? 0}
+        open={categoriesOpen}
+        onOpenChange={setCategoriesOpen}
+      >
         <CategoriesSection />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Subcategories" count={subcategories?.length ?? 0} open={subcategoriesOpen} onOpenChange={setSubcategoriesOpen}>
+      <CollapsibleSection
+        title="Subcategories"
+        count={subcategories?.length ?? 0}
+        open={subcategoriesOpen}
+        onOpenChange={setSubcategoriesOpen}
+      >
         <SubcategoriesSection />
       </CollapsibleSection>
     </div>

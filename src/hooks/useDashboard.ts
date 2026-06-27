@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '@/lib/api';
-import { queryKeys } from '@/lib/queryKeys';
+import { useQuery } from "@tanstack/react-query";
+import { apiGet } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
 import type {
   AccountSummaryResponse,
   CategorySummary,
@@ -8,7 +8,7 @@ import type {
   NetWorthDataPoint,
   NetWorthSummary,
   SankeyData,
-} from '@/types/index';
+} from "@/types/index";
 
 const EMPTY_NET_WORTH: NetWorthSummary = {
   total_assets: 0,
@@ -35,8 +35,7 @@ export function useDashboard(startDate: string, endDate: string) {
 
   const metricsQuery = useQuery({
     queryKey: queryKeys.dashboard.metrics(startDate, endDate),
-    queryFn: () =>
-      apiGet<DashboardMetrics>(`/dashboard/metrics${dateParams}`),
+    queryFn: () => apiGet<DashboardMetrics>(`/dashboard/metrics${dateParams}`),
     select: (res) => res.data,
   });
 
@@ -49,8 +48,7 @@ export function useDashboard(startDate: string, endDate: string) {
 
   const sankeyChartQuery = useQuery({
     queryKey: queryKeys.dashboard.sankeyChart(startDate, endDate),
-    queryFn: () =>
-      apiGet<SankeyData>(`/dashboard/charts/sankey${dateParams}`),
+    queryFn: () => apiGet<SankeyData>(`/dashboard/charts/sankey${dateParams}`),
     select: (res) => res.data,
   });
 

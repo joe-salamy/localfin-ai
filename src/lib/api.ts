@@ -3,7 +3,7 @@ import {
   INVALID_SERVER_RESPONSE_MESSAGE,
   SERVER_UNREACHABLE_MESSAGE,
   SSE_ACCEPT_HEADER,
-} from '@/config/constants';
+} from "@/config/constants";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -12,7 +12,7 @@ interface ApiResponse<T> {
 }
 
 function isApiResponse<T>(value: unknown): value is ApiResponse<T> {
-  return typeof value === 'object' && value !== null && 'success' in value;
+  return typeof value === "object" && value !== null && "success" in value;
 }
 
 function fallbackErrorMessage(status: number): string {
@@ -23,12 +23,15 @@ function fallbackErrorMessage(status: number): string {
   return `LocalFin server request failed with status ${status}.`;
 }
 
-export async function api<T>(path: string, options?: RequestInit): Promise<ApiResponse<T>> {
+export async function api<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<ApiResponse<T>> {
   let res: Response;
 
   try {
     res = await fetch(`${API_BASE_PATH}${path}`, {
-      headers: { 'Content-Type': 'application/json', ...options?.headers },
+      headers: { "Content-Type": "application/json", ...options?.headers },
       ...options,
     });
   } catch {
@@ -65,9 +68,15 @@ export async function api<T>(path: string, options?: RequestInit): Promise<ApiRe
 
 // Convenience methods
 export const apiGet = <T>(path: string) => api<T>(path);
-export const apiPost = <T>(path: string, body: unknown) => api<T>(path, { method: 'POST', body: JSON.stringify(body) });
-export const apiPut = <T>(path: string, body: unknown) => api<T>(path, { method: 'PUT', body: JSON.stringify(body) });
-export const apiDelete = <T>(path: string, body?: unknown) => api<T>(path, { method: 'DELETE', body: body ? JSON.stringify(body) : undefined });
+export const apiPost = <T>(path: string, body: unknown) =>
+  api<T>(path, { method: "POST", body: JSON.stringify(body) });
+export const apiPut = <T>(path: string, body: unknown) =>
+  api<T>(path, { method: "PUT", body: JSON.stringify(body) });
+export const apiDelete = <T>(path: string, body?: unknown) =>
+  api<T>(path, {
+    method: "DELETE",
+    body: body ? JSON.stringify(body) : undefined,
+  });
 
 export async function apiStream<TEvent>(
   path: string,
@@ -76,8 +85,8 @@ export async function apiStream<TEvent>(
   signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${API_BASE_PATH}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: SSE_ACCEPT_HEADER },
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: SSE_ACCEPT_HEADER },
     body: JSON.stringify(body),
     signal,
   });
@@ -88,7 +97,7 @@ export async function apiStream<TEvent>(
     if (text) {
       try {
         const json = JSON.parse(text) as { error?: unknown };
-        if (typeof json.error === 'string') {
+        if (typeof json.error === "string") {
           message = json.error;
         }
       } catch {
@@ -99,19 +108,19 @@ export async function apiStream<TEvent>(
   }
 
   if (!res.body) {
-    throw new Error('Streaming response body is unavailable.');
+    throw new Error("Streaming response body is unavailable.");
   }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = '';
+  let buffer = "";
 
   const processBlock = (block: string) => {
     const data = block
       .split(/\r?\n/)
-      .filter((line) => line.startsWith('data:'))
+      .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trimStart())
-      .join('\n');
+      .join("\n");
 
     if (!data) return;
     onEvent(JSON.parse(data) as TEvent);
@@ -124,7 +133,9 @@ export async function apiStream<TEvent>(
     let boundary = buffer.search(/\r?\n\r?\n/);
     while (boundary !== -1) {
       const block = buffer.slice(0, boundary);
-      buffer = buffer.slice(buffer[boundary] === '\r' ? boundary + 4 : boundary + 2);
+      buffer = buffer.slice(
+        buffer[boundary] === "\r" ? boundary + 4 : boundary + 2,
+      );
       processBlock(block);
       boundary = buffer.search(/\r?\n\r?\n/);
     }

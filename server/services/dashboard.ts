@@ -66,7 +66,10 @@ export function getAccountSummary(
   endDate: string,
 ): { accounts: AccountSummary[]; netWorth: NetWorthSummary } {
   const db = getDb();
-  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
+  const effectiveStartDate = clampStartDateToFirstTransaction(
+    startDate,
+    endDate,
+  );
 
   const accounts = db
     .prepare(
@@ -84,7 +87,8 @@ export function getAccountSummary(
       )
       .get(account.id, effectiveStartDate) as BalanceRow;
 
-    const startingBalance = account.initial_balance + balanceRow.starting_balance;
+    const startingBalance =
+      account.initial_balance + balanceRow.starting_balance;
 
     // Transactions within range
     const transactions = db
@@ -145,7 +149,10 @@ export function getCategorySummary(
   endDate: string,
 ): CategorySummary[] {
   const db = getDb();
-  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
+  const effectiveStartDate = clampStartDateToFirstTransaction(
+    startDate,
+    endDate,
+  );
   const rangeDays =
     differenceInDays(parseISO(endDate), parseISO(effectiveStartDate)) + 1;
 
@@ -228,7 +235,10 @@ export function getDashboardMetrics(
   endDate: string,
 ): DashboardMetrics {
   const db = getDb();
-  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
+  const effectiveStartDate = clampStartDateToFirstTransaction(
+    startDate,
+    endDate,
+  );
 
   const row = db
     .prepare(

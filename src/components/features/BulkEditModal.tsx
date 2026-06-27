@@ -1,17 +1,23 @@
-import { useState } from 'react';
-import type { Subcategory, TransactionKind } from '@/types';
-import { Modal } from '@/components/ui/Modal';
-import { Button } from '@/components/ui/Button';
-import { SimpleSelect } from '@/components/ui/SimpleSelect';
-import { buildCategoryLookup, formatSubcategoryLabel } from '@/lib/categoryLabels';
-import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
-import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
-import type { Category } from '@/types';
+import { useState } from "react";
+import type { Subcategory, TransactionKind } from "@/types";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { SimpleSelect } from "@/components/ui/SimpleSelect";
+import {
+  buildCategoryLookup,
+  formatSubcategoryLabel,
+} from "@/lib/categoryLabels";
+import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
+import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
+import type { Category } from "@/types";
 
 interface BulkEditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (updates: { kind?: TransactionKind; subcategory_id?: string | null }) => void;
+  onConfirm: (updates: {
+    kind?: TransactionKind;
+    subcategory_id?: string | null;
+  }) => void;
   selectedCount: number;
   categories: Category[];
   subcategories: Subcategory[];
@@ -27,29 +33,34 @@ export function BulkEditModal({
   subcategories,
   isLoading,
 }: BulkEditModalProps) {
-  const [subcategoryId, setSubcategoryId] = useState('');
-  const [kind, setKind] = useState<'unchanged' | TransactionKind>('unchanged');
+  const [subcategoryId, setSubcategoryId] = useState("");
+  const [kind, setKind] = useState<"unchanged" | TransactionKind>("unchanged");
   const categoryLookup = buildCategoryLookup(categories);
-  const kindHasSubcategory = kind !== 'transfer' && kind !== 'adjustment';
+  const kindHasSubcategory = kind !== "transfer" && kind !== "adjustment";
 
   const handleConfirm = () => {
-    if (kind !== 'unchanged' || subcategoryId) {
+    if (kind !== "unchanged" || subcategoryId) {
       onConfirm({
-        ...(kind !== 'unchanged' ? { kind } : {}),
-        ...(subcategoryId && kindHasSubcategory ? { subcategory_id: subcategoryId } : {}),
+        ...(kind !== "unchanged" ? { kind } : {}),
+        ...(subcategoryId && kindHasSubcategory
+          ? { subcategory_id: subcategoryId }
+          : {}),
       });
     }
   };
 
   const handleClose = () => {
-    setSubcategoryId('');
-    setKind('unchanged');
+    setSubcategoryId("");
+    setKind("unchanged");
     onClose();
   };
 
-  useShortcutScope('modal', isOpen);
-  useShortcut('modal.confirm', handleConfirm, { enabled: isOpen && (Boolean(subcategoryId) || kind !== 'unchanged') && !isLoading });
-  useShortcut('modal.cancel', handleClose, { enabled: isOpen && !isLoading });
+  useShortcutScope("modal", isOpen);
+  useShortcut("modal.confirm", handleConfirm, {
+    enabled:
+      isOpen && (Boolean(subcategoryId) || kind !== "unchanged") && !isLoading,
+  });
+  useShortcut("modal.cancel", handleClose, { enabled: isOpen && !isLoading });
 
   return (
     <Modal
@@ -59,21 +70,23 @@ export function BulkEditModal({
       size="sm"
     >
       <p className="text-sm text-muted-foreground mb-3">
-        Change type or subcategory for {selectedCount} transaction{selectedCount !== 1 ? 's' : ''}
+        Change type or subcategory for {selectedCount} transaction
+        {selectedCount !== 1 ? "s" : ""}
       </p>
       <SimpleSelect
         value={kind}
         onChange={(e) => {
           const nextKind = e.target.value as typeof kind;
           setKind(nextKind);
-          if (nextKind === 'transfer' || nextKind === 'adjustment') setSubcategoryId('');
+          if (nextKind === "transfer" || nextKind === "adjustment")
+            setSubcategoryId("");
         }}
         options={[
-          { value: 'unchanged', label: 'Leave Type' },
-          { value: 'income', label: 'Income' },
-          { value: 'expense', label: 'Expense' },
-          { value: 'transfer', label: 'Transfer' },
-          { value: 'adjustment', label: 'Adjustment' },
+          { value: "unchanged", label: "Leave Type" },
+          { value: "income", label: "Income" },
+          { value: "expense", label: "Expense" },
+          { value: "transfer", label: "Transfer" },
+          { value: "adjustment", label: "Adjustment" },
         ]}
       />
       <div className="mt-2" />
@@ -88,14 +101,19 @@ export function BulkEditModal({
         disabled={!kindHasSubcategory}
       />
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={handleClose} disabled={isLoading}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleClose}
+          disabled={isLoading}
+        >
           Cancel
           <ShortcutHint commandId="modal.cancel" />
         </Button>
         <Button
           size="sm"
           onClick={handleConfirm}
-          disabled={!subcategoryId && kind === 'unchanged'}
+          disabled={!subcategoryId && kind === "unchanged"}
           loading={isLoading}
         >
           Confirm

@@ -250,7 +250,15 @@ export function createSubcategory(data: {
 
   db.prepare(
     "INSERT INTO subcategories (id, category_id, name, monthly_goal, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-  ).run(id, data.category_id, data.name, data.monthly_goal ?? null, data.color ?? null, now, now);
+  ).run(
+    id,
+    data.category_id,
+    data.name,
+    data.monthly_goal ?? null,
+    data.color ?? null,
+    now,
+    now,
+  );
 
   const row = db
     .prepare("SELECT * FROM subcategories WHERE id = ?")

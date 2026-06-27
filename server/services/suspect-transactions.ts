@@ -12,7 +12,10 @@ import type {
   TransactionWithDetails,
 } from "../../src/types/index.js";
 import { getDb } from "../db/index.js";
-import { getTransactionsWithDetails, getTransactionById } from "./transactions.js";
+import {
+  getTransactionsWithDetails,
+  getTransactionById,
+} from "./transactions.js";
 
 interface FindingDraft {
   transaction: TransactionWithDetails;
@@ -50,7 +53,10 @@ const severityRank: Record<SuspectSeverity, number> = {
 };
 
 function normalizeName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function dateDistanceDays(a: string, b: string): number {
@@ -84,7 +90,9 @@ function outlierScore(amount: number, peers: number[]): number | null {
 }
 
 function normalizeWords(words: string[]): string[] {
-  return Array.from(new Set(words.map((word) => word.trim().toLowerCase()).filter(Boolean)));
+  return Array.from(
+    new Set(words.map((word) => word.trim().toLowerCase()).filter(Boolean)),
+  );
 }
 
 function escapeRegex(value: string): string {
@@ -93,7 +101,9 @@ function escapeRegex(value: string): string {
 
 function findFlaggedWords(name: string, words: string[]): string[] {
   return normalizeWords(words).filter((word) =>
-    new RegExp(`(^|[^a-z0-9])${escapeRegex(word)}(?=$|[^a-z0-9])`, "i").test(name),
+    new RegExp(`(^|[^a-z0-9])${escapeRegex(word)}(?=$|[^a-z0-9])`, "i").test(
+      name,
+    ),
   );
 }
 
@@ -122,46 +132,76 @@ function reasonLabel(reason: SuspectReasonCode): string {
     .join(" ");
 }
 
-function combineDrafts(scanRunId: string, drafts: FindingDraft[], createdAt: string): SuspectTransactionFinding[] {
+function combineDrafts(
+  scanRunId: string,
+  drafts: FindingDraft[],
+  createdAt: string,
+): SuspectTransactionFinding[] {
   const grouped = byKey(drafts, (draft) => draft.transaction.id);
-  return Array.from(grouped.entries()).map(([transactionId, items]) => {
-    const reasons = Array.from(new Set(items.map((item) => item.reason)));
-    const topSeverity = items.reduce<SuspectSeverity>(
-      (current, item) => severityRank[item.severity] > severityRank[current] ? item.severity : current,
-      "low",
-    );
-    const score = Math.min(100, Math.max(...items.map((item) => item.score)) + Math.max(0, reasons.length - 1) * 5);
-    const summaries = items.map((item) => item.evidence.summary);
+  return Array.from(grouped.entries())
+    .map(([transactionId, items]) => {
+      const reasons = Array.from(new Set(items.map((item) => item.reason)));
+      const topSeverity = items.reduce<SuspectSeverity>(
+        (current, item) =>
+          severityRank[item.severity] > severityRank[current]
+            ? item.severity
+            : current,
+        "low",
+      );
+      const score = Math.min(
+        100,
+        Math.max(...items.map((item) => item.score)) +
+          Math.max(0, reasons.length - 1) * 5,
+      );
+      const summaries = items.map((item) => item.evidence.summary);
 
-    return {
-      id: crypto.randomUUID(),
-      scan_run_id: scanRunId,
-      transaction_id: transactionId,
-      status: "open" as const,
-      severity: topSeverity,
-      score,
-      reason_codes: reasons,
-      evidence: {
-        summary: summaries.join(" "),
-        details: {
-          reasons: reasons.map(reasonLabel),
-          reasonCount: reasons.length,
+      return {
+        id: crypto.randomUUID(),
+        scan_run_id: scanRunId,
+        transaction_id: transactionId,
+        status: "open" as const,
+        severity: topSeverity,
+        score,
+        reason_codes: reasons,
+        evidence: {
+          summary: summaries.join(" "),
+          details: {
+            reasons: reasons.map(reasonLabel),
+            reasonCount: reasons.length,
+          },
         },
-      },
-      transaction: items[0].transaction,
-      created_at: createdAt,
-      updated_at: createdAt,
-    };
-  }).sort((a, b) => b.score - a.score || b.created_at.localeCompare(a.created_at));
+        transaction: items[0].transaction,
+        created_at: createdAt,
+        updated_at: createdAt,
+      };
+    })
+    .sort(
+      (a, b) => b.score - a.score || b.created_at.localeCompare(a.created_at),
+    );
 }
 
-function scoreTransactions(transactions: TransactionWithDetails[], flaggedWords: string[]): FindingDraft[] {
+function scoreTransactions(
+  transactions: TransactionWithDetails[],
+  flaggedWords: string[],
+): FindingDraft[] {
   const drafts: FindingDraft[] = [];
-  const activeTransactions = transactions.filter((transaction) => !transaction.is_initial_balance);
-  const normalized = new Map(activeTransactions.map((transaction) => [transaction.id, normalizeName(transaction.name)]));
+  const activeTransactions = transactions.filter(
+    (transaction) => !transaction.is_initial_balance,
+  );
+  const normalized = new Map(
+    activeTransactions.map((transaction) => [
+      transaction.id,
+      normalizeName(transaction.name),
+    ]),
+  );
 
   for (const group of byKey(activeTransactions, (transaction) =>
-    [transaction.account_id, transaction.date, normalized.get(transaction.id), transaction.amount].join("|"),
+    [
+      transaction.account_id,
+      transaction.date,
+      normalized.get(transaction.id),
+      transaction.amount,
+    ].join("|"),
   ).values()) {
     if (group.length < 2) continue;
     for (const transaction of group) {
@@ -171,8 +211,13 @@ function scoreTransactions(transactions: TransactionWithDetails[], flaggedWords:
         severity: "high",
         score: 95,
         evidence: {
-          summary: "This transaction exactly matches another transaction on account, date, name, and amount.",
-          details: { duplicateIds: group.filter((item) => item.id !== transaction.id).map((item) => item.id) },
+          summary:
+            "This transaction exactly matches another transaction on account, date, name, and amount.",
+          details: {
+            duplicateIds: group
+              .filter((item) => item.id !== transaction.id)
+              .map((item) => item.id),
+          },
         },
       });
     }
@@ -182,13 +227,18 @@ function scoreTransactions(transactions: TransactionWithDetails[], flaggedWords:
     const transaction = activeTransactions[index];
     const name = normalized.get(transaction.id);
     if (!name) continue;
-    const matches = activeTransactions.filter((candidate, candidateIndex) =>
-      candidateIndex !== index
-      && candidate.account_id === transaction.account_id
-      && normalized.get(candidate.id) === name
-      && Math.abs(Math.abs(candidate.amount) - Math.abs(transaction.amount)) < 0.01
-      && dateDistanceDays(candidate.date, transaction.date) <= 3
-      && !(candidate.date === transaction.date && candidate.amount === transaction.amount),
+    const matches = activeTransactions.filter(
+      (candidate, candidateIndex) =>
+        candidateIndex !== index &&
+        candidate.account_id === transaction.account_id &&
+        normalized.get(candidate.id) === name &&
+        Math.abs(Math.abs(candidate.amount) - Math.abs(transaction.amount)) <
+          0.01 &&
+        dateDistanceDays(candidate.date, transaction.date) <= 3 &&
+        !(
+          candidate.date === transaction.date &&
+          candidate.amount === transaction.amount
+        ),
     );
     if (matches.length === 0) continue;
     addDraft(drafts, {
@@ -197,20 +247,26 @@ function scoreTransactions(transactions: TransactionWithDetails[], flaggedWords:
       severity: "medium",
       score: 80,
       evidence: {
-        summary: "This transaction closely matches another transaction within three days.",
+        summary:
+          "This transaction closely matches another transaction within three days.",
         details: { matchingIds: matches.map((item) => item.id) },
       },
     });
   }
 
   for (const transaction of activeTransactions) {
-    if ((transaction.kind === "income" || transaction.kind === "expense") && !transaction.subcategory_id) {
+    if (
+      (transaction.kind === "income" || transaction.kind === "expense") &&
+      !transaction.subcategory_id
+    ) {
       addDraft(drafts, {
         transaction,
         reason: "missing_category",
         severity: "low",
         score: 45,
-        evidence: { summary: "This income or expense transaction has no subcategory." },
+        evidence: {
+          summary: "This income or expense transaction has no subcategory.",
+        },
       });
     }
 
@@ -229,7 +285,9 @@ function scoreTransactions(transactions: TransactionWithDetails[], flaggedWords:
     }
   }
 
-  for (const group of byKey(activeTransactions, (transaction) => [transaction.account_id, transaction.kind].join("|")).values()) {
+  for (const group of byKey(activeTransactions, (transaction) =>
+    [transaction.account_id, transaction.kind].join("|"),
+  ).values()) {
     for (const transaction of group) {
       const peers = group
         .filter((item) => item.id !== transaction.id)
@@ -242,15 +300,23 @@ function scoreTransactions(transactions: TransactionWithDetails[], flaggedWords:
         severity: score >= 85 ? "high" : "medium",
         score,
         evidence: {
-          summary: "This amount is unusually large compared with other transactions on the same account and type.",
-          details: { amount: Math.abs(transaction.amount), peerCount: peers.length },
+          summary:
+            "This amount is unusually large compared with other transactions on the same account and type.",
+          details: {
+            amount: Math.abs(transaction.amount),
+            peerCount: peers.length,
+          },
         },
       });
     }
   }
 
   for (const group of byKey(activeTransactions, (transaction) =>
-    [transaction.account_id, transaction.kind, normalized.get(transaction.id)].join("|"),
+    [
+      transaction.account_id,
+      transaction.kind,
+      normalized.get(transaction.id),
+    ].join("|"),
   ).values()) {
     for (const transaction of group) {
       const peers = group
@@ -264,15 +330,27 @@ function scoreTransactions(transactions: TransactionWithDetails[], flaggedWords:
         severity: score >= 85 ? "high" : "medium",
         score,
         evidence: {
-          summary: "This amount is unusually large for this merchant-like transaction name.",
-          details: { merchant: transaction.name, amount: Math.abs(transaction.amount), peerCount: peers.length },
+          summary:
+            "This amount is unusually large for this merchant-like transaction name.",
+          details: {
+            merchant: transaction.name,
+            amount: Math.abs(transaction.amount),
+            peerCount: peers.length,
+          },
         },
       });
     }
   }
 
-  for (const group of byKey(activeTransactions, (transaction) => [transaction.account_id, transaction.date].join("|")).values()) {
-    const smallExpenses = group.filter((transaction) => transaction.kind === "expense" && Math.abs(transaction.amount) > 0 && Math.abs(transaction.amount) <= 5);
+  for (const group of byKey(activeTransactions, (transaction) =>
+    [transaction.account_id, transaction.date].join("|"),
+  ).values()) {
+    const smallExpenses = group.filter(
+      (transaction) =>
+        transaction.kind === "expense" &&
+        Math.abs(transaction.amount) > 0 &&
+        Math.abs(transaction.amount) <= 5,
+    );
     if (smallExpenses.length < 3) continue;
     for (const transaction of smallExpenses) {
       addDraft(drafts, {
@@ -281,8 +359,12 @@ function scoreTransactions(transactions: TransactionWithDetails[], flaggedWords:
         severity: "medium",
         score: 72,
         evidence: {
-          summary: "This is part of a same-day cluster of small charges on the same account.",
-          details: { clusterSize: smallExpenses.length, clusterIds: smallExpenses.map((item) => item.id) },
+          summary:
+            "This is part of a same-day cluster of small charges on the same account.",
+          details: {
+            clusterSize: smallExpenses.length,
+            clusterIds: smallExpenses.map((item) => item.id),
+          },
         },
       });
     }
@@ -290,12 +372,17 @@ function scoreTransactions(transactions: TransactionWithDetails[], flaggedWords:
 
   const transferPattern = /\b(payment|transfer|xfer|venmo|zelle|ach)\b/i;
   for (const transaction of activeTransactions) {
-    if (transaction.kind !== "transfer" && !transferPattern.test(transaction.name)) continue;
-    const match = activeTransactions.find((candidate) =>
-      candidate.id !== transaction.id
-      && candidate.account_id !== transaction.account_id
-      && Math.abs(candidate.amount + transaction.amount) < 0.01
-      && dateDistanceDays(candidate.date, transaction.date) <= 3,
+    if (
+      transaction.kind !== "transfer" &&
+      !transferPattern.test(transaction.name)
+    )
+      continue;
+    const match = activeTransactions.find(
+      (candidate) =>
+        candidate.id !== transaction.id &&
+        candidate.account_id !== transaction.account_id &&
+        Math.abs(candidate.amount + transaction.amount) < 0.01 &&
+        dateDistanceDays(candidate.date, transaction.date) <= 3,
     );
     if (match) continue;
     addDraft(drafts, {
@@ -304,7 +391,8 @@ function scoreTransactions(transactions: TransactionWithDetails[], flaggedWords:
       severity: transaction.kind === "transfer" ? "medium" : "low",
       score: transaction.kind === "transfer" ? 76 : 52,
       evidence: {
-        summary: "This transfer-like transaction has no opposite-account matching amount within three days.",
+        summary:
+          "This transfer-like transaction has no opposite-account matching amount within three days.",
       },
     });
   }
@@ -333,14 +421,18 @@ function rowToFinding(row: FindingRow): SuspectTransactionFinding {
     severity: row.severity,
     score: row.score,
     reason_codes: parseJson<SuspectReasonCode[]>(row.reason_codes_json, []),
-    evidence: parseJson<SuspectEvidence>(row.evidence_json, { summary: "Suspect transaction finding." }),
+    evidence: parseJson<SuspectEvidence>(row.evidence_json, {
+      summary: "Suspect transaction finding.",
+    }),
     created_at: row.created_at,
     updated_at: row.updated_at,
     transaction: getTransactionById(row.transaction_id) ?? undefined,
   };
 }
 
-function applyPriorFindingStatuses(findings: SuspectTransactionFinding[]): void {
+function applyPriorFindingStatuses(
+  findings: SuspectTransactionFinding[],
+): void {
   if (findings.length === 0) return;
 
   const priorStatus = getDb().prepare(`
@@ -364,13 +456,19 @@ function applyPriorFindingStatuses(findings: SuspectTransactionFinding[]): void 
   }
 }
 
-export function runSuspectTransactionScan(request: RunSuspectScanRequest = {}): RunSuspectScanResponse {
+export function runSuspectTransactionScan(
+  request: RunSuspectScanRequest = {},
+): RunSuspectScanResponse {
   const db = getDb();
   const filters: TransactionFilters = request.filters ?? {};
   const transactions = getTransactionsWithDetails(filters);
   const runId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const findings = combineDrafts(runId, scoreTransactions(transactions, request.flaggedWords ?? []), now);
+  const findings = combineDrafts(
+    runId,
+    scoreTransactions(transactions, request.flaggedWords ?? []),
+    now,
+  );
   applyPriorFindingStatuses(findings);
 
   const insertRun = db.prepare(`
@@ -385,7 +483,13 @@ export function runSuspectTransactionScan(request: RunSuspectScanRequest = {}): 
   `);
 
   db.transaction(() => {
-    insertRun.run(runId, JSON.stringify(filters), transactions.length, findings.length, now);
+    insertRun.run(
+      runId,
+      JSON.stringify(filters),
+      transactions.length,
+      findings.length,
+      now,
+    );
     for (const finding of findings) {
       insertFinding.run(
         finding.id,
@@ -402,18 +506,26 @@ export function runSuspectTransactionScan(request: RunSuspectScanRequest = {}): 
     }
   })();
 
-  const run = rowToRun(db.prepare("SELECT * FROM suspect_scan_runs WHERE id = ?").get(runId) as ScanRunRow);
+  const run = rowToRun(
+    db
+      .prepare("SELECT * FROM suspect_scan_runs WHERE id = ?")
+      .get(runId) as ScanRunRow,
+  );
   return { run, findings };
 }
 
 function latestRunId(): string | null {
   const row = getDb()
-    .prepare("SELECT id FROM suspect_scan_runs ORDER BY created_at DESC LIMIT 1")
+    .prepare(
+      "SELECT id FROM suspect_scan_runs ORDER BY created_at DESC LIMIT 1",
+    )
     .get() as { id: string } | undefined;
   return row?.id ?? null;
 }
 
-export function getSuspectTransactionFindings(filters: SuspectFindingFilters = {}): SuspectTransactionFinding[] {
+export function getSuspectTransactionFindings(
+  filters: SuspectFindingFilters = {},
+): SuspectTransactionFinding[] {
   const db = getDb();
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -437,12 +549,16 @@ export function getSuspectTransactionFindings(filters: SuspectFindingFilters = {
   }
 
   const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(
+      `
     SELECT *
     FROM suspect_transaction_findings
     ${where}
     ORDER BY score DESC, created_at DESC
-  `).all(...params) as FindingRow[];
+  `,
+    )
+    .all(...params) as FindingRow[];
 
   return rows.map(rowToFinding).filter((finding) => finding.transaction);
 }
@@ -454,10 +570,14 @@ export function updateSuspectTransactionFindingStatus(
   const db = getDb();
   const now = new Date().toISOString();
   const result = db
-    .prepare("UPDATE suspect_transaction_findings SET status = ?, updated_at = ? WHERE id = ?")
+    .prepare(
+      "UPDATE suspect_transaction_findings SET status = ?, updated_at = ? WHERE id = ?",
+    )
     .run(status, now, id);
   if (result.changes === 0) return null;
 
-  const row = db.prepare("SELECT * FROM suspect_transaction_findings WHERE id = ?").get(id) as FindingRow;
+  const row = db
+    .prepare("SELECT * FROM suspect_transaction_findings WHERE id = ?")
+    .get(id) as FindingRow;
   return rowToFinding(row);
 }

@@ -32,10 +32,16 @@ const LIABILITY_INCOME_NAME_PATTERN =
 const INITIAL_BALANCE_NAME_PATTERN = /^initial balance$/i;
 
 function repairKindForRow(row: RepairCandidateRow): TransactionKind | null {
-  if (row.is_initial_balance || INITIAL_BALANCE_NAME_PATTERN.test(row.name.trim())) {
+  if (
+    row.is_initial_balance ||
+    INITIAL_BALANCE_NAME_PATTERN.test(row.name.trim())
+  ) {
     return null;
   }
-  if (row.account_type === "liability" && LIABILITY_INCOME_NAME_PATTERN.test(row.name)) {
+  if (
+    row.account_type === "liability" &&
+    LIABILITY_INCOME_NAME_PATTERN.test(row.name)
+  ) {
     return "income";
   }
   if (row.account_type === "liability" && row.category_type) {
@@ -123,7 +129,10 @@ export function applyTransactionSignRepairs(
 function summarizeRepairs(repairs: TransactionSignRepair[]): void {
   const byAccount = new Map<string, number>();
   for (const repair of repairs) {
-    byAccount.set(repair.accountName, (byAccount.get(repair.accountName) ?? 0) + 1);
+    byAccount.set(
+      repair.accountName,
+      (byAccount.get(repair.accountName) ?? 0) + 1,
+    );
   }
 
   console.log(`Found ${repairs.length} transaction sign repair(s).`);

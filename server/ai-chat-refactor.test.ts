@@ -133,10 +133,16 @@ test("shouldContinueToolLoop continues after search-only updates and retriable f
     true,
   );
   assert.equal(
-    shouldContinueToolLoop("Find Uber and update its comment.", completedUpdate),
+    shouldContinueToolLoop(
+      "Find Uber and update its comment.",
+      completedUpdate,
+    ),
     false,
   );
-  assert.equal(shouldContinueToolLoop("Move Groceries.", retriableFailure), true);
+  assert.equal(
+    shouldContinueToolLoop("Move Groceries.", retriableFailure),
+    true,
+  );
 });
 
 test("prepareActionsForExecution preserves transaction normalization and search repair", () => {

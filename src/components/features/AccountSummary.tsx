@@ -1,26 +1,38 @@
-import { useState } from 'react';
-import type { CSSProperties } from 'react';
-import type { AccountSummary as AccountSummaryType, NetWorthSummary } from '@/types';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { EntityLabel } from '@/components/ui/EntityLabel';
-import { formatCurrency, cn } from '@/lib/utils';
-import { DISPLAY_DATE_FORMAT } from '@/config/constants';
-import { useAmountGradient } from '@/features/display-settings/hooks';
-import { accountChangeScaleValue, scaleValueColorClass } from '@/lib/financialColorScale';
+import { useState } from "react";
+import type { CSSProperties } from "react";
+import type {
+  AccountSummary as AccountSummaryType,
+  NetWorthSummary,
+} from "@/types";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { format, parseISO } from "date-fns";
+import { EntityLabel } from "@/components/ui/EntityLabel";
+import { formatCurrency, cn } from "@/lib/utils";
+import { DISPLAY_DATE_FORMAT } from "@/config/constants";
+import { useAmountGradient } from "@/features/display-settings/hooks";
+import {
+  accountChangeScaleValue,
+  scaleValueColorClass,
+} from "@/lib/financialColorScale";
 
 interface AccountSummaryProps {
   accounts: AccountSummaryType[];
   netWorth: NetWorthSummary;
 }
 
-const headerClass = 'px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider';
-const cellClass = 'px-2 py-1.5 text-sm whitespace-nowrap';
+const headerClass =
+  "px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider";
+const cellClass = "px-2 py-1.5 text-sm whitespace-nowrap";
 
-export function AccountSummaryTable({ accounts, netWorth }: AccountSummaryProps) {
+export function AccountSummaryTable({
+  accounts,
+  netWorth,
+}: AccountSummaryProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const getSummaryGradientStyle = useAmountGradient(
-    accounts.map((account) => accountChangeScaleValue(account.total_change, account.account_type)),
+    accounts.map((account) =>
+      accountChangeScaleValue(account.total_change, account.account_type),
+    ),
   );
 
   const toggle = (id: string) => {
@@ -35,12 +47,12 @@ export function AccountSummaryTable({ accounts, netWorth }: AccountSummaryProps)
       <table className="w-full">
         <thead className="bg-secondary/50">
           <tr>
-            <th className={cn(headerClass, 'w-8')} />
+            <th className={cn(headerClass, "w-8")} />
             <th className={headerClass}>Account</th>
             <th className={headerClass}>Type</th>
-            <th className={cn(headerClass, 'text-right')}>Starting</th>
-            <th className={cn(headerClass, 'text-right')}>Change</th>
-            <th className={cn(headerClass, 'text-right')}>Ending</th>
+            <th className={cn(headerClass, "text-right")}>Starting</th>
+            <th className={cn(headerClass, "text-right")}>Change</th>
+            <th className={cn(headerClass, "text-right")}>Ending</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -58,16 +70,24 @@ export function AccountSummaryTable({ accounts, netWorth }: AccountSummaryProps)
           })}
           <tr className="bg-secondary/30 font-semibold">
             <td className={cellClass} />
-            <td className={cellClass} colSpan={2}>Net Worth</td>
-            <td className={cn(cellClass, 'text-right text-green-400')}>
+            <td className={cellClass} colSpan={2}>
+              Net Worth
+            </td>
+            <td className={cn(cellClass, "text-right text-green-400")}>
               {formatCurrency(netWorth.total_assets)}
               <span className="text-xs text-muted-foreground ml-1">assets</span>
             </td>
-            <td className={cn(cellClass, 'text-right text-red-400')}>
+            <td className={cn(cellClass, "text-right text-red-400")}>
               {formatCurrency(netWorth.total_liabilities)}
               <span className="text-xs text-muted-foreground ml-1">liab.</span>
             </td>
-            <td className={cn(cellClass, 'text-right', netWorth.net_worth >= 0 ? 'text-green-400' : 'text-red-400')}>
+            <td
+              className={cn(
+                cellClass,
+                "text-right",
+                netWorth.net_worth >= 0 ? "text-green-400" : "text-red-400",
+              )}
+            >
               {formatCurrency(netWorth.net_worth)}
             </td>
           </tr>
@@ -93,32 +113,54 @@ function AccountRow({
       accountChangeScaleValue(transaction.amount, account.account_type),
     ),
   );
-  const changeScaleValue = accountChangeScaleValue(account.total_change, account.account_type);
+  const changeScaleValue = accountChangeScaleValue(
+    account.total_change,
+    account.account_type,
+  );
 
   return (
     <>
       <tr className="hover:bg-secondary/30 cursor-pointer" onClick={onToggle}>
         <td className={cellClass}>
-          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          {isOpen ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
         </td>
         <td className={cellClass}>
-          <EntityLabel id={account.account_id} name={account.account_name} color={account.account_color} />
+          <EntityLabel
+            id={account.account_id}
+            name={account.account_name}
+            color={account.account_color}
+          />
         </td>
         <td className={cellClass}>
-          <span className={cn(
-            'inline-block rounded px-1.5 py-0.5 text-xs font-medium',
-            account.account_type === 'asset' ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'
-          )}>
+          <span
+            className={cn(
+              "inline-block rounded px-1.5 py-0.5 text-xs font-medium",
+              account.account_type === "asset"
+                ? "bg-green-900/40 text-green-400"
+                : "bg-red-900/40 text-red-400",
+            )}
+          >
             {account.account_type}
           </span>
         </td>
-        <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
+        <td className={cn(cellClass, "text-right font-mono tabular-nums")}>
           {formatCurrency(account.starting_balance)}
         </td>
-        <td className={cn(cellClass, 'text-right font-mono tabular-nums', scaleValueColorClass(changeScaleValue))} style={getSummaryGradientStyle(changeScaleValue)}>
+        <td
+          className={cn(
+            cellClass,
+            "text-right font-mono tabular-nums",
+            scaleValueColorClass(changeScaleValue),
+          )}
+          style={getSummaryGradientStyle(changeScaleValue)}
+        >
           {formatCurrency(account.total_change)}
         </td>
-        <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
+        <td className={cn(cellClass, "text-right font-mono tabular-nums")}>
           {formatCurrency(account.ending_balance)}
         </td>
       </tr>
@@ -131,36 +173,70 @@ function AccountRow({
                   <tr>
                     <th className={headerClass}>Date</th>
                     <th className={headerClass}>Name</th>
-                    <th className={cn(headerClass, 'text-right')}>Amount</th>
-                    <th className={cn(headerClass, 'text-right')}>Balance</th>
+                    <th className={cn(headerClass, "text-right")}>Amount</th>
+                    <th className={cn(headerClass, "text-right")}>Balance</th>
                     <th className={headerClass}>Category</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {account.transactions.map((t) => {
-                    const amountScaleValue = accountChangeScaleValue(t.amount, account.account_type);
+                    const amountScaleValue = accountChangeScaleValue(
+                      t.amount,
+                      account.account_type,
+                    );
                     return (
-                    <tr key={t.id} className="hover:bg-secondary/20">
-                      <td className={cn(cellClass, 'text-xs')}>{format(parseISO(t.date), DISPLAY_DATE_FORMAT)}</td>
-                      <td className={cn(cellClass, 'text-xs')}>{t.name}</td>
-                      <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs', scaleValueColorClass(amountScaleValue))} style={getGradientStyle(amountScaleValue)}>
-                        {formatCurrency(t.amount)}
-                      </td>
-                      <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs')}>
-                        {formatCurrency(t.running_balance)}
-                      </td>
-                      <td className={cn(cellClass, 'text-xs text-muted-foreground')}>
-                        {t.category_name && t.subcategory_name ? (
-                          <span className="inline-flex items-center gap-1">
-                            <EntityLabel id={t.category_name} name={t.category_name} color={t.category_color} />
-                            <span>&gt;</span>
-                            <EntityLabel id={t.subcategory_name} name={t.subcategory_name} color={t.subcategory_color} />
-                          </span>
-                        ) : (
-                          <EntityLabel id={t.subcategory_name} name={t.subcategory_name} color={t.subcategory_color} />
-                        )}
-                      </td>
-                    </tr>
+                      <tr key={t.id} className="hover:bg-secondary/20">
+                        <td className={cn(cellClass, "text-xs")}>
+                          {format(parseISO(t.date), DISPLAY_DATE_FORMAT)}
+                        </td>
+                        <td className={cn(cellClass, "text-xs")}>{t.name}</td>
+                        <td
+                          className={cn(
+                            cellClass,
+                            "text-right font-mono tabular-nums text-xs",
+                            scaleValueColorClass(amountScaleValue),
+                          )}
+                          style={getGradientStyle(amountScaleValue)}
+                        >
+                          {formatCurrency(t.amount)}
+                        </td>
+                        <td
+                          className={cn(
+                            cellClass,
+                            "text-right font-mono tabular-nums text-xs",
+                          )}
+                        >
+                          {formatCurrency(t.running_balance)}
+                        </td>
+                        <td
+                          className={cn(
+                            cellClass,
+                            "text-xs text-muted-foreground",
+                          )}
+                        >
+                          {t.category_name && t.subcategory_name ? (
+                            <span className="inline-flex items-center gap-1">
+                              <EntityLabel
+                                id={t.category_name}
+                                name={t.category_name}
+                                color={t.category_color}
+                              />
+                              <span>&gt;</span>
+                              <EntityLabel
+                                id={t.subcategory_name}
+                                name={t.subcategory_name}
+                                color={t.subcategory_color}
+                              />
+                            </span>
+                          ) : (
+                            <EntityLabel
+                              id={t.subcategory_name}
+                              name={t.subcategory_name}
+                              color={t.subcategory_color}
+                            />
+                          )}
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>

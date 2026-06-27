@@ -103,4 +103,6 @@ export type ChatStreamEvent =
   | { type: "action_finished"; index: number; action: ExecutedAction }
   | { type: "final"; data: ChatResult };
 
-export type ChatStreamEmitter = (event: ChatStreamEvent) => void | Promise<void>;
+export type ChatStreamEmitter = (
+  event: ChatStreamEvent,
+) => void | Promise<void>;

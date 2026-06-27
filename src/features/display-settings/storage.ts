@@ -1,6 +1,6 @@
-import { DEFAULT_AMOUNT_GRADIENT_SETTINGS, normalizeColor } from '@/lib/colors';
+import { DEFAULT_AMOUNT_GRADIENT_SETTINGS, normalizeColor } from "@/lib/colors";
 
-const STORAGE_KEY = 'localfin.display.v1';
+const STORAGE_KEY = "localfin.display.v1";
 const STORAGE_VERSION = 1;
 
 export interface DisplaySettings {
@@ -21,7 +21,7 @@ export function defaultDisplaySettings(): DisplaySettings {
 }
 
 export function readDisplaySettings(): DisplaySettings {
-  if (typeof window === 'undefined') return defaultDisplaySettings();
+  if (typeof window === "undefined") return defaultDisplaySettings();
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return defaultDisplaySettings();
 
@@ -30,11 +30,17 @@ export function readDisplaySettings(): DisplaySettings {
     const defaults = defaultDisplaySettings();
     return {
       version: STORAGE_VERSION,
-      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : defaults.updatedAt,
+      updatedAt:
+        typeof parsed.updatedAt === "string"
+          ? parsed.updatedAt
+          : defaults.updatedAt,
       amountGradientEnabled: Boolean(parsed.amountGradientEnabled),
-      negativeColor: normalizeColor(parsed.negativeColor) ?? defaults.negativeColor,
-      neutralColor: normalizeColor(parsed.neutralColor) ?? defaults.neutralColor,
-      positiveColor: normalizeColor(parsed.positiveColor) ?? defaults.positiveColor,
+      negativeColor:
+        normalizeColor(parsed.negativeColor) ?? defaults.negativeColor,
+      neutralColor:
+        normalizeColor(parsed.neutralColor) ?? defaults.neutralColor,
+      positiveColor:
+        normalizeColor(parsed.positiveColor) ?? defaults.positiveColor,
     };
   } catch {
     return defaultDisplaySettings();
@@ -42,7 +48,7 @@ export function readDisplaySettings(): DisplaySettings {
 }
 
 export function writeDisplaySettings(settings: DisplaySettings): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   window.localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({

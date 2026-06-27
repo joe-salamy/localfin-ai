@@ -1,6 +1,6 @@
-import { forwardRef } from 'react';
-import type { SelectHTMLAttributes } from 'react';
-import { cn } from '@/lib/utils';
+import { forwardRef } from "react";
+import type { SelectHTMLAttributes } from "react";
+import { cn } from "@/lib/utils";
 
 interface SelectOption {
   value: string;
@@ -16,12 +16,15 @@ interface SimpleSelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 
 export const SimpleSelect = forwardRef<HTMLSelectElement, SimpleSelectProps>(
   ({ className, label, error, options, placeholder, id, ...props }, ref) => {
-    const selectId = id || label?.toLowerCase().replace(/\s+/g, '-');
+    const selectId = id || label?.toLowerCase().replace(/\s+/g, "-");
 
     return (
       <div className="space-y-1">
         {label && (
-          <label htmlFor={selectId} className="block text-sm font-medium text-foreground">
+          <label
+            htmlFor={selectId}
+            className="block text-sm font-medium text-foreground"
+          >
             {label}
           </label>
         )}
@@ -29,9 +32,9 @@ export const SimpleSelect = forwardRef<HTMLSelectElement, SimpleSelectProps>(
           ref={ref}
           id={selectId}
           className={cn(
-            'flex h-9 w-full rounded-md border border-border bg-input px-3 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-            error && 'border-red-500 focus-visible:ring-red-500',
-            className
+            "flex h-9 w-full rounded-md border border-border bg-input px-3 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+            error && "border-red-500 focus-visible:ring-red-500",
+            className,
           )}
           {...props}
         >
@@ -49,7 +52,7 @@ export const SimpleSelect = forwardRef<HTMLSelectElement, SimpleSelectProps>(
         {error && <p className="text-xs text-red-500">{error}</p>}
       </div>
     );
-  }
+  },
 );
 
-SimpleSelect.displayName = 'SimpleSelect';
+SimpleSelect.displayName = "SimpleSelect";

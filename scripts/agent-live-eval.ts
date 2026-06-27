@@ -489,7 +489,10 @@ function assertTransaction(expected: {
         if (expected.date && item.date !== expected.date) return false;
         if (
           expected.amount !== undefined &&
-          !numberEquals(item.amount, normalizedExpectedAmount(expected.amount, item))
+          !numberEquals(
+            item.amount,
+            normalizedExpectedAmount(expected.amount, item),
+          )
         ) {
           return false;
         }
@@ -539,10 +542,13 @@ function assertMatchingTransactionsSubcategory(expected: {
         );
       }
       const mismatches = matches.filter(
-        (item) => normalize(item.subcategory_name) !== normalize(expected.subcategory),
+        (item) =>
+          normalize(item.subcategory_name) !== normalize(expected.subcategory),
       );
       return mismatches.length === 0
-        ? pass(`all ${expected.nameIncludes} transactions are ${expected.subcategory}`)
+        ? pass(
+            `all ${expected.nameIncludes} transactions are ${expected.subcategory}`,
+          )
         : fail(
             `all ${expected.nameIncludes} transactions are ${expected.subcategory}`,
             `mismatched ids: ${mismatches.map((item) => item.id).join(", ")}`,

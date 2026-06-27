@@ -1,16 +1,18 @@
-import { forwardRef, useMemo, useState } from 'react';
-import type { ButtonHTMLAttributes } from 'react';
-import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronDown, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { forwardRef, useMemo, useState } from "react";
+import type { ButtonHTMLAttributes } from "react";
+import * as Popover from "@radix-ui/react-popover";
+import { Check, ChevronDown, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface MultiSelectOption {
   value: string;
   label: string;
 }
 
-interface MultiSelectProps
-  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onChange' | 'value'> {
+interface MultiSelectProps extends Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "onChange" | "value"
+> {
   value: string[];
   onChange: (value: string[]) => void;
   options: MultiSelectOption[];
@@ -27,7 +29,7 @@ export const MultiSelect = forwardRef<HTMLButtonElement, MultiSelectProps>(
       options,
       allLabel,
       selectedLabel,
-      emptyLabel = 'No options',
+      emptyLabel = "No options",
       className,
       disabled,
       ...props
@@ -36,13 +38,16 @@ export const MultiSelect = forwardRef<HTMLButtonElement, MultiSelectProps>(
   ) => {
     const [open, setOpen] = useState(false);
     const selectedValues = useMemo(() => new Set(value), [value]);
-    const firstSelected = options.find((option) => selectedValues.has(option.value));
+    const firstSelected = options.find((option) =>
+      selectedValues.has(option.value),
+    );
 
-    const label = value.length === 0
-      ? allLabel
-      : value.length === 1
-        ? firstSelected?.label ?? selectedLabel
-        : `${value.length} ${selectedLabel}`;
+    const label =
+      value.length === 0
+        ? allLabel
+        : value.length === 1
+          ? (firstSelected?.label ?? selectedLabel)
+          : `${value.length} ${selectedLabel}`;
 
     const toggleValue = (nextValue: string) => {
       if (selectedValues.has(nextValue)) {
@@ -61,7 +66,7 @@ export const MultiSelect = forwardRef<HTMLButtonElement, MultiSelectProps>(
             type="button"
             disabled={disabled}
             className={cn(
-              'flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-input px-3 py-1 text-xs text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+              "flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-input px-3 py-1 text-xs text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
               className,
             )}
             {...props}
@@ -78,7 +83,9 @@ export const MultiSelect = forwardRef<HTMLButtonElement, MultiSelectProps>(
           >
             <div className="max-h-64 overflow-y-auto">
               {options.length === 0 ? (
-                <div className="px-2 py-2 text-muted-foreground">{emptyLabel}</div>
+                <div className="px-2 py-2 text-muted-foreground">
+                  {emptyLabel}
+                </div>
               ) : (
                 options.map((option) => {
                   const selected = selectedValues.has(option.value);
@@ -92,8 +99,8 @@ export const MultiSelect = forwardRef<HTMLButtonElement, MultiSelectProps>(
                     >
                       <span
                         className={cn(
-                          'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border border-border',
-                          selected && 'bg-primary text-primary-foreground',
+                          "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border border-border",
+                          selected && "bg-primary text-primary-foreground",
                         )}
                         aria-hidden="true"
                       >
@@ -122,4 +129,4 @@ export const MultiSelect = forwardRef<HTMLButtonElement, MultiSelectProps>(
   },
 );
 
-MultiSelect.displayName = 'MultiSelect';
+MultiSelect.displayName = "MultiSelect";

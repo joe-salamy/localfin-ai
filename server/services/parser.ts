@@ -262,7 +262,9 @@ export async function parseStatement(
 
   const db = getDb();
   const account = db
-    .prepare("SELECT name, type FROM accounts WHERE id = ? AND deleted_at IS NULL")
+    .prepare(
+      "SELECT name, type FROM accounts WHERE id = ? AND deleted_at IS NULL",
+    )
     .get(accountId) as { name: string; type: AccountType } | undefined;
   if (!account) {
     return {
@@ -291,7 +293,11 @@ export async function parseStatement(
             account_id: accountId,
             account_name: account.name,
             account_type: account.type,
-            amount: normalizeTransactionAmount(t.amount, account.type, "expense"),
+            amount: normalizeTransactionAmount(
+              t.amount,
+              account.type,
+              "expense",
+            ),
           })),
         })
       : [];
@@ -330,12 +336,18 @@ export async function parseStatement(
     const { categorization, ...transaction } = t;
     if (isDuplicate) summary.duplicates++;
 
-    if (categorization?.source === "lookup" || categorization?.source === "transfer") {
+    if (
+      categorization?.source === "lookup" ||
+      categorization?.source === "transfer"
+    ) {
       summary.fromLookup++;
     } else if (categorization?.source === "ai") {
       summary.fromAI++;
     }
-    if (!categorization?.subcategory_id && categorization?.kind !== "transfer") {
+    if (
+      !categorization?.subcategory_id &&
+      categorization?.kind !== "transfer"
+    ) {
       summary.uncategorized++;
     }
 
@@ -346,7 +358,10 @@ export async function parseStatement(
       subcategory_id: categorization?.subcategory_id ?? null,
       subcategory_name: categorization?.subcategory_name ?? null,
       category_name: categorization?.category_name ?? null,
-      categorizationSource: categorization?.source === "transfer" ? "lookup" : categorization?.source ?? "none",
+      categorizationSource:
+        categorization?.source === "transfer"
+          ? "lookup"
+          : (categorization?.source ?? "none"),
       isDuplicate,
     };
   });

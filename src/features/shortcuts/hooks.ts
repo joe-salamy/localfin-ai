@@ -1,13 +1,13 @@
-import { useContext, useEffect } from 'react';
-import type { CommandId, CommandScope } from './commands';
-import { ShortcutContext } from './ShortcutContext';
-import type { ShortcutContextValue } from './ShortcutContext';
-import { ariaKeyShortcut, displayShortcut } from './normalize';
+import { useContext, useEffect } from "react";
+import type { CommandId, CommandScope } from "./commands";
+import { ShortcutContext } from "./ShortcutContext";
+import type { ShortcutContextValue } from "./ShortcutContext";
+import { ariaKeyShortcut, displayShortcut } from "./normalize";
 
 export function useShortcuts(): ShortcutContextValue {
   const context = useContext(ShortcutContext);
   if (!context) {
-    throw new Error('useShortcuts must be used within ShortcutProvider');
+    throw new Error("useShortcuts must be used within ShortcutProvider");
   }
   return context;
 }

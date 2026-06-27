@@ -1,4 +1,9 @@
-import type { AccountType, CategoryType, GoalPeriod, TransactionKind } from "../../../src/types/index.js";
+import type {
+  AccountType,
+  CategoryType,
+  GoalPeriod,
+  TransactionKind,
+} from "../../../src/types/index.js";
 
 export function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -15,7 +20,10 @@ export function asNullableString(value: unknown): string | null | undefined {
   return asString(value);
 }
 
-export function hasField(input: Record<string, unknown>, field: string): boolean {
+export function hasField(
+  input: Record<string, unknown>,
+  field: string,
+): boolean {
   return Object.prototype.hasOwnProperty.call(input, field);
 }
 
@@ -26,7 +34,10 @@ export function hasAnyField(
   return fields.some((field) => hasField(input, field));
 }
 
-export function requireAccountType(value: unknown, actionType: string): AccountType {
+export function requireAccountType(
+  value: unknown,
+  actionType: string,
+): AccountType {
   if (value === "asset" || value === "liability") return value;
   throw new Error(`${actionType} requires type asset|liability`);
 }
@@ -39,7 +50,10 @@ export function optionalAccountType(
   return requireAccountType(value, actionType);
 }
 
-export function requireCategoryType(value: unknown, actionType: string): CategoryType {
+export function requireCategoryType(
+  value: unknown,
+  actionType: string,
+): CategoryType {
   if (value === "income" || value === "expense") return value;
   throw new Error(`${actionType} requires type income|expense`);
 }
@@ -77,7 +91,10 @@ export function optionalTransactionKind(
   return requireTransactionKind(value, actionType);
 }
 
-export function requireGoalPeriod(value: unknown, actionType: string): GoalPeriod {
+export function requireGoalPeriod(
+  value: unknown,
+  actionType: string,
+): GoalPeriod {
   if (
     value === "weekly" ||
     value === "monthly" ||

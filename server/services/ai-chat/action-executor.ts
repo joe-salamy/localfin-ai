@@ -19,7 +19,10 @@ import {
 } from "../transactions.js";
 import type { CreateTransactionData } from "../../../src/types/index.js";
 import type { AIAction, ExecutedAction } from "./types.js";
-import { DEFAULT_BULK_TRANSACTION_LIMIT, MAX_BULK_TRANSACTION_LIMIT } from "./constants.js";
+import {
+  DEFAULT_BULK_TRANSACTION_LIMIT,
+  MAX_BULK_TRANSACTION_LIMIT,
+} from "./constants.js";
 import {
   asNullableString,
   asNumber,
@@ -280,7 +283,9 @@ export function executeAction(action: AIAction): ExecutedAction {
           action.type,
         );
         const transactions = getTransactionsWithDetails(filters);
-        const transactionIds = transactions.map((transaction) => transaction.id);
+        const transactionIds = transactions.map(
+          (transaction) => transaction.id,
+        );
         let updatedCount = 0;
 
         for (const transaction of transactions) {

@@ -112,8 +112,10 @@ export async function categorizeTransactions(
       results[i] = {
         transaction_name: tx.name,
         kind: pastTx.kind,
-        subcategory_id: pastTx.kind === "transfer" ? null : pastTx.subcategory_id,
-        subcategory_name: pastTx.kind === "transfer" ? null : pastTx.subcategory_name,
+        subcategory_id:
+          pastTx.kind === "transfer" ? null : pastTx.subcategory_id,
+        subcategory_name:
+          pastTx.kind === "transfer" ? null : pastTx.subcategory_name,
         category_name: pastTx.kind === "transfer" ? null : pastTx.category_name,
         source: "lookup",
       };
@@ -243,39 +245,45 @@ async function processCategorizationBatches({
 }): Promise<void> {
   const batches = createBatches(unknowns, AI_CONFIG.batchSize);
   const concurrency =
-    unknowns.length > AI_CONFIG.batchSize ? AI_CONFIG.maxConcurrentLLMRequests : 1;
+    unknowns.length > AI_CONFIG.batchSize
+      ? AI_CONFIG.maxConcurrentLLMRequests
+      : 1;
 
-  await processWithConcurrency(batches, concurrency, async (batch, batchIndex) => {
-    try {
-      const aiResults = await callOpenRouterForCategorization(
-        batch,
-        subcategories,
-        pastExamples,
-        conversationId,
-        {
-          batchNumber: batchIndex + 1,
-          batchCount: batches.length,
-        },
-      );
+  await processWithConcurrency(
+    batches,
+    concurrency,
+    async (batch, batchIndex) => {
+      try {
+        const aiResults = await callOpenRouterForCategorization(
+          batch,
+          subcategories,
+          pastExamples,
+          conversationId,
+          {
+            batchNumber: batchIndex + 1,
+            batchCount: batches.length,
+          },
+        );
 
-      for (let j = 0; j < batch.length; j++) {
-        const aiResult = aiResults[j];
-        if (aiResult) {
-          results[batch[j].index] = {
-            transaction_name: batch[j].name,
-            kind: aiResult.kind,
-            subcategory_id: aiResult.subcategory_id,
-            subcategory_name: aiResult.subcategory_name,
-            category_name: aiResult.category_name,
-            source: "ai",
-          };
+        for (let j = 0; j < batch.length; j++) {
+          const aiResult = aiResults[j];
+          if (aiResult) {
+            results[batch[j].index] = {
+              transaction_name: batch[j].name,
+              kind: aiResult.kind,
+              subcategory_id: aiResult.subcategory_id,
+              subcategory_name: aiResult.subcategory_name,
+              category_name: aiResult.category_name,
+              source: "ai",
+            };
+          }
         }
+      } catch (error) {
+        console.error("AI categorization batch failed:", error);
+        // Leave unknowns in this batch as 'none' source.
       }
-    } catch (error) {
-      console.error("AI categorization batch failed:", error);
-      // Leave unknowns in this batch as 'none' source.
-    }
-  });
+    },
+  );
 }
 
 async function callOpenRouterForCategorization(
@@ -288,7 +296,8 @@ async function callOpenRouterForCategorization(
     batchCount: number;
   },
 ): Promise<ResolvedAIResultItem[]> {
-  const availableSubcategories = buildAvailableSubcategoryChoices(subcategories);
+  const availableSubcategories =
+    buildAvailableSubcategoryChoices(subcategories);
   const { systemMessage, userMessage } = buildCategorizationMessages(
     batch,
     availableSubcategories,
@@ -411,7 +420,10 @@ export function resolveKindChoice(
   accountType?: AccountType,
 ): TransactionKind {
   if (typeof choice === "number" && Number.isInteger(choice)) {
-    return KIND_CHOICES[choice] ?? getTransactionCategoryType(transactionAmount, accountType);
+    return (
+      KIND_CHOICES[choice] ??
+      getTransactionCategoryType(transactionAmount, accountType)
+    );
   }
   return getTransactionCategoryType(transactionAmount, accountType);
 }
@@ -489,7 +501,11 @@ function resolveAIResults(
       batch[batchIndex].amount,
       batch[batchIndex].account_type,
     );
-    const subcategory = resolveSubcategoryChoice(null, kind, availableSubcategories);
+    const subcategory = resolveSubcategoryChoice(
+      null,
+      kind,
+      availableSubcategories,
+    );
     if (subcategory) {
       indexedResults[batchIndex] = {
         index: batchIndex,

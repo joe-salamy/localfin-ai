@@ -1,14 +1,19 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
-import { queryKeys } from '@/lib/queryKeys';
-import type { AccountWithBalance, CreateAccountData, ReconcileAccountData, ReconcileAccountResult } from '@/types/index';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
+import type {
+  AccountWithBalance,
+  CreateAccountData,
+  ReconcileAccountData,
+  ReconcileAccountResult,
+} from "@/types/index";
 
 export function useAccounts() {
   const queryClient = useQueryClient();
 
   const accountsQuery = useQuery({
     queryKey: queryKeys.accounts.list(),
-    queryFn: () => apiGet<AccountWithBalance[]>('/accounts'),
+    queryFn: () => apiGet<AccountWithBalance[]>("/accounts"),
     select: (res) => res.data ?? [],
     staleTime: Infinity,
   });
@@ -22,12 +27,15 @@ export function useAccounts() {
 
   const createAccount = useMutation({
     mutationFn: (data: CreateAccountData) =>
-      apiPost<AccountWithBalance>('/accounts', data),
+      apiPost<AccountWithBalance>("/accounts", data),
     onSuccess: () => invalidateRelated(),
   });
 
   const updateAccount = useMutation({
-    mutationFn: ({ id, ...data }: { id: string } & Partial<CreateAccountData>) =>
+    mutationFn: ({
+      id,
+      ...data
+    }: { id: string } & Partial<CreateAccountData>) =>
       apiPut<AccountWithBalance>(`/accounts/${id}`, data),
     onSuccess: () => invalidateRelated(),
   });

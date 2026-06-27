@@ -157,7 +157,9 @@ export function actionKey(action: AIAction): string {
   return `${action.type}:${stableJson(action.input)}`;
 }
 
-export function successfulActionKeys(previousTurns: ToolLoopState[]): Set<string> {
+export function successfulActionKeys(
+  previousTurns: ToolLoopState[],
+): Set<string> {
   return new Set(
     previousTurns.flatMap((turn) =>
       turn.actions

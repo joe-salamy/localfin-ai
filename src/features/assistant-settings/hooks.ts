@@ -1,22 +1,25 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState } from "react";
 import {
   defaultAssistantSettings,
   normalizeMaxAssistantTurns,
   readAssistantSettings,
   writeAssistantSettings,
-} from './storage';
+} from "./storage";
 
 export function useAssistantSettings() {
   const [settings, setSettings] = useState(() => readAssistantSettings());
 
-  const setMaxAssistantTurns = useCallback((value: number) => {
-    const next = {
-      ...settings,
-      maxAssistantTurns: normalizeMaxAssistantTurns(value),
-    };
-    setSettings(next);
-    writeAssistantSettings(next);
-  }, [settings]);
+  const setMaxAssistantTurns = useCallback(
+    (value: number) => {
+      const next = {
+        ...settings,
+        maxAssistantTurns: normalizeMaxAssistantTurns(value),
+      };
+      setSettings(next);
+      writeAssistantSettings(next);
+    },
+    [settings],
+  );
 
   const resetAssistantSettings = useCallback(() => {
     const next = defaultAssistantSettings();

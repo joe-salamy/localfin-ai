@@ -1,14 +1,14 @@
-import type { SankeyData } from '@/types';
-import { ResponsiveSankey } from '@nivo/sankey';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import type { SankeyData } from "@/types";
+import { ResponsiveSankey } from "@nivo/sankey";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 interface SankeyDiagramProps {
   data: SankeyData;
 }
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
   maximumFractionDigits: 0,
 });
 
@@ -51,7 +51,10 @@ export function SankeyDiagram({ data }: SankeyDiagramProps) {
     const veryCompact = effectiveWidth < 520;
 
     return {
-      height: Math.min(920, Math.max(compact ? 500 : 460, nodeCount * (compact ? 26 : 24))),
+      height: Math.min(
+        920,
+        Math.max(compact ? 500 : 460, nodeCount * (compact ? 26 : 24)),
+      ),
       margin: {
         top: 24,
         right: veryCompact ? 96 : compact ? 140 : 220,
@@ -65,19 +68,29 @@ export function SankeyDiagram({ data }: SankeyDiagramProps) {
   }, [data?.nodes.length, width]);
 
   if (!data || data.nodes.length === 0 || data.links.length === 0) {
-    return <p className="text-sm text-muted-foreground py-4">No flow data available.</p>;
+    return (
+      <p className="text-sm text-muted-foreground py-4">
+        No flow data available.
+      </p>
+    );
   }
 
   return (
-    <div ref={ref} className="w-full min-w-0" style={{ height: chartConfig.height }}>
+    <div
+      ref={ref}
+      className="w-full min-w-0"
+      style={{ height: chartConfig.height }}
+    >
       <ResponsiveSankey
         data={data}
         margin={chartConfig.margin}
         align="justify"
         sort="descending"
         valueFormat={(value) => currencyFormatter.format(value)}
-        label={(node) => truncateLabel(getNodeLabel(node), chartConfig.labelMaxLength)}
-        colors={(node) => (node as { nodeColor?: string }).nodeColor ?? '#888'}
+        label={(node) =>
+          truncateLabel(getNodeLabel(node), chartConfig.labelMaxLength)
+        }
+        colors={(node) => (node as { nodeColor?: string }).nodeColor ?? "#888"}
         nodeOpacity={1}
         nodeHoverOpacity={1}
         nodeHoverOthersOpacity={0.25}
@@ -97,7 +110,9 @@ export function SankeyDiagram({ data }: SankeyDiagramProps) {
         labelTextColor="#ffffff"
         nodeTooltip={({ node }) => (
           <div className="space-y-1">
-            <div className="font-medium text-foreground">{getNodeLabel(node)}</div>
+            <div className="font-medium text-foreground">
+              {getNodeLabel(node)}
+            </div>
             <div className="font-mono text-xs tabular-nums text-muted-foreground">
               {node.formattedValue}
             </div>
@@ -106,7 +121,7 @@ export function SankeyDiagram({ data }: SankeyDiagramProps) {
         linkTooltip={({ link }) => (
           <div className="space-y-1">
             <div className="font-medium text-foreground">
-              {getNodeLabel(link.source)} {'->'} {getNodeLabel(link.target)}
+              {getNodeLabel(link.source)} {"->"} {getNodeLabel(link.target)}
             </div>
             <div className="font-mono text-xs tabular-nums text-muted-foreground">
               {link.formattedValue}
@@ -117,16 +132,16 @@ export function SankeyDiagram({ data }: SankeyDiagramProps) {
         theme={{
           tooltip: {
             container: {
-              background: '#1f1f1f',
-              color: '#ddd',
+              background: "#1f1f1f",
+              color: "#ddd",
               fontSize: 12,
               borderRadius: 6,
-              border: '1px solid #333',
+              border: "1px solid #333",
             },
           },
           labels: {
             text: {
-              fill: '#ffffff',
+              fill: "#ffffff",
               fontSize: 11,
             },
           },

@@ -34,8 +34,15 @@ Implement a first-class transaction tag system for LocalFin AI. User decisions a
      ```
 2. In `server/db/index.ts`, add `ensureTagTables(database: Database.Database): void` that executes the same `CREATE TABLE IF NOT EXISTS` and index SQL, then call it from `migrate(database)` before `ensureSuspectScanTables(database)`. This keeps existing `data/budget.db` files compatible even though `schema.sql` is already executed on startup.
 3. In `src/types/index.ts`, add:
+
    ```ts
-   export type TagType = 'custom' | 'trip' | 'event' | 'person' | 'reimbursable' | 'tax';
+   export type TagType =
+     | "custom"
+     | "trip"
+     | "event"
+     | "person"
+     | "reimbursable"
+     | "tax";
 
    export interface Tag {
      id: string;
@@ -53,11 +60,13 @@ Implement a first-class transaction tag system for LocalFin AI. User decisions a
      color?: string | null;
    }
    ```
+
 4. Extend existing transaction and dashboard types in `src/types/index.ts`:
    - `TransactionWithDetails` gets `tags: Tag[]`.
    - `TransactionFilters` gets `tagIds?: string[]`.
    - `CreateTransactionData` gets `tag_ids?: string[]`.
    - Add:
+
      ```ts
      export interface UpdateTransactionData extends Partial<CreateTransactionData> {
        tag_ids?: string[];
@@ -93,6 +102,7 @@ Implement a first-class transaction tag system for LocalFin AI. User decisions a
        categories: TagCategorySummary[];
      }
      ```
+
 5. The `TagType` literals are fixed for this implementation: `custom`, `trip`, `event`, `person`, `reimbursable`, `tax`. Do not add a user-editable tag type table.
 
 ### 2. Add backend tag CRUD and transaction-tag helpers
@@ -100,17 +110,37 @@ Implement a first-class transaction tag system for LocalFin AI. User decisions a
 1. Create `server/services/tags.ts` by copying the structure of `server/services/categories.ts`: row interface, `rowToTag`, create/list/update/delete functions, soft deletes, and color handling.
 2. Export these exact service functions:
    ```ts
-   export function createTag(data: { name: string; type?: TagType; color?: string | null }): Tag
-   export function getTags(): Tag[]
-   export function getTagById(id: string): Tag | undefined
-   export function updateTag(id: string, updates: { name?: string; type?: TagType; color?: string | null }): Tag
-   export function deleteTag(id: string): void
-   export function assertActiveTags(tagIds: string[]): string[]
-   export function getTagsForTransactions(transactionIds: string[]): Map<string, Tag[]>
-   export function replaceTransactionTags(transactionId: string, tagIds: string[]): void
-   export function addTransactionTags(transactionId: string, tagIds: string[]): void
-   export function removeTransactionTags(transactionId: string, tagIds: string[]): void
-   export function resolveOrCreateTagsByName(items: Array<{ name: string; type?: TagType }>): Tag[]
+   export function createTag(data: {
+     name: string;
+     type?: TagType;
+     color?: string | null;
+   }): Tag;
+   export function getTags(): Tag[];
+   export function getTagById(id: string): Tag | undefined;
+   export function updateTag(
+     id: string,
+     updates: { name?: string; type?: TagType; color?: string | null },
+   ): Tag;
+   export function deleteTag(id: string): void;
+   export function assertActiveTags(tagIds: string[]): string[];
+   export function getTagsForTransactions(
+     transactionIds: string[],
+   ): Map<string, Tag[]>;
+   export function replaceTransactionTags(
+     transactionId: string,
+     tagIds: string[],
+   ): void;
+   export function addTransactionTags(
+     transactionId: string,
+     tagIds: string[],
+   ): void;
+   export function removeTransactionTags(
+     transactionId: string,
+     tagIds: string[],
+   ): void;
+   export function resolveOrCreateTagsByName(
+     items: Array<{ name: string; type?: TagType }>,
+   ): Tag[];
    ```
 3. Normalize tag names in the tag service before writing or comparing: `name.trim().replace(/\s+/g, ' ')`. Reject an empty normalized name with `Tag name is required`.
 4. Enforce active tag uniqueness case-insensitively by `lower(trim(name))` plus `type`. If a duplicate active tag exists on create or update, throw `A tag with the name "${name}" and type "${type}" already exists`.
@@ -150,12 +180,26 @@ Implement a first-class transaction tag system for LocalFin AI. User decisions a
    - Add `tags: Tag[]` in `rowToTransactionWithDetails`; load tags with `getTagsForTransactions`.
    - Set these exported signatures exactly:
      ```ts
-     export function createTransaction(data: CreateTransactionData): TransactionWithDetails
-     export function getTransactionsWithDetails(filters?: TransactionFilters): TransactionWithDetails[]
-     export function getTransactionById(id: string): TransactionWithDetails | null
-     export function updateTransaction(id: string, updates: UpdateTransactionData): TransactionWithDetails | null
-     export function bulkUpdateTransactions(ids: string[], updates: BulkTransactionUpdateData): void
-     export function bulkCreateTransactions(transactions: CreateTransactionData[]): TransactionWithDetails[]
+     export function createTransaction(
+       data: CreateTransactionData,
+     ): TransactionWithDetails;
+     export function getTransactionsWithDetails(
+       filters?: TransactionFilters,
+     ): TransactionWithDetails[];
+     export function getTransactionById(
+       id: string,
+     ): TransactionWithDetails | null;
+     export function updateTransaction(
+       id: string,
+       updates: UpdateTransactionData,
+     ): TransactionWithDetails | null;
+     export function bulkUpdateTransactions(
+       ids: string[],
+       updates: BulkTransactionUpdateData,
+     ): void;
+     export function bulkCreateTransactions(
+       transactions: CreateTransactionData[],
+     ): TransactionWithDetails[];
      ```
 2. Update `getTransactionsWithDetails(filters)`:
    - Keep the current account/subcategory/category joins as-is.
@@ -229,7 +273,11 @@ Implement a first-class transaction tag system for LocalFin AI. User decisions a
    returning `getTagSummary(query.startDate, query.endDate, query.tagIds)`.
 8. In `src/hooks/useDashboard.ts`, change the signature to:
    ```ts
-   export function useDashboard(startDate: string, endDate: string, filters?: { tagIds?: string[] })
+   export function useDashboard(
+     startDate: string,
+     endDate: string,
+     filters?: { tagIds?: string[] },
+   );
    ```
    Build query strings with repeated `tagIds` params. Include `tagIds` in query keys for category summary, metrics, sankey, and tag summary. Leave account summary/net-worth query keys date-only.
 9. Extend `src/lib/queryKeys.ts` dashboard keys to accept optional filter objects for transaction-based reports and add `tagSummary(startDate, endDate, filters?)`.
@@ -327,15 +375,29 @@ Implement a first-class transaction tag system for LocalFin AI. User decisions a
    - Add search grammar text for `tag:`/`tags:`.
 3. In `server/services/ai-chat/input-validators.ts`, add:
    ```ts
-   export function requireTagType(value: unknown, actionType: string): TagType
-   export function optionalTagType(value: unknown, actionType: string): TagType | undefined
+   export function requireTagType(value: unknown, actionType: string): TagType;
+   export function optionalTagType(
+     value: unknown,
+     actionType: string,
+   ): TagType | undefined;
    ```
    and helper(s) to normalize string arrays from `tag_names`, `add_tag_names`, and `remove_tag_names`.
 4. In `server/services/ai-chat/entity-resolution.ts`, add tag resolvers mirroring subcategory resolution:
    ```ts
-   export function resolveTag(input: Record<string, unknown>, tags: Tag[]): string | undefined
-   export function resolveRequestedTag(input: Record<string, unknown>, tags: Tag[], actionType: string): string | undefined
-   export function resolveRequestedTags(input: Record<string, unknown>, tags: Tag[], actionType: string): string[]
+   export function resolveTag(
+     input: Record<string, unknown>,
+     tags: Tag[],
+   ): string | undefined;
+   export function resolveRequestedTag(
+     input: Record<string, unknown>,
+     tags: Tag[],
+     actionType: string,
+   ): string | undefined;
+   export function resolveRequestedTags(
+     input: Record<string, unknown>,
+     tags: Tag[],
+     actionType: string,
+   ): string[];
    ```
    Ambiguous errors include tag type in candidates using `describeEntityCandidate`.
 5. In `server/services/ai-chat/action-preparation.ts`:
@@ -435,4 +497,3 @@ Run from `C:/Users/joesa/Code/localfin-ai`.
 - AI behavior is explicit-only. The executor may honor tag fields sent by the model, but prompts/tests must ensure the model only sends them when the user explicitly mentions tags/trips/events/projects.
 - Existing statement parsing and AI categorization remain category/subcategory-only. Tags from imported statements are assigned manually in the grid after parsing.
 - There is no frontend test runner in the current package setup. Do not add one for this task unless implementation creates complex pure UI logic that cannot be covered by typecheck/manual smoke; if that happens, add Vitest + React Testing Library in a separate explicit setup step before writing component tests.
-

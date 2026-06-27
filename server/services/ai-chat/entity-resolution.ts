@@ -1,4 +1,9 @@
-import type { Account, Category, SpendingGoalWithDetails, Subcategory } from "../../../src/types/index.js";
+import type {
+  Account,
+  Category,
+  SpendingGoalWithDetails,
+  Subcategory,
+} from "../../../src/types/index.js";
 import { asString, hasAnyField } from "./input-validators.js";
 
 export function findByName<T extends { name: string }>(
@@ -19,9 +24,12 @@ export function findAllByName<T extends { name: string }>(
   return items.filter((item) => item.name.trim().toLowerCase() === normalized);
 }
 
-export function describeEntityCandidate(
-  item: { id: string; name: string; type?: string; category_id?: string },
-): string {
+export function describeEntityCandidate(item: {
+  id: string;
+  name: string;
+  type?: string;
+  category_id?: string;
+}): string {
   const details = [
     `id=${item.id}`,
     item.type ? `type=${item.type}` : undefined,

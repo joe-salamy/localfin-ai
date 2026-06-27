@@ -1,5 +1,12 @@
-import { format, startOfMonth, startOfYear, subDays, subMonths, subYears } from 'date-fns';
-import { DATE_FORMAT } from '@/config/constants';
+import {
+  format,
+  startOfMonth,
+  startOfYear,
+  subDays,
+  subMonths,
+  subYears,
+} from "date-fns";
+import { DATE_FORMAT } from "@/config/constants";
 
 export interface DateRangePreset {
   id: string;
@@ -14,8 +21,8 @@ const formatDate = (date: Date) => format(date, DATE_FORMAT);
 
 export const dateRangePresets: DateRangePreset[] = [
   {
-    id: 'this-month',
-    label: 'This month',
+    id: "this-month",
+    label: "This month",
     getRange: () => {
       const now = new Date();
       return {
@@ -25,8 +32,8 @@ export const dateRangePresets: DateRangePreset[] = [
     },
   },
   {
-    id: 'last-3-months',
-    label: 'Last 3 months',
+    id: "last-3-months",
+    label: "Last 3 months",
     getRange: () => {
       const now = new Date();
       return {
@@ -36,8 +43,8 @@ export const dateRangePresets: DateRangePreset[] = [
     },
   },
   {
-    id: 'last-6-months',
-    label: 'Last 6 months',
+    id: "last-6-months",
+    label: "Last 6 months",
     getRange: () => {
       const now = new Date();
       return {
@@ -47,8 +54,8 @@ export const dateRangePresets: DateRangePreset[] = [
     },
   },
   {
-    id: 'this-year',
-    label: 'This year',
+    id: "this-year",
+    label: "This year",
     getRange: () => {
       const now = new Date();
       return {
@@ -58,8 +65,8 @@ export const dateRangePresets: DateRangePreset[] = [
     },
   },
   {
-    id: 'last-year',
-    label: 'Last year',
+    id: "last-year",
+    label: "Last year",
     getRange: () => {
       const lastYear = subYears(new Date(), 1);
       return {
@@ -69,11 +76,11 @@ export const dateRangePresets: DateRangePreset[] = [
     },
   },
   {
-    id: 'all-time',
-    label: 'All time',
+    id: "all-time",
+    label: "All time",
     getRange: () => ({
-      startDate: '',
-      endDate: '',
+      startDate: "",
+      endDate: "",
     }),
   },
 ];

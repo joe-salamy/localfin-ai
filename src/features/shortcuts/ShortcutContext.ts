@@ -1,5 +1,10 @@
-import { createContext } from 'react';
-import type { CommandDefinition, CommandId, CommandScope, ShortcutBinding } from './commands';
+import { createContext } from "react";
+import type {
+  CommandDefinition,
+  CommandId,
+  CommandScope,
+  ShortcutBinding,
+} from "./commands";
 
 export interface ShortcutConflict {
   command: CommandDefinition;
@@ -12,7 +17,10 @@ export interface ShortcutContextValue {
   setShortcut: (commandId: CommandId, binding: ShortcutBinding | null) => void;
   resetShortcut: (commandId: CommandId) => void;
   resetAllShortcuts: () => void;
-  getConflicts: (commandId: CommandId, binding: ShortcutBinding | null) => ShortcutConflict[];
+  getConflicts: (
+    commandId: CommandId,
+    binding: ShortcutBinding | null,
+  ) => ShortcutConflict[];
   registerShortcutHandler: (
     commandId: CommandId,
     handler: () => void,

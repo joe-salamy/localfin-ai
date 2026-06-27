@@ -1,7 +1,7 @@
-const STORAGE_KEY = 'localfin.flaggedWords.v1';
+const STORAGE_KEY = "localfin.flaggedWords.v1";
 const STORAGE_VERSION = 1;
 
-export const DEFAULT_FLAGGED_WORDS = ['interest', 'fee'] as const;
+export const DEFAULT_FLAGGED_WORDS = ["interest", "fee"] as const;
 
 interface BrowserStorage {
   getItem: (key: string) => string | null;
@@ -34,16 +34,21 @@ export function normalizeFlaggedWords(words: Iterable<string>): string[] {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function includesFlaggedWord(name: string, word: string): boolean {
-  return new RegExp(`(^|[^a-z0-9])${escapeRegex(word)}(?=$|[^a-z0-9])`, 'i').test(name);
+  return new RegExp(
+    `(^|[^a-z0-9])${escapeRegex(word)}(?=$|[^a-z0-9])`,
+    "i",
+  ).test(name);
 }
 
 export function findFlaggedWords(name: string, words: string[]): string[] {
   if (!name.trim()) return [];
-  return normalizeFlaggedWords(words).filter((word) => includesFlaggedWord(name, word));
+  return normalizeFlaggedWords(words).filter((word) =>
+    includesFlaggedWord(name, word),
+  );
 }
 
 export function buildFlaggedWordsSettings(
@@ -76,9 +81,16 @@ export function readFlaggedWordsSettings(): FlaggedWordsSettings {
     const defaults = defaultFlaggedWordsSettings();
     return {
       version: STORAGE_VERSION,
-      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : defaults.updatedAt,
+      updatedAt:
+        typeof parsed.updatedAt === "string"
+          ? parsed.updatedAt
+          : defaults.updatedAt,
       words: Array.isArray(parsed.words)
-        ? normalizeFlaggedWords(parsed.words.filter((word): word is string => typeof word === 'string'))
+        ? normalizeFlaggedWords(
+            parsed.words.filter(
+              (word): word is string => typeof word === "string",
+            ),
+          )
         : defaults.words,
     };
   } catch {
@@ -86,7 +98,9 @@ export function readFlaggedWordsSettings(): FlaggedWordsSettings {
   }
 }
 
-export function writeFlaggedWordsSettings(settings: FlaggedWordsSettings): void {
+export function writeFlaggedWordsSettings(
+  settings: FlaggedWordsSettings,
+): void {
   const storage = getFlaggedWordsStorage();
   if (!storage) return;
   storage.setItem(

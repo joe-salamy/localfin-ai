@@ -1,15 +1,17 @@
-import type { Category, CategoryType, Subcategory } from '@/types';
+import type { Category, CategoryType, Subcategory } from "@/types";
 
 type CategoryLookup = Map<string, Category>;
 
-function formatCategoryType(type: CategoryType | string | null | undefined): string | null {
-  if (type === 'income') return 'Income';
-  if (type === 'expense') return 'Expense';
+function formatCategoryType(
+  type: CategoryType | string | null | undefined,
+): string | null {
+  if (type === "income") return "Income";
+  if (type === "expense") return "Expense";
   return null;
 }
 
 function isUnassigned(name: string | null | undefined): boolean {
-  return name?.trim().toLowerCase() === 'unassigned';
+  return name?.trim().toLowerCase() === "unassigned";
 }
 
 export function buildCategoryLookup(categories: Category[]): CategoryLookup {

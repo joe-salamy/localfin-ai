@@ -1,6 +1,18 @@
-import type { Account, Category, CategoryType, Subcategory, TransactionKind, TransactionWithDetails } from "../../../src/types/index.js";
+import type {
+  Account,
+  Category,
+  CategoryType,
+  Subcategory,
+  TransactionKind,
+  TransactionWithDetails,
+} from "../../../src/types/index.js";
 import type { getTransactionsWithDetails } from "../transactions.js";
-import type { AIAction, PlanningContext, SearchActionResult, ToolLoopState } from "./types.js";
+import type {
+  AIAction,
+  PlanningContext,
+  SearchActionResult,
+  ToolLoopState,
+} from "./types.js";
 import {
   asNumber,
   asNullableString,
@@ -49,7 +61,9 @@ export function transactionSearchFilters(
     ),
     kind: optionalTransactionKind(input.kind, actionType),
     needsCategory:
-      typeof input.needsCategory === "boolean" ? input.needsCategory : undefined,
+      typeof input.needsCategory === "boolean"
+        ? input.needsCategory
+        : undefined,
     startDate:
       optionalIsoDate(input.startDate, "startDate", actionType) ??
       optionalIsoDate(input.start_date, "start_date", actionType),
@@ -211,7 +225,10 @@ export function hasExpenseCue(message: string, action: AIAction): boolean {
   );
 }
 
-export function signedAmountNearIncomeCue(message: string, amount: number): boolean {
+export function signedAmountNearIncomeCue(
+  message: string,
+  amount: number,
+): boolean {
   const absAmount = Math.abs(amount);
   const amountPatterns = Array.from(
     new Set([String(absAmount), absAmount.toFixed(2)]),
@@ -278,7 +295,10 @@ export function normalizeTransactionAmount(
   return action;
 }
 
-export function normalizeTransactionText(action: AIAction, message: string): AIAction {
+export function normalizeTransactionText(
+  action: AIAction,
+  message: string,
+): AIAction {
   if (action.type !== "create_transaction") return action;
   const name = asString(action.input.name);
   const comment = asString(action.input.comment);
@@ -332,7 +352,10 @@ export function normalizeTransactionText(action: AIAction, message: string): AIA
   return { ...action, input };
 }
 
-export function normalizeTransactionDate(action: AIAction, message: string): AIAction {
+export function normalizeTransactionDate(
+  action: AIAction,
+  message: string,
+): AIAction {
   if (action.type !== "create_transaction") return action;
   const requestedDate = message.match(/\bdated\s+(\d{4}-\d{2}-\d{2})\b/i)?.[1];
   if (
@@ -390,8 +413,9 @@ export function subcategoryGoalUpdateAction(
     asString(action.input.subcategory_name) ??
     asString(action.input.name);
   const subcategory =
-    context.subcategories.find((item) => item.id === asString(action.input.id)) ??
-    findByName(context.subcategories, subcategoryName);
+    context.subcategories.find(
+      (item) => item.id === asString(action.input.id),
+    ) ?? findByName(context.subcategories, subcategoryName);
   if (!subcategory) return undefined;
   const existingGoal = context.goals.find(
     (goal) => goal.subcategory_id === subcategory.id,
@@ -563,7 +587,8 @@ export function skippedDuplicateCategoryAction(
   if (!existingCategory && !existingAccount) return undefined;
 
   const type: CategoryType =
-    existingCategory?.type ?? (/\bincome\s+category\b/i.test(message) ? "income" : "expense");
+    existingCategory?.type ??
+    (/\bincome\s+category\b/i.test(message) ? "income" : "expense");
 
   return {
     type: "create_category",
@@ -609,7 +634,9 @@ export function inferredCreateTransactionFromAddPrompt(
       amount: Number(rawAmount),
       kind: category?.type ?? "expense",
       subcategory_name: subcategory.name,
-      ...(rawComment ? { comment: rawComment.trim().replace(/[.?!]+$/, "") } : {}),
+      ...(rawComment
+        ? { comment: rawComment.trim().replace(/[.?!]+$/, "") }
+        : {}),
     },
   };
 }
@@ -684,7 +711,11 @@ export function prepareActionsForExecution(
   );
   if (skippedDuplicate) prepared.unshift(skippedDuplicate);
 
-  const inferredMove = inferredSubcategoryMoveAction(prepared, message, context);
+  const inferredMove = inferredSubcategoryMoveAction(
+    prepared,
+    message,
+    context,
+  );
   if (inferredMove) prepared.push(inferredMove);
 
   const visibleFailure = visibleFailureFromMessage(
@@ -752,14 +783,26 @@ export function requestedUpdateSubcategory(
   )?.name;
 }
 
-export function requestedUpdateKind(message: string): TransactionKind | undefined {
-  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+transfer\b/i.test(message)) {
+export function requestedUpdateKind(
+  message: string,
+): TransactionKind | undefined {
+  if (
+    /\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+transfer\b/i.test(
+      message,
+    )
+  ) {
     return "transfer";
   }
-  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+income\b/i.test(message)) {
+  if (
+    /\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+income\b/i.test(message)
+  ) {
     return "income";
   }
-  if (/\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+expense\b/i.test(message)) {
+  if (
+    /\b(?:as|to|type(?:\s+to)?|mark(?:ed)?(?:\s+as)?)\s+expense\b/i.test(
+      message,
+    )
+  ) {
     return "expense";
   }
   return undefined;

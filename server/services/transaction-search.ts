@@ -14,7 +14,12 @@ type Token =
 
 type SearchNode =
   | { type: "term"; value: string }
-  | { type: "field"; field: SearchField; operator: SearchOperator; value: string }
+  | {
+      type: "field";
+      field: SearchField;
+      operator: SearchOperator;
+      value: string;
+    }
   | { type: "and"; nodes: SearchNode[] }
   | { type: "or"; nodes: SearchNode[] }
   | { type: "not"; node: SearchNode };
@@ -108,7 +113,8 @@ function tokenize(query: string): Token[] {
         index += 1;
       }
       if (!closed) throw new TransactionSearchSyntaxError("unterminated quote");
-      if (!value.trim()) throw new TransactionSearchSyntaxError("empty quoted phrase");
+      if (!value.trim())
+        throw new TransactionSearchSyntaxError("empty quoted phrase");
       tokens.push({ type: "phrase", value });
       continue;
     }
@@ -152,7 +158,9 @@ class Parser {
     while (this.matchOr()) {
       nodes.push(this.parseAnd());
     }
-    return nodes.length === 1 ? nodes[0] as SearchNode : { type: "or", nodes };
+    return nodes.length === 1
+      ? (nodes[0] as SearchNode)
+      : { type: "or", nodes };
   }
 
   private parseAnd(): SearchNode {
@@ -167,7 +175,9 @@ class Parser {
       nodes.push(this.parseUnary());
     }
 
-    return nodes.length === 1 ? nodes[0] as SearchNode : { type: "and", nodes };
+    return nodes.length === 1
+      ? (nodes[0] as SearchNode)
+      : { type: "and", nodes };
   }
 
   private parseUnary(): SearchNode {
@@ -176,7 +186,11 @@ class Parser {
     }
 
     const token = this.peek();
-    if (token?.type === "word" && token.value.startsWith("-") && token.value.length > 1) {
+    if (
+      token?.type === "word" &&
+      token.value.startsWith("-") &&
+      token.value.length > 1
+    ) {
       this.index += 1;
       return { type: "not", node: this.wordToNode(token.value.slice(1)) };
     }
@@ -186,7 +200,8 @@ class Parser {
 
   private parsePrimary(): SearchNode {
     const token = this.peek();
-    if (!token) throw new TransactionSearchSyntaxError("expected a search term");
+    if (!token)
+      throw new TransactionSearchSyntaxError("expected a search term");
 
     if (token.type === "lparen") {
       this.index += 1;
@@ -219,15 +234,27 @@ class Parser {
     const parsedOperator = operator as SearchOperator;
 
     if (inlineValue) {
-      return { type: "field", field, operator: parsedOperator, value: inlineValue };
+      return {
+        type: "field",
+        field,
+        operator: parsedOperator,
+        value: inlineValue,
+      };
     }
 
     const next = this.peek();
     if (!next || (next.type !== "word" && next.type !== "phrase")) {
-      throw new TransactionSearchSyntaxError(`${field} search requires a value`);
+      throw new TransactionSearchSyntaxError(
+        `${field} search requires a value`,
+      );
     }
     this.index += 1;
-    return { type: "field", field, operator: parsedOperator, value: next.value };
+    return {
+      type: "field",
+      field,
+      operator: parsedOperator,
+      value: next.value,
+    };
   }
 
   private match(type: Token["type"]): boolean {
@@ -256,7 +283,10 @@ class Parser {
 
   private checkOr(): boolean {
     const token = this.peek();
-    return token?.type === "or" || (token?.type === "word" && token.value.toUpperCase() === "OR");
+    return (
+      token?.type === "or" ||
+      (token?.type === "word" && token.value.toUpperCase() === "OR")
+    );
   }
 
   private atEnd(): boolean {
@@ -292,15 +322,24 @@ function transactionColumn(aliases: SearchAliases, column: string): string {
   return `${aliases.transaction}.${column}`;
 }
 
-function optionalAlias(aliases: SearchAliases, key: "account" | "subcategory" | "category"): string {
+function optionalAlias(
+  aliases: SearchAliases,
+  key: "account" | "subcategory" | "category",
+): string {
   const alias = aliases[key];
   if (!alias) {
-    throw new TransactionSearchSyntaxError(`${key} field search requires detail joins`);
+    throw new TransactionSearchSyntaxError(
+      `${key} field search requires detail joins`,
+    );
   }
   return alias;
 }
 
-function compileTextField(column: string, operator: SearchOperator, value: string): CompiledTransactionSearch {
+function compileTextField(
+  column: string,
+  operator: SearchOperator,
+  value: string,
+): CompiledTransactionSearch {
   const normalizedValue = value.toLowerCase();
   if (operator === ":" || operator === "=") {
     return { clause: textLike(column), params: [likePattern(value)] };
@@ -311,7 +350,11 @@ function compileTextField(column: string, operator: SearchOperator, value: strin
   };
 }
 
-function compileNumericField(column: string, operator: SearchOperator, value: string): CompiledTransactionSearch {
+function compileNumericField(
+  column: string,
+  operator: SearchOperator,
+  value: string,
+): CompiledTransactionSearch {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) {
     throw new TransactionSearchSyntaxError(`amount search requires a number`);
@@ -320,7 +363,11 @@ function compileNumericField(column: string, operator: SearchOperator, value: st
   return { clause: `${column} ${sqlOperator} ?`, params: [numericValue] };
 }
 
-function compileDateField(column: string, operator: SearchOperator, value: string): CompiledTransactionSearch {
+function compileDateField(
+  column: string,
+  operator: SearchOperator,
+  value: string,
+): CompiledTransactionSearch {
   if (!isIsoDate(value)) {
     throw new TransactionSearchSyntaxError(`date search requires YYYY-MM-DD`);
   }
@@ -346,10 +393,16 @@ function compileTypeField(
   const normalizedValue = value.toLowerCase();
   if (operator !== ":" && operator !== "=") return compiledText;
   if (normalizedValue === "income") {
-    return { clause: `(${compiledText.clause} OR ${amountColumn} > 0)`, params: compiledText.params };
+    return {
+      clause: `(${compiledText.clause} OR ${amountColumn} > 0)`,
+      params: compiledText.params,
+    };
   }
   if (normalizedValue === "expense") {
-    return { clause: `(${compiledText.clause} OR ${amountColumn} < 0)`, params: compiledText.params };
+    return {
+      clause: `(${compiledText.clause} OR ${amountColumn} < 0)`,
+      params: compiledText.params,
+    };
   }
   return compiledText;
 }
@@ -360,19 +413,47 @@ function compileFieldNode(
 ): CompiledTransactionSearch {
   switch (node.field) {
     case "name":
-      return compileTextField(transactionColumn(aliases, "name"), node.operator, node.value);
+      return compileTextField(
+        transactionColumn(aliases, "name"),
+        node.operator,
+        node.value,
+      );
     case "comment":
-      return compileTextField(transactionColumn(aliases, "comment"), node.operator, node.value);
+      return compileTextField(
+        transactionColumn(aliases, "comment"),
+        node.operator,
+        node.value,
+      );
     case "account":
-      return compileTextField(`${optionalAlias(aliases, "account")}.name`, node.operator, node.value);
+      return compileTextField(
+        `${optionalAlias(aliases, "account")}.name`,
+        node.operator,
+        node.value,
+      );
     case "category":
-      return compileTextField(`${optionalAlias(aliases, "category")}.name`, node.operator, node.value);
+      return compileTextField(
+        `${optionalAlias(aliases, "category")}.name`,
+        node.operator,
+        node.value,
+      );
     case "subcategory":
-      return compileTextField(`${optionalAlias(aliases, "subcategory")}.name`, node.operator, node.value);
+      return compileTextField(
+        `${optionalAlias(aliases, "subcategory")}.name`,
+        node.operator,
+        node.value,
+      );
     case "amount":
-      return compileNumericField(transactionColumn(aliases, "amount"), node.operator, node.value);
+      return compileNumericField(
+        transactionColumn(aliases, "amount"),
+        node.operator,
+        node.value,
+      );
     case "date":
-      return compileDateField(transactionColumn(aliases, "date"), node.operator, node.value);
+      return compileDateField(
+        transactionColumn(aliases, "date"),
+        node.operator,
+        node.value,
+      );
     case "type":
       return compileTypeField(
         `${optionalAlias(aliases, "category")}.type`,
@@ -383,7 +464,10 @@ function compileFieldNode(
   }
 }
 
-function compileNode(node: SearchNode, aliases: SearchAliases): CompiledTransactionSearch {
+function compileNode(
+  node: SearchNode,
+  aliases: SearchAliases,
+): CompiledTransactionSearch {
   switch (node.type) {
     case "term": {
       const columns = [
@@ -410,7 +494,9 @@ function compileNode(node: SearchNode, aliases: SearchAliases): CompiledTransact
     }
     case "and":
     case "or": {
-      const compiledNodes = node.nodes.map((child) => compileNode(child, aliases));
+      const compiledNodes = node.nodes.map((child) =>
+        compileNode(child, aliases),
+      );
       const joiner = node.type === "and" ? " AND " : " OR ";
       return {
         clause: `(${compiledNodes.map((compiled) => compiled.clause).join(joiner)})`,

@@ -55,7 +55,9 @@ function openRouterStreamResponse(content: unknown): Response {
   });
 }
 
-function installOpenRouterMock(responder: MockResponder): Record<string, unknown>[] {
+function installOpenRouterMock(
+  responder: MockResponder,
+): Record<string, unknown>[] {
   const calls: Record<string, unknown>[] = [];
   globalThis.fetch = (async (_input, init) => {
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<
@@ -68,7 +70,9 @@ function installOpenRouterMock(responder: MockResponder): Record<string, unknown
   return calls;
 }
 
-async function createFixture(t: { after: (fn: () => void | Promise<void>) => void }): Promise<Fixture> {
+async function createFixture(t: {
+  after: (fn: () => void | Promise<void>) => void;
+}): Promise<Fixture> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-agent-test-"));
   closeDbForTests();
   process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
@@ -112,7 +116,9 @@ function createNamedSubcategory(
   }).id;
 }
 
-async function loggedEvents(result: ChatResult): Promise<Record<string, unknown>[]> {
+async function loggedEvents(
+  result: ChatResult,
+): Promise<Record<string, unknown>[]> {
   assert.ok(result.logFile, "agent result should include a log file");
   const content = await readFile(result.logFile, "utf8");
   return content
@@ -124,16 +130,22 @@ async function loggedEvents(result: ChatResult): Promise<Record<string, unknown>
 
 function softDeletedCounts(db: Database.Database): Record<string, number> {
   return Object.fromEntries(
-    ["accounts", "categories", "subcategories", "transactions", "spending_goals"].map(
-      (table) => [
-        table,
-        (
-          db
-            .prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE deleted_at IS NOT NULL`)
-            .get() as { count: number }
-        ).count,
-      ],
-    ),
+    [
+      "accounts",
+      "categories",
+      "subcategories",
+      "transactions",
+      "spending_goals",
+    ].map((table) => [
+      table,
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM ${table} WHERE deleted_at IS NOT NULL`,
+          )
+          .get() as { count: number }
+      ).count,
+    ]),
   );
 }
 
@@ -144,7 +156,11 @@ test("agent creates budget structure and captures a transaction through the real
     actions: [
       {
         type: "create_account",
-        input: { name: "Household Checking", type: "asset", initial_balance: 500 },
+        input: {
+          name: "Household Checking",
+          type: "asset",
+          initial_balance: 500,
+        },
       },
       { type: "create_category", input: { name: "Food", type: "expense" } },
       {
@@ -208,17 +224,25 @@ test("agent creates budget structure and captures a transaction through the real
 
   const events = await loggedEvents(result);
   assert.ok(events.some((event) => event.operation === "assistant.chat"));
-  assert.ok(events.some((event) => event.operation === "assistant.tool_actions"));
+  assert.ok(
+    events.some((event) => event.operation === "assistant.tool_actions"),
+  );
 });
 
 test("agent searches before updating a described transaction and finishes in a follow-up turn", async (t) => {
   const { db } = await createFixture(t);
-  createAccount({ name: "Test Checking", type: "asset", initial_balance: 1000 });
+  createAccount({
+    name: "Test Checking",
+    type: "asset",
+    initial_balance: 1000,
+  });
   createNamedCategory("Transportation", "expense");
   createNamedSubcategory("Rideshare", "Transportation", 120);
   createNamedSubcategory("Restaurants", "Transportation", 80);
   const accountId = (
-    db.prepare("SELECT id FROM accounts WHERE name = ?").get("Test Checking") as {
+    db
+      .prepare("SELECT id FROM accounts WHERE name = ?")
+      .get("Test Checking") as {
       id: string;
     }
   ).id;
@@ -362,7 +386,9 @@ test("agent refuses deletion and streaming emits a traceable lifecycle", async (
   createNamedCategory("Transportation", "expense");
   const rideshareId = createNamedSubcategory("Rideshare", "Transportation");
   const accountId = (
-    db.prepare("SELECT id FROM accounts WHERE name = ?").get("Test Checking") as {
+    db
+      .prepare("SELECT id FROM accounts WHERE name = ?")
+      .get("Test Checking") as {
       id: string;
     }
   ).id;

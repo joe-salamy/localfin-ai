@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'localfin.assistant.v1';
+const STORAGE_KEY = "localfin.assistant.v1";
 const STORAGE_VERSION = 1;
 
 export const DEFAULT_MAX_ASSISTANT_TURNS = 5;
@@ -12,7 +12,7 @@ export interface AssistantSettings {
 }
 
 export function normalizeMaxAssistantTurns(value: unknown): number {
-  const numericValue = typeof value === 'number' ? value : Number(value);
+  const numericValue = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numericValue)) return DEFAULT_MAX_ASSISTANT_TURNS;
   return Math.min(
     Math.max(Math.trunc(numericValue), MIN_MAX_ASSISTANT_TURNS),
@@ -29,7 +29,7 @@ export function defaultAssistantSettings(): AssistantSettings {
 }
 
 export function readAssistantSettings(): AssistantSettings {
-  if (typeof window === 'undefined') return defaultAssistantSettings();
+  if (typeof window === "undefined") return defaultAssistantSettings();
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return defaultAssistantSettings();
 
@@ -37,7 +37,10 @@ export function readAssistantSettings(): AssistantSettings {
     const parsed = JSON.parse(raw) as Partial<AssistantSettings>;
     return {
       version: STORAGE_VERSION,
-      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
+      updatedAt:
+        typeof parsed.updatedAt === "string"
+          ? parsed.updatedAt
+          : new Date().toISOString(),
       maxAssistantTurns: normalizeMaxAssistantTurns(parsed.maxAssistantTurns),
     };
   } catch {
@@ -46,7 +49,7 @@ export function readAssistantSettings(): AssistantSettings {
 }
 
 export function writeAssistantSettings(settings: AssistantSettings): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   window.localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({

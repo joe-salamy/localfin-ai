@@ -1,18 +1,22 @@
-import { useState } from 'react';
-import type { CSSProperties } from 'react';
-import type { CategorySummary as CategorySummaryType } from '@/types';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { EntityLabel } from '@/components/ui/EntityLabel';
-import { formatCurrency, cn } from '@/lib/utils';
-import { useAmountGradient } from '@/features/display-settings/hooks';
-import { categoryDifferenceScaleValue, scaleValueColorClass } from '@/lib/financialColorScale';
+import { useState } from "react";
+import type { CSSProperties } from "react";
+import type { CategorySummary as CategorySummaryType } from "@/types";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { EntityLabel } from "@/components/ui/EntityLabel";
+import { formatCurrency, cn } from "@/lib/utils";
+import { useAmountGradient } from "@/features/display-settings/hooks";
+import {
+  categoryDifferenceScaleValue,
+  scaleValueColorClass,
+} from "@/lib/financialColorScale";
 
 interface CategorySummaryProps {
   categories: CategorySummaryType[];
 }
 
-const headerClass = 'px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider';
-const cellClass = 'px-2 py-1.5 text-sm whitespace-nowrap';
+const headerClass =
+  "px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider";
+const cellClass = "px-2 py-1.5 text-sm whitespace-nowrap";
 
 export function CategorySummaryTable({ categories }: CategorySummaryProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -20,7 +24,12 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
     categories.flatMap((category) =>
       category.difference == null
         ? []
-        : [categoryDifferenceScaleValue(category.difference, category.category_type)],
+        : [
+            categoryDifferenceScaleValue(
+              category.difference,
+              category.category_type,
+            ),
+          ],
     ),
   );
 
@@ -36,12 +45,12 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
       <table className="w-full">
         <thead className="bg-secondary/50">
           <tr>
-            <th className={cn(headerClass, 'w-8')} />
+            <th className={cn(headerClass, "w-8")} />
             <th className={headerClass}>Category</th>
             <th className={headerClass}>Type</th>
-            <th className={cn(headerClass, 'text-right')}>Total</th>
-            <th className={cn(headerClass, 'text-right')}>Goal</th>
-            <th className={cn(headerClass, 'text-right')}>Difference</th>
+            <th className={cn(headerClass, "text-right")}>Total</th>
+            <th className={cn(headerClass, "text-right")}>Goal</th>
+            <th className={cn(headerClass, "text-right")}>Difference</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -59,7 +68,10 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
           })}
           {categories.length === 0 && (
             <tr>
-              <td colSpan={6} className="px-2 py-4 text-center text-sm text-muted-foreground">
+              <td
+                colSpan={6}
+                className="px-2 py-4 text-center text-sm text-muted-foreground"
+              >
                 No category data.
               </td>
             </tr>
@@ -76,12 +88,19 @@ function DifferenceCell({
   getGradientStyle,
 }: {
   value: number | null;
-  categoryType: CategorySummaryType['category_type'];
+  categoryType: CategorySummaryType["category_type"];
   getGradientStyle: (amount: number) => CSSProperties | undefined;
 }) {
   if (value == null) return <span className="text-muted-foreground">-</span>;
   const scaleValue = categoryDifferenceScaleValue(value, categoryType);
-  return <span className={cn('font-mono tabular-nums', scaleValueColorClass(scaleValue))} style={getGradientStyle(scaleValue)}>{formatCurrency(value)}</span>;
+  return (
+    <span
+      className={cn("font-mono tabular-nums", scaleValueColorClass(scaleValue))}
+      style={getGradientStyle(scaleValue)}
+    >
+      {formatCurrency(value)}
+    </span>
+  );
 }
 
 function CategoryRow({
@@ -99,7 +118,12 @@ function CategoryRow({
     category.subcategories.flatMap((subcategory) =>
       subcategory.difference == null
         ? []
-        : [categoryDifferenceScaleValue(subcategory.difference, category.category_type)],
+        : [
+            categoryDifferenceScaleValue(
+              subcategory.difference,
+              category.category_type,
+            ),
+          ],
     ),
   );
 
@@ -107,27 +131,48 @@ function CategoryRow({
     <>
       <tr className="hover:bg-secondary/30 cursor-pointer" onClick={onToggle}>
         <td className={cellClass}>
-          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          {isOpen ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
         </td>
         <td className={cellClass}>
-          <EntityLabel id={category.category_id} name={category.category_name} color={category.category_color} />
+          <EntityLabel
+            id={category.category_id}
+            name={category.category_name}
+            color={category.category_color}
+          />
         </td>
         <td className={cellClass}>
-          <span className={cn(
-            'inline-block rounded px-1.5 py-0.5 text-xs font-medium',
-            category.category_type === 'income' ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'
-          )}>
+          <span
+            className={cn(
+              "inline-block rounded px-1.5 py-0.5 text-xs font-medium",
+              category.category_type === "income"
+                ? "bg-green-900/40 text-green-400"
+                : "bg-red-900/40 text-red-400",
+            )}
+          >
             {category.category_type}
           </span>
         </td>
-        <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
+        <td className={cn(cellClass, "text-right font-mono tabular-nums")}>
           {formatCurrency(category.total)}
         </td>
-        <td className={cn(cellClass, 'text-right font-mono tabular-nums text-muted-foreground')}>
-          {category.goal != null ? formatCurrency(category.goal) : '-'}
+        <td
+          className={cn(
+            cellClass,
+            "text-right font-mono tabular-nums text-muted-foreground",
+          )}
+        >
+          {category.goal != null ? formatCurrency(category.goal) : "-"}
         </td>
-        <td className={cn(cellClass, 'text-right')}>
-          <DifferenceCell value={category.difference} categoryType={category.category_type} getGradientStyle={getSummaryGradientStyle} />
+        <td className={cn(cellClass, "text-right")}>
+          <DifferenceCell
+            value={category.difference}
+            categoryType={category.category_type}
+            getGradientStyle={getSummaryGradientStyle}
+          />
         </td>
       </tr>
       {isOpen && category.subcategories.length > 0 && (
@@ -138,25 +183,48 @@ function CategoryRow({
                 <thead>
                   <tr>
                     <th className={headerClass}>Subcategory</th>
-                    <th className={cn(headerClass, 'text-right')}>Total</th>
-                    <th className={cn(headerClass, 'text-right')}>Goal</th>
-                    <th className={cn(headerClass, 'text-right')}>Difference</th>
+                    <th className={cn(headerClass, "text-right")}>Total</th>
+                    <th className={cn(headerClass, "text-right")}>Goal</th>
+                    <th className={cn(headerClass, "text-right")}>
+                      Difference
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {category.subcategories.map((s) => (
-                    <tr key={s.subcategory_id} className="hover:bg-secondary/20">
-                      <td className={cn(cellClass, 'text-xs')}>
-                        <EntityLabel id={s.subcategory_id} name={s.subcategory_name} color={s.subcategory_color} />
+                    <tr
+                      key={s.subcategory_id}
+                      className="hover:bg-secondary/20"
+                    >
+                      <td className={cn(cellClass, "text-xs")}>
+                        <EntityLabel
+                          id={s.subcategory_id}
+                          name={s.subcategory_name}
+                          color={s.subcategory_color}
+                        />
                       </td>
-                      <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs')}>
+                      <td
+                        className={cn(
+                          cellClass,
+                          "text-right font-mono tabular-nums text-xs",
+                        )}
+                      >
                         {formatCurrency(s.total)}
                       </td>
-                      <td className={cn(cellClass, 'text-right font-mono tabular-nums text-xs text-muted-foreground')}>
-                        {s.goal != null ? formatCurrency(s.goal) : '-'}
+                      <td
+                        className={cn(
+                          cellClass,
+                          "text-right font-mono tabular-nums text-xs text-muted-foreground",
+                        )}
+                      >
+                        {s.goal != null ? formatCurrency(s.goal) : "-"}
                       </td>
-                      <td className={cn(cellClass, 'text-right text-xs')}>
-                        <DifferenceCell value={s.difference} categoryType={category.category_type} getGradientStyle={getSubcategoryGradientStyle} />
+                      <td className={cn(cellClass, "text-right text-xs")}>
+                        <DifferenceCell
+                          value={s.difference}
+                          categoryType={category.category_type}
+                          getGradientStyle={getSubcategoryGradientStyle}
+                        />
                       </td>
                     </tr>
                   ))}

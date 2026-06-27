@@ -7,11 +7,24 @@ import {
   getRecentAgentMessagesForPrompt,
   touchAgentConversationPage,
 } from "../agent-conversations.js";
-import type { ChatRequest, ChatResult, ChatStreamEmitter, ExecutedAction, ToolLoopState } from "./types.js";
+import type {
+  ChatRequest,
+  ChatResult,
+  ChatStreamEmitter,
+  ExecutedAction,
+  ToolLoopState,
+} from "./types.js";
 import { normalizeMaxAssistantTurns } from "./constants.js";
-import { buildSearchUpdateFollowUp, prepareActionsForExecution } from "./action-preparation.js";
+import {
+  buildSearchUpdateFollowUp,
+  prepareActionsForExecution,
+} from "./action-preparation.js";
 import { executeAction } from "./action-executor.js";
-import { planAssistantActions, planningContext, removePreviouslySuccessfulActions } from "./prompting.js";
+import {
+  planAssistantActions,
+  planningContext,
+  removePreviouslySuccessfulActions,
+} from "./prompting.js";
 
 export function actionCompletesMutation(action: ExecutedAction): boolean {
   return (
@@ -83,7 +96,10 @@ export async function runAssistantChat(
     currentPage: request.currentPage ?? null,
     firstMessage: request.message,
   });
-  touchAgentConversationPage(request.conversationId, request.currentPage ?? null);
+  touchAgentConversationPage(
+    request.conversationId,
+    request.currentPage ?? null,
+  );
   const conversationHistory = getRecentAgentMessagesForPrompt(
     request.conversationId,
   );
