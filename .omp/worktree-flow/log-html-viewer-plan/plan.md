@@ -1,3 +1,5 @@
+# Log HTML Viewer Plan
+
 ## Context
 
 The requested change is a local CLI that accepts a path to a `log.json` file and generates a corresponding readable HTML file in the same folder. The generated HTML must render Markdown content and color-coordinate semantic portions of prompts, especially system/tool/context/user-request sections.

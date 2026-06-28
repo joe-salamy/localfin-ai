@@ -1,3 +1,5 @@
+# Tag System Plan Staged Draft
+
 ## Context
 
 Implement a first-class transaction tag system for LocalFin AI. User decisions are fixed: transactions support multiple tags; tags are generic with a `type`; tags can be created/assigned inline anywhere transactions are entered or edited plus managed in Settings; dashboard/history include tag filters plus summary reporting; natural-language parsing assigns/creates tags only when the user explicitly names one.

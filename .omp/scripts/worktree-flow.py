@@ -748,7 +748,7 @@ class HarnessWorktreeFlow:
     def stop_before_merge(
         self, repo: Path, state: WorkflowState, names: Names, plan_in_worktree: Path
     ) -> WorkflowState:
-        archive_dir = self.archive_handoff(repo, names.worktree, names.run_id)
+        archive_dir = self.archive_handoff(repo, names.worktree, names.slug, names.run_id)
         state = self.update_workflow_state(
             state, completed_stage="stopped_before_merge"
         )
@@ -1400,7 +1400,7 @@ Write `{summary.as_posix()}` before finishing.
     def archive_successful_handoff(
         self, repo: Path, state: WorkflowState, integration_worktree: Path
     ) -> tuple[WorkflowState, Path]:
-        archive_dir = self.archive_handoff(repo, integration_worktree, state.run_id)
+        archive_dir = self.archive_handoff(repo, integration_worktree, state.slug, state.run_id)
         state = self.update_workflow_state(state, completed_stage="handoff_archived")
         self.print_checkpoint(
             "done", "Handoff archived", (("handoff archive", archive_dir),)
@@ -1531,8 +1531,8 @@ Do not commit.
             self.copy_file(plan_path, dest_plan)
         return dest_plan
 
-    def archive_handoff(self, repo: Path, worktree: Path, run_id: str) -> Path:
-        archive_dir = repo / self.harness_dir / "worktree-flow" / run_id
+    def archive_handoff(self, repo: Path, worktree: Path, slug: str, run_id: str) -> Path:
+        archive_dir = repo / self.harness_dir / "worktree-flow" / slug / "runs" / run_id
         self.ensure_dir(archive_dir)
         source = worktree / self.handoff_dir
         if source.exists():

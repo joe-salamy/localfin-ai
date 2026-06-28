@@ -1,3 +1,5 @@
+# Plaid Akoya Integration Plan
+
 ## Context
 
 Add read-only Plaid and Akoya account linking so LocalFin AI can import transactions and account values without pasted statements. The fixed target mapping is US Bank and Discover through Plaid, and Fidelity through Akoya. The user chose manual sync only, 90 days of initial transaction history, and encrypted-at-rest storage of provider credentials in local SQLite.
