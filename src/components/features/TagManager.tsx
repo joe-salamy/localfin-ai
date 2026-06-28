@@ -9,6 +9,10 @@ import { TagChip } from "@/components/features/TagPicker";
 import { useTags } from "@/hooks/useTags";
 import { resolveEntityColor } from "@/lib/colors";
 import type { Tag, TagType } from "@/types";
+import {
+  useResizableColumns,
+  type ResizableColumnDef,
+} from "@/features/table-layout/useResizableColumns";
 
 const TAG_TYPES: TagType[] = [
   "custom",
@@ -22,6 +26,13 @@ const tagTypeOptions = TAG_TYPES.map((type) => ({
   value: type,
   label: type.charAt(0).toUpperCase() + type.slice(1),
 }));
+
+const TAG_COLUMNS: ResizableColumnDef[] = [
+  { id: "tag", defaultWidth: 220 },
+  { id: "type", defaultWidth: 112 },
+  { id: "color", defaultWidth: 96 },
+  { id: "actions", defaultWidth: 96 },
+];
 
 export function TagManager() {
   const { tags, isLoading, createTag, updateTag, deleteTag } = useTags();
@@ -44,6 +55,14 @@ export function TagManager() {
         ),
     [tags],
   );
+
+  const {
+    columns,
+    totalWidth,
+    getColStyle,
+    getHeaderStyle,
+    getResizeHandleProps,
+  } = useResizableColumns("settings.tags", TAG_COLUMNS);
 
   const startEdit = (tag: Tag) => {
     setEditId(tag.id);
@@ -147,20 +166,56 @@ export function TagManager() {
       </div>
 
       <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full">
+        <table
+          className="w-full"
+          style={{ minWidth: totalWidth, tableLayout: "fixed" }}
+        >
+          <colgroup>
+            {columns.map((column) => (
+              <col key={column.id} style={getColStyle(column.id)} />
+            ))}
+          </colgroup>
           <thead className="bg-secondary/50">
             <tr>
-              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <th
+                className="relative px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground"
+                style={getHeaderStyle("tag")}
+              >
                 Tag
+                <span
+                  {...getResizeHandleProps("tag")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
               </th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <th
+                className="relative px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground"
+                style={getHeaderStyle("type")}
+              >
                 Type
+                <span
+                  {...getResizeHandleProps("type")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
               </th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <th
+                className="relative px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground"
+                style={getHeaderStyle("color")}
+              >
                 Color
+                <span
+                  {...getResizeHandleProps("color")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
               </th>
-              <th className="w-24 px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <th
+                className="relative px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground"
+                style={getHeaderStyle("actions")}
+              >
                 Actions
+                <span
+                  {...getResizeHandleProps("actions")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
               </th>
             </tr>
           </thead>

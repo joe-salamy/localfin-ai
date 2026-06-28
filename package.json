@@ -8,6 +8,7 @@
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
     "test": "node --import tsx --test \"server/**/*.test.ts\"",
+    "test:frontend": "node --import tsx --test \"src/**/*.test.ts\"",
     "eval:agent:live": "tsx scripts/agent-live-eval.ts",
     "log:view": "tsx scripts/render-log-html.ts",
     "typecheck": "tsc -b --pretty false",

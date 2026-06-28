@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, HTMLAttributes } from "react";
 import type {
   AccountSummary as AccountSummaryType,
   NetWorthSummary,
@@ -14,6 +14,10 @@ import {
   accountChangeScaleValue,
   scaleValueColorClass,
 } from "@/lib/financialColorScale";
+import {
+  useResizableColumns,
+  type ResizableColumnDef,
+} from "@/features/table-layout/useResizableColumns";
 
 interface AccountSummaryProps {
   accounts: AccountSummaryType[];
@@ -23,6 +27,49 @@ interface AccountSummaryProps {
 const headerClass =
   "px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider";
 const cellClass = "px-2 py-1.5 text-sm whitespace-nowrap";
+
+interface ResizableTableLayout {
+  columns: readonly { id: string }[];
+  totalWidth: number;
+  getColStyle: (columnId: string) => CSSProperties;
+  getHeaderStyle: (columnId: string) => CSSProperties;
+  getResizeHandleProps: (columnId: string) => HTMLAttributes<HTMLSpanElement>;
+}
+
+const resizeHandleClass =
+  "absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40";
+
+const accountSummaryColumnDefs = [
+  { id: "expander", defaultWidth: 48 },
+  { id: "account", defaultWidth: 180 },
+  { id: "type", defaultWidth: 96 },
+  { id: "starting", defaultWidth: 128 },
+  { id: "change", defaultWidth: 128 },
+  { id: "ending", defaultWidth: 128 },
+] satisfies readonly ResizableColumnDef[];
+
+const accountTransactionColumnDefs = [
+  { id: "date", defaultWidth: 112 },
+  { id: "name", defaultWidth: 220 },
+  { id: "amount", defaultWidth: 112 },
+  { id: "balance", defaultWidth: 112 },
+  { id: "category", defaultWidth: 180 },
+] satisfies readonly ResizableColumnDef[];
+
+function ResizeHandle({
+  layout,
+  columnId,
+}: {
+  layout: ResizableTableLayout;
+  columnId: string;
+}) {
+  return (
+    <span
+      {...layout.getResizeHandleProps(columnId)}
+      className={resizeHandleClass}
+    />
+  );
+}
 
 export function AccountSummaryTable({
   accounts,
@@ -34,6 +81,14 @@ export function AccountSummaryTable({
       accountChangeScaleValue(account.total_change, account.account_type),
     ),
   );
+  const accountColumns = useResizableColumns(
+    "dashboard.account-summary",
+    accountSummaryColumnDefs,
+  );
+  const transactionColumns = useResizableColumns(
+    "dashboard.account-summary.transactions",
+    accountTransactionColumnDefs,
+  );
 
   const toggle = (id: string) => {
     const next = new Set(expanded);
@@ -44,15 +99,58 @@ export function AccountSummaryTable({
 
   return (
     <div className="overflow-x-auto border border-border rounded-md">
-      <table className="w-full">
+      <table
+        className="w-full"
+        style={{ minWidth: accountColumns.totalWidth, tableLayout: "fixed" }}
+      >
+        <colgroup>
+          {accountColumns.columns.map((column) => (
+            <col key={column.id} style={accountColumns.getColStyle(column.id)} />
+          ))}
+        </colgroup>
         <thead className="bg-secondary/50">
           <tr>
-            <th className={cn(headerClass, "w-8")} />
-            <th className={headerClass}>Account</th>
-            <th className={headerClass}>Type</th>
-            <th className={cn(headerClass, "text-right")}>Starting</th>
-            <th className={cn(headerClass, "text-right")}>Change</th>
-            <th className={cn(headerClass, "text-right")}>Ending</th>
+            <th
+              className={cn(headerClass, "relative w-8")}
+              style={accountColumns.getHeaderStyle("expander")}
+            >
+              <ResizeHandle layout={accountColumns} columnId="expander" />
+            </th>
+            <th
+              className={cn(headerClass, "relative")}
+              style={accountColumns.getHeaderStyle("account")}
+            >
+              Account
+              <ResizeHandle layout={accountColumns} columnId="account" />
+            </th>
+            <th
+              className={cn(headerClass, "relative")}
+              style={accountColumns.getHeaderStyle("type")}
+            >
+              Type
+              <ResizeHandle layout={accountColumns} columnId="type" />
+            </th>
+            <th
+              className={cn(headerClass, "relative text-right")}
+              style={accountColumns.getHeaderStyle("starting")}
+            >
+              Starting
+              <ResizeHandle layout={accountColumns} columnId="starting" />
+            </th>
+            <th
+              className={cn(headerClass, "relative text-right")}
+              style={accountColumns.getHeaderStyle("change")}
+            >
+              Change
+              <ResizeHandle layout={accountColumns} columnId="change" />
+            </th>
+            <th
+              className={cn(headerClass, "relative text-right")}
+              style={accountColumns.getHeaderStyle("ending")}
+            >
+              Ending
+              <ResizeHandle layout={accountColumns} columnId="ending" />
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -65,6 +163,7 @@ export function AccountSummaryTable({
                 isOpen={isOpen}
                 onToggle={() => toggle(a.account_id)}
                 getSummaryGradientStyle={getSummaryGradientStyle}
+                transactionColumns={transactionColumns}
               />
             );
           })}
@@ -102,11 +201,13 @@ function AccountRow({
   isOpen,
   onToggle,
   getSummaryGradientStyle,
+  transactionColumns,
 }: {
   account: AccountSummaryType;
   isOpen: boolean;
   onToggle: () => void;
   getSummaryGradientStyle: (amount: number) => CSSProperties | undefined;
+  transactionColumns: ResizableTableLayout;
 }) {
   const getGradientStyle = useAmountGradient(
     account.transactions.map((transaction) =>
@@ -168,14 +269,67 @@ function AccountRow({
         <tr>
           <td colSpan={6} className="p-0">
             <div className="bg-secondary/20 px-6 py-2">
-              <table className="w-full">
+              <table
+                className="w-full"
+                style={{
+                  minWidth: transactionColumns.totalWidth,
+                  tableLayout: "fixed",
+                }}
+              >
+                <colgroup>
+                  {transactionColumns.columns.map((column) => (
+                    <col
+                      key={column.id}
+                      style={transactionColumns.getColStyle(column.id)}
+                    />
+                  ))}
+                </colgroup>
                 <thead>
                   <tr>
-                    <th className={headerClass}>Date</th>
-                    <th className={headerClass}>Name</th>
-                    <th className={cn(headerClass, "text-right")}>Amount</th>
-                    <th className={cn(headerClass, "text-right")}>Balance</th>
-                    <th className={headerClass}>Category</th>
+                    <th
+                      className={cn(headerClass, "relative")}
+                      style={transactionColumns.getHeaderStyle("date")}
+                    >
+                      Date
+                      <ResizeHandle layout={transactionColumns} columnId="date" />
+                    </th>
+                    <th
+                      className={cn(headerClass, "relative")}
+                      style={transactionColumns.getHeaderStyle("name")}
+                    >
+                      Name
+                      <ResizeHandle layout={transactionColumns} columnId="name" />
+                    </th>
+                    <th
+                      className={cn(headerClass, "relative text-right")}
+                      style={transactionColumns.getHeaderStyle("amount")}
+                    >
+                      Amount
+                      <ResizeHandle
+                        layout={transactionColumns}
+                        columnId="amount"
+                      />
+                    </th>
+                    <th
+                      className={cn(headerClass, "relative text-right")}
+                      style={transactionColumns.getHeaderStyle("balance")}
+                    >
+                      Balance
+                      <ResizeHandle
+                        layout={transactionColumns}
+                        columnId="balance"
+                      />
+                    </th>
+                    <th
+                      className={cn(headerClass, "relative")}
+                      style={transactionColumns.getHeaderStyle("category")}
+                    >
+                      Category
+                      <ResizeHandle
+                        layout={transactionColumns}
+                        columnId="category"
+                      />
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">

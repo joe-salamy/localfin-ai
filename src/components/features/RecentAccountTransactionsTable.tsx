@@ -7,9 +7,21 @@ import { useRecentActivity } from "@/hooks/useTransactions";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useAmountGradient } from "@/features/display-settings/hooks";
 import {
+  useResizableColumns,
+  type ResizableColumnDef,
+} from "@/features/table-layout/useResizableColumns";
+import {
   accountChangeScaleValue,
   scaleValueColorClass,
 } from "@/lib/financialColorScale";
+
+const RECENT_ACTIVITY_COLUMNS: ResizableColumnDef[] = [
+  { id: "account", defaultWidth: 180 },
+  { id: "date", defaultWidth: 112 },
+  { id: "latestTransaction", defaultWidth: 240 },
+  { id: "amount", defaultWidth: 112 },
+  { id: "currentBalance", defaultWidth: 128 },
+];
 
 export function RecentAccountTransactionsTable() {
   const { recentActivity, isLoading } = useRecentActivity();
@@ -26,6 +38,17 @@ export function RecentAccountTransactionsTable() {
     ),
   );
 
+  const {
+    columns,
+    totalWidth,
+    getColStyle,
+    getHeaderStyle,
+    getResizeHandleProps,
+  } = useResizableColumns(
+    "transaction-input.recent-activity",
+    RECENT_ACTIVITY_COLUMNS,
+  );
+
   return (
     <Card className="p-3">
       <CardHeader className="mb-2">
@@ -36,14 +59,67 @@ export function RecentAccountTransactionsTable() {
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full text-xs">
+          <table
+            className="w-full text-xs"
+            style={{ minWidth: totalWidth, tableLayout: "fixed" }}
+          >
+            <colgroup>
+              {columns.map((column) => (
+                <col key={column.id} style={getColStyle(column.id)} />
+              ))}
+            </colgroup>
             <thead>
               <tr className="border-b border-border bg-card text-left text-muted-foreground">
-                <th className="px-2 py-1.5">Account</th>
-                <th className="px-2 py-1.5">Date</th>
-                <th className="px-2 py-1.5">Latest Transaction</th>
-                <th className="px-2 py-1.5 text-right">Amount</th>
-                <th className="px-2 py-1.5 text-right">Current Balance</th>
+                <th
+                  className="relative px-2 py-1.5"
+                  style={getHeaderStyle("account")}
+                >
+                  Account
+                  <span
+                    {...getResizeHandleProps("account")}
+                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                  />
+                </th>
+                <th
+                  className="relative px-2 py-1.5"
+                  style={getHeaderStyle("date")}
+                >
+                  Date
+                  <span
+                    {...getResizeHandleProps("date")}
+                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                  />
+                </th>
+                <th
+                  className="relative px-2 py-1.5"
+                  style={getHeaderStyle("latestTransaction")}
+                >
+                  Latest Transaction
+                  <span
+                    {...getResizeHandleProps("latestTransaction")}
+                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                  />
+                </th>
+                <th
+                  className="relative px-2 py-1.5 text-right"
+                  style={getHeaderStyle("amount")}
+                >
+                  Amount
+                  <span
+                    {...getResizeHandleProps("amount")}
+                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                  />
+                </th>
+                <th
+                  className="relative px-2 py-1.5 text-right"
+                  style={getHeaderStyle("currentBalance")}
+                >
+                  Current Balance
+                  <span
+                    {...getResizeHandleProps("currentBalance")}
+                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                  />
+                </th>
               </tr>
             </thead>
             <tbody>

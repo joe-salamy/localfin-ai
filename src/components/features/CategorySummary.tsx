@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, HTMLAttributes } from "react";
 import type { CategorySummary as CategorySummaryType } from "@/types";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { EntityLabel } from "@/components/ui/EntityLabel";
@@ -9,6 +9,10 @@ import {
   categoryDifferenceScaleValue,
   scaleValueColorClass,
 } from "@/lib/financialColorScale";
+import {
+  useResizableColumns,
+  type ResizableColumnDef,
+} from "@/features/table-layout/useResizableColumns";
 
 interface CategorySummaryProps {
   categories: CategorySummaryType[];
@@ -17,6 +21,48 @@ interface CategorySummaryProps {
 const headerClass =
   "px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider";
 const cellClass = "px-2 py-1.5 text-sm whitespace-nowrap";
+
+interface ResizableTableLayout {
+  columns: readonly { id: string }[];
+  totalWidth: number;
+  getColStyle: (columnId: string) => CSSProperties;
+  getHeaderStyle: (columnId: string) => CSSProperties;
+  getResizeHandleProps: (columnId: string) => HTMLAttributes<HTMLSpanElement>;
+}
+
+const resizeHandleClass =
+  "absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40";
+
+const categorySummaryColumnDefs = [
+  { id: "expander", defaultWidth: 48 },
+  { id: "category", defaultWidth: 180 },
+  { id: "type", defaultWidth: 96 },
+  { id: "total", defaultWidth: 128 },
+  { id: "goal", defaultWidth: 128 },
+  { id: "difference", defaultWidth: 128 },
+] satisfies readonly ResizableColumnDef[];
+
+const subcategorySummaryColumnDefs = [
+  { id: "subcategory", defaultWidth: 200 },
+  { id: "total", defaultWidth: 128 },
+  { id: "goal", defaultWidth: 128 },
+  { id: "difference", defaultWidth: 128 },
+] satisfies readonly ResizableColumnDef[];
+
+function ResizeHandle({
+  layout,
+  columnId,
+}: {
+  layout: ResizableTableLayout;
+  columnId: string;
+}) {
+  return (
+    <span
+      {...layout.getResizeHandleProps(columnId)}
+      className={resizeHandleClass}
+    />
+  );
+}
 
 export function CategorySummaryTable({ categories }: CategorySummaryProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -32,6 +78,14 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
           ],
     ),
   );
+  const categoryColumns = useResizableColumns(
+    "dashboard.category-summary",
+    categorySummaryColumnDefs,
+  );
+  const subcategoryColumns = useResizableColumns(
+    "dashboard.category-summary.subcategories",
+    subcategorySummaryColumnDefs,
+  );
 
   const toggle = (id: string) => {
     const next = new Set(expanded);
@@ -42,15 +96,58 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
 
   return (
     <div className="overflow-x-auto border border-border rounded-md">
-      <table className="w-full">
+      <table
+        className="w-full"
+        style={{ minWidth: categoryColumns.totalWidth, tableLayout: "fixed" }}
+      >
+        <colgroup>
+          {categoryColumns.columns.map((column) => (
+            <col key={column.id} style={categoryColumns.getColStyle(column.id)} />
+          ))}
+        </colgroup>
         <thead className="bg-secondary/50">
           <tr>
-            <th className={cn(headerClass, "w-8")} />
-            <th className={headerClass}>Category</th>
-            <th className={headerClass}>Type</th>
-            <th className={cn(headerClass, "text-right")}>Total</th>
-            <th className={cn(headerClass, "text-right")}>Goal</th>
-            <th className={cn(headerClass, "text-right")}>Difference</th>
+            <th
+              className={cn(headerClass, "relative w-8")}
+              style={categoryColumns.getHeaderStyle("expander")}
+            >
+              <ResizeHandle layout={categoryColumns} columnId="expander" />
+            </th>
+            <th
+              className={cn(headerClass, "relative")}
+              style={categoryColumns.getHeaderStyle("category")}
+            >
+              Category
+              <ResizeHandle layout={categoryColumns} columnId="category" />
+            </th>
+            <th
+              className={cn(headerClass, "relative")}
+              style={categoryColumns.getHeaderStyle("type")}
+            >
+              Type
+              <ResizeHandle layout={categoryColumns} columnId="type" />
+            </th>
+            <th
+              className={cn(headerClass, "relative text-right")}
+              style={categoryColumns.getHeaderStyle("total")}
+            >
+              Total
+              <ResizeHandle layout={categoryColumns} columnId="total" />
+            </th>
+            <th
+              className={cn(headerClass, "relative text-right")}
+              style={categoryColumns.getHeaderStyle("goal")}
+            >
+              Goal
+              <ResizeHandle layout={categoryColumns} columnId="goal" />
+            </th>
+            <th
+              className={cn(headerClass, "relative text-right")}
+              style={categoryColumns.getHeaderStyle("difference")}
+            >
+              Difference
+              <ResizeHandle layout={categoryColumns} columnId="difference" />
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -63,6 +160,7 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
                 isOpen={isOpen}
                 onToggle={() => toggle(c.category_id)}
                 getSummaryGradientStyle={getSummaryGradientStyle}
+                subcategoryColumns={subcategoryColumns}
               />
             );
           })}
@@ -108,11 +206,13 @@ function CategoryRow({
   isOpen,
   onToggle,
   getSummaryGradientStyle,
+  subcategoryColumns,
 }: {
   category: CategorySummaryType;
   isOpen: boolean;
   onToggle: () => void;
   getSummaryGradientStyle: (amount: number) => CSSProperties | undefined;
+  subcategoryColumns: ResizableTableLayout;
 }) {
   const getSubcategoryGradientStyle = useAmountGradient(
     category.subcategories.flatMap((subcategory) =>
@@ -179,14 +279,56 @@ function CategoryRow({
         <tr>
           <td colSpan={6} className="p-0">
             <div className="bg-secondary/20 px-6 py-2">
-              <table className="w-full">
+              <table
+                className="w-full"
+                style={{
+                  minWidth: subcategoryColumns.totalWidth,
+                  tableLayout: "fixed",
+                }}
+              >
+                <colgroup>
+                  {subcategoryColumns.columns.map((column) => (
+                    <col
+                      key={column.id}
+                      style={subcategoryColumns.getColStyle(column.id)}
+                    />
+                  ))}
+                </colgroup>
                 <thead>
                   <tr>
-                    <th className={headerClass}>Subcategory</th>
-                    <th className={cn(headerClass, "text-right")}>Total</th>
-                    <th className={cn(headerClass, "text-right")}>Goal</th>
-                    <th className={cn(headerClass, "text-right")}>
+                    <th
+                      className={cn(headerClass, "relative")}
+                      style={subcategoryColumns.getHeaderStyle("subcategory")}
+                    >
+                      Subcategory
+                      <ResizeHandle
+                        layout={subcategoryColumns}
+                        columnId="subcategory"
+                      />
+                    </th>
+                    <th
+                      className={cn(headerClass, "relative text-right")}
+                      style={subcategoryColumns.getHeaderStyle("total")}
+                    >
+                      Total
+                      <ResizeHandle layout={subcategoryColumns} columnId="total" />
+                    </th>
+                    <th
+                      className={cn(headerClass, "relative text-right")}
+                      style={subcategoryColumns.getHeaderStyle("goal")}
+                    >
+                      Goal
+                      <ResizeHandle layout={subcategoryColumns} columnId="goal" />
+                    </th>
+                    <th
+                      className={cn(headerClass, "relative text-right")}
+                      style={subcategoryColumns.getHeaderStyle("difference")}
+                    >
                       Difference
+                      <ResizeHandle
+                        layout={subcategoryColumns}
+                        columnId="difference"
+                      />
                     </th>
                   </tr>
                 </thead>

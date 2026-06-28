@@ -33,6 +33,18 @@ import {
   DEFAULT_FLAGGED_WORDS,
   normalizeFlaggedWords,
 } from "@/features/flagged-words/storage";
+import {
+  useResizableColumns,
+  type ResizableColumnDef,
+} from "@/features/table-layout/useResizableColumns";
+
+const SHORTCUT_COLUMNS: ResizableColumnDef[] = [
+  { id: "command", defaultWidth: 320 },
+  { id: "scope", defaultWidth: 140 },
+  { id: "default", defaultWidth: 140 },
+  { id: "current", defaultWidth: 180 },
+  { id: "actions", defaultWidth: 128 },
+];
 
 export function SettingsPage() {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -64,6 +76,13 @@ export function SettingsPage() {
   );
   const [flaggedWordsMessage, setFlaggedWordsMessage] = useState("");
   const [shortcutsTableFocused, setShortcutsTableFocused] = useState(false);
+  const {
+    columns,
+    totalWidth,
+    getColStyle,
+    getHeaderStyle,
+    getResizeHandleProps,
+  } = useResizableColumns("settings.shortcuts", SHORTCUT_COLUMNS);
 
   useShortcutScope("settings");
   useShortcutScope(
@@ -486,14 +505,67 @@ export function SettingsPage() {
               }
             }}
           >
-            <table className="w-full text-sm">
+            <table
+              className="w-full text-sm"
+              style={{ minWidth: totalWidth, tableLayout: "fixed" }}
+            >
+              <colgroup>
+                {columns.map((column) => (
+                  <col key={column.id} style={getColStyle(column.id)} />
+                ))}
+              </colgroup>
               <thead className="bg-secondary/50 text-left text-xs uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Command</th>
-                  <th className="px-3 py-2 font-medium">Scope</th>
-                  <th className="px-3 py-2 font-medium">Default</th>
-                  <th className="px-3 py-2 font-medium">Current</th>
-                  <th className="px-3 py-2 text-right font-medium">Actions</th>
+                  <th
+                    className="relative px-3 py-2 font-medium"
+                    style={getHeaderStyle("command")}
+                  >
+                    Command
+                    <span
+                      {...getResizeHandleProps("command")}
+                      className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                    />
+                  </th>
+                  <th
+                    className="relative px-3 py-2 font-medium"
+                    style={getHeaderStyle("scope")}
+                  >
+                    Scope
+                    <span
+                      {...getResizeHandleProps("scope")}
+                      className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                    />
+                  </th>
+                  <th
+                    className="relative px-3 py-2 font-medium"
+                    style={getHeaderStyle("default")}
+                  >
+                    Default
+                    <span
+                      {...getResizeHandleProps("default")}
+                      className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                    />
+                  </th>
+                  <th
+                    className="relative px-3 py-2 font-medium"
+                    style={getHeaderStyle("current")}
+                  >
+                    Current
+                    <span
+                      {...getResizeHandleProps("current")}
+                      className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                    />
+                  </th>
+                  <th
+                    className="relative px-3 py-2 text-right font-medium"
+                    style={getHeaderStyle("actions")}
+                  >
+                    Actions
+                    <span
+                      {...getResizeHandleProps("actions")}
+                      className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                    />
+                  </th>
                 </tr>
               </thead>
               {groupedCommands.map((group) => (

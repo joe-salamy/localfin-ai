@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ClipboardEvent } from "react";
+import type { ClipboardEvent, KeyboardEvent, PointerEvent } from "react";
 import type {
   CreateTagData,
   SuspectTransactionFinding,
@@ -7,6 +7,7 @@ import type {
   TransactionWithDetails,
   Subcategory,
   Tag,
+  UpdateTransactionData,
 } from "@/types";
 import { format, parseISO } from "date-fns";
 import {
@@ -18,6 +19,7 @@ import {
   ArrowDown,
   AlertTriangle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
 import { TagChip, TagPicker } from "@/components/features/TagPicker";
 import { EntityLabel } from "@/components/ui/EntityLabel";
@@ -33,6 +35,26 @@ import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import { useAmountGradient } from "@/features/display-settings/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
 import type { Category } from "@/types";
+import { useResizableColumns } from "@/features/table-layout/useResizableColumns";
+import type { ResizableColumnDef } from "@/features/table-layout/useResizableColumns";
+import {
+  formatClipboardMatrix,
+  isCellInRanges,
+  parseClipboardMatrix,
+  rectangleFrom,
+  selectionBoundingRange,
+} from "@/features/spreadsheet-selection/selection";
+import type { CellCoord, CellRange } from "@/features/spreadsheet-selection/selection";
+import {
+  historyTransactionCellFields,
+  kindHasSubcategory,
+  parsePastedAmount,
+  parsePastedDate,
+  resolveKind,
+  resolveSubcategoryId,
+  resolveTagIds,
+} from "@/lib/transactionCellParsing";
+import type { HistoryTransactionCellField } from "@/lib/transactionCellParsing";
 import {
   scaleValueColorClass,
   transactionAmountScaleValue,
@@ -45,7 +67,7 @@ interface TransactionTableProps {
   sortColumn: string;
   sortDirection: "asc" | "desc";
   onSort: (column: string) => void;
-  onEdit: (id: string, updates: Record<string, unknown>) => Promise<void>;
+  onEdit: (id: string, updates: UpdateTransactionData, options?: { silent?: boolean }) => Promise<boolean>;
   onDelete: (id: string) => Promise<void>;
   categories: Category[];
   subcategories: Subcategory[];
@@ -64,38 +86,6 @@ interface EditState {
   tag_ids: string[];
 }
 
-function normalizeClipboardValue(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function resolveSubcategoryId(
-  value: string,
-  subcategories: Subcategory[],
-): string | null {
-  const normalized = normalizeClipboardValue(value);
-  if (!normalized) return null;
-
-  const parts = value
-    .split(">")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const candidateName = normalizeClipboardValue(
-    parts[parts.length - 1] ?? value,
-  );
-
-  return (
-    subcategories.find(
-      (subcategory) =>
-        subcategory.id.toLowerCase() === normalized ||
-        subcategory.name.toLowerCase() === normalized ||
-        subcategory.name.toLowerCase() === candidateName,
-    )?.id ?? null
-  );
-}
-
-function kindHasSubcategory(kind: TransactionKind): boolean {
-  return kind !== "transfer" && kind !== "adjustment";
-}
 
 function SortIcon({
   column,
@@ -114,12 +104,23 @@ function SortIcon({
   );
 }
 
-const sortableColumns = [
-  { id: "date", label: "Date", align: "left" },
-  { id: "name", label: "Name", align: "left" },
-  { id: "amount", label: "Amount", align: "right" },
-  { id: "balance", label: "Balance", align: "right" },
-] as const;
+const transactionHistoryColumns = [
+  { id: "select", label: "", defaultWidth: 48 },
+  { id: "date", label: "Date", defaultWidth: 128, sortable: true },
+  { id: "account", label: "Account", defaultWidth: 160 },
+  { id: "name", label: "Name", defaultWidth: 220, sortable: true },
+  { id: "amount", label: "Amount", defaultWidth: 112, sortable: true, align: "right" },
+  { id: "balance", label: "Balance", defaultWidth: 112, sortable: true, align: "right" },
+  { id: "category", label: "Category", defaultWidth: 160 },
+  { id: "kind", label: "Type", defaultWidth: 112 },
+  { id: "subcategory", label: "Subcategory", defaultWidth: 180 },
+  { id: "tags", label: "Tags", defaultWidth: 200 },
+  { id: "actions", label: "Actions", defaultWidth: 96 },
+] satisfies readonly (ResizableColumnDef & {
+  label: string;
+  sortable?: boolean;
+  align?: "right";
+})[];
 
 export function TransactionTable({
   transactions,
@@ -154,6 +155,25 @@ export function TransactionTable({
     transactions[0]?.id ?? null,
   );
   const [tableFocused, setTableFocused] = useState(false);
+  const [selectedRanges, setSelectedRanges] = useState<CellRange[]>([]);
+  const [anchorCell, setAnchorCell] = useState<CellCoord | null>(null);
+  const [activeCell, setActiveCell] = useState<CellCoord | null>(null);
+  const [dragSelection, setDragSelection] = useState<{
+    anchor: CellCoord;
+    additive: boolean;
+  } | null>(null);
+  const dragUserSelectRef = useRef<string | null>(null);
+  const dragBaseRangesRef = useRef<CellRange[]>([]);
+  const {
+    columns,
+    totalWidth,
+    getColStyle,
+    getHeaderStyle,
+    getResizeHandleProps,
+  } = useResizableColumns(
+    "transaction-history.transactions",
+    transactionHistoryColumns,
+  );
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const getGradientStyle = useAmountGradient(
     transactions.flatMap((transaction) => {
@@ -270,7 +290,7 @@ export function TransactionTable({
     if (!editingId) return;
     setSaving(true);
     try {
-      await onEdit(editingId, {
+      const saved = await onEdit(editingId, {
         date: editState.date,
         name: editState.name,
         amount: parseFloat(editState.amount),
@@ -281,7 +301,7 @@ export function TransactionTable({
         comment: editState.comment || null,
         tag_ids: editState.tag_ids,
       });
-      setEditingId(null);
+      if (saved) setEditingId(null);
     } finally {
       setSaving(false);
     }
@@ -381,7 +401,7 @@ export function TransactionTable({
     if (values.length === 0) return;
 
     const resolvedIds = values.map((value) =>
-      resolveSubcategoryId(value, subcategories),
+      resolveSubcategoryId(value, categories, subcategories),
     );
     if (resolvedIds.every((id) => !id)) return;
 
@@ -425,32 +445,534 @@ export function TransactionTable({
     }
   };
 
+  useEffect(() => {
+    if (!dragSelection) return;
+    if (dragUserSelectRef.current === null) {
+      dragUserSelectRef.current = document.body.style.userSelect;
+      document.body.style.userSelect = "none";
+    }
+
+    const stopDrag = () => setDragSelection(null);
+    document.addEventListener("pointerup", stopDrag);
+    document.addEventListener("pointercancel", stopDrag);
+    return () => {
+      document.removeEventListener("pointerup", stopDrag);
+      document.removeEventListener("pointercancel", stopDrag);
+      if (dragUserSelectRef.current !== null) {
+        document.body.style.userSelect = dragUserSelectRef.current;
+        dragUserSelectRef.current = null;
+      }
+    };
+  }, [dragSelection]);
+
+  const expandSelectedCells = useCallback((): CellCoord[] => {
+    const cells: CellCoord[] = [];
+    for (let row = 0; row < transactions.length; row++) {
+      for (let col = 0; col < historyTransactionCellFields.length; col++) {
+        const cell = { row, col };
+        if (isCellInRanges(cell, selectedRanges)) cells.push(cell);
+      }
+    }
+    return cells;
+  }, [selectedRanges, transactions.length]);
+
+  const selectHistoryCell = useCallback((cell: CellCoord) => {
+    setSelectedRanges([rectangleFrom(cell, cell)]);
+    setAnchorCell(cell);
+    setActiveCell(cell);
+  }, []);
+
+  const toggleHistoryCell = useCallback(
+    (cell: CellCoord) => {
+      if (!isCellInRanges(cell, selectedRanges)) {
+        setSelectedRanges((current) => [...current, rectangleFrom(cell, cell)]);
+        setAnchorCell(cell);
+        setActiveCell(cell);
+        return;
+      }
+
+      const cells = expandSelectedCells().filter(
+        (selectedCell) =>
+          selectedCell.row !== cell.row || selectedCell.col !== cell.col,
+      );
+      setSelectedRanges(cells.map((selectedCell) => rectangleFrom(selectedCell, selectedCell)));
+      setAnchorCell(cell);
+      setActiveCell(cell);
+    },
+    [expandSelectedCells, selectedRanges],
+  );
+
+  const getHistoryCellSelectionHandlers = useCallback(
+    (rowIndex: number, colIndex: number) => ({
+      onPointerDown: (event: PointerEvent<HTMLElement>) => {
+        if (event.button !== 0) return;
+        event.stopPropagation();
+        const cell = { row: rowIndex, col: colIndex };
+        const additive = event.ctrlKey || event.metaKey;
+        const interactive =
+          event.target instanceof HTMLElement &&
+          ["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName);
+
+        if (event.shiftKey) {
+          const anchor = anchorCell ?? activeCell ?? cell;
+          setSelectedRanges([rectangleFrom(anchor, cell)]);
+          setActiveCell(cell);
+        } else if (additive) {
+          toggleHistoryCell(cell);
+        } else {
+          selectHistoryCell(cell);
+        }
+
+        if (!interactive) {
+          event.preventDefault();
+          dragBaseRangesRef.current = additive ? selectedRanges : [];
+          setDragSelection({ anchor: cell, additive });
+        }
+      },
+      onPointerEnter: () => {
+        if (!dragSelection) return;
+        const focus = { row: rowIndex, col: colIndex };
+        const range = rectangleFrom(dragSelection.anchor, focus);
+        setSelectedRanges(
+          dragSelection.additive ? [...dragBaseRangesRef.current, range] : [range],
+        );
+        setActiveCell(focus);
+      },
+    }),
+    [
+      activeCell,
+      anchorCell,
+      dragSelection,
+      selectHistoryCell,
+      selectedRanges,
+      toggleHistoryCell,
+    ],
+  );
+
+  const focusHistoryCell = useCallback(
+    (transactionId: string, rowIndex: number, colIndex: number) => {
+      setFocusedId(transactionId);
+      const cell = { row: rowIndex, col: colIndex };
+      setActiveCell(cell);
+      if (!isCellInRanges(cell, selectedRanges)) {
+        setSelectedRanges([rectangleFrom(cell, cell)]);
+        setAnchorCell(cell);
+      }
+    },
+    [selectedRanges],
+  );
+
+  const getHistoryCellClassName = useCallback(
+    (rowIndex: number, colIndex: number, className?: string) => {
+      const cell = { row: rowIndex, col: colIndex };
+      const selected = isCellInRanges(cell, selectedRanges);
+      const active = activeCell?.row === rowIndex && activeCell.col === colIndex;
+      return cn(
+        className,
+        selected && "bg-ring/15 outline outline-1 outline-ring",
+        active && "outline-2",
+      );
+    },
+    [activeCell, selectedRanges],
+  );
+
+  const getHistoryCellDisplayValue = useCallback(
+    (
+      transaction: TransactionWithDetails,
+      field: HistoryTransactionCellField,
+    ): string => {
+      if (field === "date") return format(parseISO(transaction.date), DISPLAY_DATE_FORMAT);
+      if (field === "name") return transaction.name;
+      if (field === "amount") return formatCurrency(transaction.amount);
+      if (field === "kind") return transaction.kind;
+      if (field === "subcategory_id") {
+        return (
+          formatNullableSubcategoryLabel(
+            transaction.subcategory_name,
+            transaction.category_type,
+          ) ?? ""
+        );
+      }
+      if (field === "tag_ids") return transaction.tags.map((tag) => tag.name).join(", ");
+      return transaction.comment ?? "";
+    },
+    [],
+  );
+
+  const parseHistoryCellValue = useCallback(
+    (
+      field: HistoryTransactionCellField,
+      value: string,
+      transaction: TransactionWithDetails,
+      mode: "paste" | "clear",
+      draftKind: TransactionKind = transaction.kind,
+    ): { updates: UpdateTransactionData; applied: boolean } => {
+      if (mode === "clear") {
+        if (field === "subcategory_id") return { updates: { subcategory_id: null }, applied: true };
+        if (field === "tag_ids") return { updates: { tag_ids: [] }, applied: true };
+        if (field === "comment") return { updates: { comment: null }, applied: true };
+        return { updates: {}, applied: false };
+      }
+
+      if (field === "date") {
+        const parsed = parsePastedDate(value);
+        return parsed
+          ? { updates: { date: parsed.isoDate }, applied: true }
+          : { updates: {}, applied: false };
+      }
+      if (field === "name") {
+        const name = value.trim();
+        return name
+          ? { updates: { name }, applied: true }
+          : { updates: {}, applied: false };
+      }
+      if (field === "amount") {
+        const amount = parsePastedAmount(value);
+        return amount === null
+          ? { updates: {}, applied: false }
+          : { updates: { amount }, applied: true };
+      }
+      if (field === "kind") {
+        const kind = resolveKind(value);
+        if (!kind) return { updates: {}, applied: false };
+        return {
+          updates: {
+            kind,
+            subcategory_id: kindHasSubcategory(kind) ? transaction.subcategory_id : null,
+          },
+          applied: true,
+        };
+      }
+      if (field === "subcategory_id") {
+        if (!kindHasSubcategory(draftKind)) return { updates: {}, applied: false };
+        const subcategoryId = resolveSubcategoryId(value, categories, subcategories);
+        return subcategoryId
+          ? { updates: { subcategory_id: subcategoryId }, applied: true }
+          : { updates: {}, applied: false };
+      }
+      if (field === "tag_ids") {
+        const tagIds = resolveTagIds(value, tags);
+        if (tagIds.length === 0 || tagIds.length > 50) {
+          return { updates: {}, applied: false };
+        }
+        return { updates: { tag_ids: tagIds }, applied: true };
+      }
+
+      return { updates: { comment: value.trim() || null }, applied: true };
+    },
+    [categories, subcategories, tags],
+  );
+
+  const writeHistorySelectionToClipboard = useCallback(
+    (event: ClipboardEvent<HTMLElement>): boolean => {
+      const bounds = selectionBoundingRange(selectedRanges);
+      if (!bounds) return false;
+
+      const matrix: string[][] = [];
+      for (let rowIndex = bounds.startRow; rowIndex <= bounds.endRow; rowIndex++) {
+        const transaction = transactions[rowIndex];
+        const values: string[] = [];
+        for (let colIndex = bounds.startCol; colIndex <= bounds.endCol; colIndex++) {
+          const cell = { row: rowIndex, col: colIndex };
+          const field = historyTransactionCellFields[colIndex];
+          values.push(
+            transaction && field && isCellInRanges(cell, selectedRanges)
+              ? getHistoryCellDisplayValue(transaction, field)
+              : "",
+          );
+        }
+        matrix.push(values);
+      }
+
+      event.clipboardData.setData("text/plain", formatClipboardMatrix(matrix));
+      event.preventDefault();
+      return true;
+    },
+    [getHistoryCellDisplayValue, selectedRanges, transactions],
+  );
+
+  const applyHistoryClipboardMatrix = useCallback(
+    async (
+      matrix: string[][],
+      startRow: number,
+      startCol: number,
+      mode: "paste" | "clear",
+    ) => {
+      const updatesById = new Map<
+        string,
+        { updates: UpdateTransactionData; cells: number }
+      >();
+      let skipped = 0;
+
+      for (let rowOffset = 0; rowOffset < matrix.length; rowOffset++) {
+        const transaction = transactions[startRow + rowOffset];
+        if (!transaction) {
+          skipped += matrix[rowOffset]?.length ?? 0;
+          continue;
+        }
+
+        const existing = updatesById.get(transaction.id) ?? {
+          updates: {},
+          cells: 0,
+        };
+        const values = matrix[rowOffset] ?? [];
+        for (let colOffset = 0; colOffset < values.length; colOffset++) {
+          const field = historyTransactionCellFields[startCol + colOffset];
+          if (!field) break;
+          const draftKind = existing.updates.kind ?? transaction.kind;
+          const result = parseHistoryCellValue(
+            field,
+            values[colOffset] ?? "",
+            transaction,
+            mode,
+            draftKind,
+          );
+          if (!result.applied) {
+            skipped++;
+            continue;
+          }
+          existing.updates = { ...existing.updates, ...result.updates };
+          existing.cells++;
+        }
+        if (existing.cells > 0) updatesById.set(transaction.id, existing);
+      }
+
+      let updatedRows = 0;
+      let updatedCells = 0;
+      let failedRows = 0;
+      for (const [id, entry] of updatesById) {
+        const ok = await onEdit(id, entry.updates, { silent: true });
+        if (ok) {
+          updatedRows++;
+          updatedCells += entry.cells;
+        } else {
+          failedRows++;
+        }
+      }
+
+      if (updatedRows > 0) {
+        toast.success(`Updated ${updatedCells} cell(s) across ${updatedRows} row(s).`);
+      }
+      if (skipped > 0 || failedRows > 0) {
+        toast.warning(
+          `Skipped ${skipped} invalid cell(s); ${failedRows} row update(s) failed.`,
+        );
+      }
+    },
+    [onEdit, parseHistoryCellValue, transactions],
+  );
+
+  const clearSelectedHistoryCells = useCallback(
+    async (selectedCells: CellCoord[]) => {
+      const updatesById = new Map<
+        string,
+        { updates: UpdateTransactionData; cells: number }
+      >();
+
+      for (const cell of selectedCells) {
+        const transaction = transactions[cell.row];
+        const field = historyTransactionCellFields[cell.col];
+        if (!transaction || !field) continue;
+
+        const existing = updatesById.get(transaction.id) ?? {
+          updates: {},
+          cells: 0,
+        };
+        const draftKind = existing.updates.kind ?? transaction.kind;
+        const result = parseHistoryCellValue(
+          field,
+          "",
+          transaction,
+          "clear",
+          draftKind,
+        );
+        if (!result.applied) continue;
+
+        existing.updates = { ...existing.updates, ...result.updates };
+        existing.cells++;
+        updatesById.set(transaction.id, existing);
+      }
+
+      let updatedRows = 0;
+      let updatedCells = 0;
+      let failedRows = 0;
+      for (const [id, entry] of updatesById) {
+        const ok = await onEdit(id, entry.updates, { silent: true });
+        if (ok) {
+          updatedRows++;
+          updatedCells += entry.cells;
+        } else {
+          failedRows++;
+        }
+      }
+
+      if (updatedRows > 0) {
+        toast.success(`Cleared ${updatedCells} cell(s) across ${updatedRows} row(s).`);
+      }
+      if (failedRows > 0) {
+        toast.warning(`${failedRows} row update(s) failed.`);
+      }
+    },
+    [onEdit, parseHistoryCellValue, transactions],
+  );
+
+  const handleHistoryCopy = useCallback(
+    (event: ClipboardEvent<HTMLDivElement>) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      writeHistorySelectionToClipboard(event);
+    },
+    [writeHistorySelectionToClipboard],
+  );
+
+  const handleHistoryCut = useCallback(
+    (event: ClipboardEvent<HTMLDivElement>) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      if (!writeHistorySelectionToClipboard(event)) return;
+      void clearSelectedHistoryCells(expandSelectedCells());
+    },
+    [
+      clearSelectedHistoryCells,
+      expandSelectedCells,
+      writeHistorySelectionToClipboard,
+    ],
+  );
+
+  const handleHistoryPaste = useCallback(
+    (event: ClipboardEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      const selectedCells = expandSelectedCells();
+      if (selectedCells.length === 0) return;
+
+      const startCell = selectedCells.reduce((best, cell) =>
+        cell.row < best.row || (cell.row === best.row && cell.col < best.col)
+          ? cell
+          : best,
+      );
+      event.preventDefault();
+      void applyHistoryClipboardMatrix(
+        parseClipboardMatrix(event.clipboardData.getData("text/plain")),
+        startCell.row,
+        startCell.col,
+        "paste",
+      );
+    },
+    [applyHistoryClipboardMatrix, expandSelectedCells],
+  );
+
+  const handleHistoryKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key.toLowerCase() !== "a" || (!event.ctrlKey && !event.metaKey)) {
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      const selectableCell =
+        activeElement instanceof HTMLElement
+          ? activeElement.closest("[data-row-index][data-col-index]")
+          : null;
+      if (!selectableCell || !event.currentTarget.contains(selectableCell)) {
+        return;
+      }
+
+      event.preventDefault();
+      if (transactions.length === 0) return;
+      const start = { row: 0, col: 0 };
+      const end = {
+        row: transactions.length - 1,
+        col: historyTransactionCellFields.length - 1,
+      };
+      setSelectedRanges([rectangleFrom(start, end)]);
+      setAnchorCell(start);
+      setActiveCell(end);
+    },
+    [transactions.length],
+  );
+
   const headerClass =
     "px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider";
   const cellClass = "px-2 py-1.5 text-sm whitespace-nowrap";
-  const renderSortableHeader = (col: (typeof sortableColumns)[number]) => (
-    <th
-      key={col.id}
-      className={cn(
-        headerClass,
-        col.align === "right" && "text-right",
-        "cursor-pointer select-none hover:text-foreground",
-      )}
-      onClick={() => onSort(col.id)}
-    >
-      {col.label}
-      <SortIcon
-        column={col.id}
-        sortColumn={sortColumn}
-        sortDirection={sortDirection}
-      />
-    </th>
-  );
+  const renderHistoryHeader = (col: (typeof transactionHistoryColumns)[number]) => {
+    const sortable = Boolean(col.sortable);
+    return (
+      <th
+        key={col.id}
+        className={cn(
+          headerClass,
+          "relative",
+          col.align === "right" && "text-right",
+          sortable && "cursor-pointer select-none hover:text-foreground",
+        )}
+        style={getHeaderStyle(col.id)}
+        onClick={sortable ? () => onSort(col.id) : undefined}
+      >
+        {col.id === "select" ? (
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={toggleAll}
+            className="rounded border-border"
+          />
+        ) : (
+          <>
+            {col.label}
+            {sortable && (
+              <SortIcon
+                column={col.id}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+              />
+            )}
+          </>
+        )}
+        <span
+          className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+          {...getResizeHandleProps(col.id)}
+        />
+      </th>
+    );
+  };
 
   return (
     <>
       <div
         className="overflow-x-auto border border-border rounded-md"
+        tabIndex={0}
+        onCopy={handleHistoryCopy}
+        onCut={handleHistoryCut}
+        onPaste={handleHistoryPaste}
+        onKeyDown={handleHistoryKeyDown}
         onFocus={() => setTableFocused(true)}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -458,26 +980,17 @@ export function TransactionTable({
           }
         }}
       >
-        <table className="w-full">
+        <table
+          className="w-full"
+          style={{ minWidth: totalWidth, tableLayout: "fixed" }}
+        >
+          <colgroup>
+            {columns.map((column) => (
+              <col key={column.id} style={getColStyle(column.id)} />
+            ))}
+          </colgroup>
           <thead className="bg-secondary/50">
-            <tr>
-              <th className={cn(headerClass, "w-8")}>
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  className="rounded border-border"
-                />
-              </th>
-              {renderSortableHeader(sortableColumns[0])}
-              <th className={headerClass}>Account</th>
-              {sortableColumns.slice(1).map(renderSortableHeader)}
-              <th className={headerClass}>Category</th>
-              <th className={headerClass}>Type</th>
-              <th className={headerClass}>Subcategory</th>
-              <th className={headerClass}>Tags</th>
-              <th className={cn(headerClass, "w-20")}>Actions</th>
-            </tr>
+            <tr>{transactionHistoryColumns.map(renderHistoryHeader)}</tr>
           </thead>
           <tbody className="divide-y divide-border">
             {transactions.length === 0 && (
@@ -490,7 +1003,7 @@ export function TransactionTable({
                 </td>
               </tr>
             )}
-            {transactions.map((t) => {
+            {transactions.map((t, rowIndex) => {
               const isEditing = editingId === t.id;
               const flaggedWords = findMatches(t.name);
               const isFlagged = flaggedWords.length > 0;
@@ -558,7 +1071,14 @@ export function TransactionTable({
                       className="rounded border-border"
                     />
                   </td>
-                  <td className={cellClass}>
+                  <td
+                    data-row-index={rowIndex}
+                    data-col-index={0}
+                    className={getHistoryCellClassName(rowIndex, 0, cellClass)}
+                    tabIndex={isEditing ? undefined : 0}
+                    onFocus={() => focusHistoryCell(t.id, rowIndex, 0)}
+                    {...getHistoryCellSelectionHandlers(rowIndex, 0)}
+                  >
                     {isEditing ? (
                       <input
                         type="date"
@@ -566,7 +1086,7 @@ export function TransactionTable({
                         onChange={(e) =>
                           setEditState({ ...editState, date: e.target.value })
                         }
-                        className="h-7 w-32 rounded border border-border bg-input px-1.5 text-xs text-foreground"
+                        className="h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       />
                     ) : (
                       format(parseISO(t.date), DISPLAY_DATE_FORMAT)
@@ -579,7 +1099,14 @@ export function TransactionTable({
                       color={t.account_color}
                     />
                   </td>
-                  <td className={cellClass}>
+                  <td
+                    data-row-index={rowIndex}
+                    data-col-index={1}
+                    className={getHistoryCellClassName(rowIndex, 1, cellClass)}
+                    tabIndex={isEditing ? undefined : 0}
+                    onFocus={() => focusHistoryCell(t.id, rowIndex, 1)}
+                    {...getHistoryCellSelectionHandlers(rowIndex, 1)}
+                  >
                     {isEditing ? (
                       <div className="space-y-1">
                         <input
@@ -588,7 +1115,7 @@ export function TransactionTable({
                           onChange={(e) =>
                             setEditState({ ...editState, name: e.target.value })
                           }
-                          className="h-7 w-40 rounded border border-border bg-input px-1.5 text-xs text-foreground"
+                          className="h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground"
                         />
                         <input
                           type="text"
@@ -600,7 +1127,7 @@ export function TransactionTable({
                             })
                           }
                           placeholder="Comment..."
-                          className="h-7 w-40 rounded border border-border bg-input px-1.5 text-xs text-muted-foreground"
+                          className="h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-muted-foreground"
                         />
                       </div>
                     ) : (
@@ -614,19 +1141,35 @@ export function TransactionTable({
                           )}
                           <span>{t.name}</span>
                         </span>
-                        {t.comment && (
-                          <span className="block text-xs text-muted-foreground truncate max-w-[200px]">
-                            {t.comment}
-                          </span>
-                        )}
+                        <span
+                          data-row-index={rowIndex}
+                          data-col-index={6}
+                          aria-label={t.comment ? undefined : "Empty comment cell"}
+                          className={getHistoryCellClassName(
+                            rowIndex,
+                            6,
+                            "mt-0.5 block min-h-4 max-w-[200px] truncate text-xs text-muted-foreground",
+                          )}
+                          tabIndex={0}
+                          onFocus={() => focusHistoryCell(t.id, rowIndex, 6)}
+                          {...getHistoryCellSelectionHandlers(rowIndex, 6)}
+                        >
+                          {t.comment ?? ""}
+                        </span>
                       </div>
                     )}
                   </td>
                   <td
-                    className={cn(
-                      cellClass,
-                      "text-right font-mono tabular-nums",
+                    data-row-index={rowIndex}
+                    data-col-index={2}
+                    className={getHistoryCellClassName(
+                      rowIndex,
+                      2,
+                      cn(cellClass, "text-right font-mono tabular-nums"),
                     )}
+                    tabIndex={isEditing ? undefined : 0}
+                    onFocus={() => focusHistoryCell(t.id, rowIndex, 2)}
+                    {...getHistoryCellSelectionHandlers(rowIndex, 2)}
                   >
                     {isEditing ? (
                       <input
@@ -636,7 +1179,7 @@ export function TransactionTable({
                         onChange={(e) =>
                           setEditState({ ...editState, amount: e.target.value })
                         }
-                        className="h-7 w-24 rounded border border-border bg-input px-1.5 text-xs text-foreground"
+                        className="h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       />
                     ) : (
                       <span
@@ -666,7 +1209,14 @@ export function TransactionTable({
                       color={t.category_color}
                     />
                   </td>
-                  <td className={cn(cellClass, "text-xs")}>
+                  <td
+                    data-row-index={rowIndex}
+                    data-col-index={3}
+                    className={getHistoryCellClassName(rowIndex, 3, cn(cellClass, "text-xs"))}
+                    tabIndex={isEditing ? undefined : 0}
+                    onFocus={() => focusHistoryCell(t.id, rowIndex, 3)}
+                    {...getHistoryCellSelectionHandlers(rowIndex, 3)}
+                  >
                     {isEditing ? (
                       <select
                         value={editState.kind}
@@ -681,7 +1231,7 @@ export function TransactionTable({
                                 : editState.subcategory_id,
                           })
                         }
-                        className="h-7 w-24 rounded border border-border bg-input px-1.5 text-xs text-foreground"
+                        className="h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       >
                         <option value="income">Income</option>
                         <option value="expense">Expense</option>
@@ -695,10 +1245,14 @@ export function TransactionTable({
                     )}
                   </td>
                   <td
-                    className={cellClass}
+                    data-row-index={rowIndex}
+                    data-col-index={4}
+                    className={getHistoryCellClassName(rowIndex, 4, cellClass)}
                     tabIndex={isEditing ? undefined : 0}
+                    onFocus={() => focusHistoryCell(t.id, rowIndex, 4)}
                     onPaste={(e) => void applySubcategoryPaste(e, t)}
                     title="Paste a copied subcategory here to apply it to this row or selected rows"
+                    {...getHistoryCellSelectionHandlers(rowIndex, 4)}
                   >
                     {isEditing ? (
                       <select
@@ -711,7 +1265,7 @@ export function TransactionTable({
                         }
                         onPaste={(e) => void applySubcategoryPaste(e, t)}
                         disabled={!kindHasSubcategory(editState.kind)}
-                        className="h-7 w-36 rounded border border-border bg-input px-1.5 text-xs text-foreground"
+                        className="h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       >
                         <option value="">None</option>
                         {subcategories.map((s) => (
@@ -733,7 +1287,14 @@ export function TransactionTable({
                       </span>
                     )}
                   </td>
-                  <td className={cellClass}>
+                  <td
+                    data-row-index={rowIndex}
+                    data-col-index={5}
+                    className={getHistoryCellClassName(rowIndex, 5, cellClass)}
+                    tabIndex={isEditing ? undefined : 0}
+                    onFocus={() => focusHistoryCell(t.id, rowIndex, 5)}
+                    {...getHistoryCellSelectionHandlers(rowIndex, 5)}
+                  >
                     {isEditing ? (
                       <TagPicker
                         value={editState.tag_ids}
@@ -743,7 +1304,7 @@ export function TransactionTable({
                         tags={tags}
                         onCreateTag={onCreateTag}
                         placeholder="Tags"
-                        className="w-44"
+                        className="w-full"
                       />
                     ) : t.tags.length > 0 ? (
                       <div className="flex max-w-56 flex-wrap gap-1">

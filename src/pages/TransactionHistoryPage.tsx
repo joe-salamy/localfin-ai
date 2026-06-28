@@ -5,6 +5,7 @@ import type {
   Tag,
   TransactionFilters,
   TransactionKind,
+  UpdateTransactionData,
 } from "@/types";
 import { format, subDays } from "date-fns";
 import { toast } from "sonner";
@@ -177,14 +178,18 @@ export function TransactionHistoryPage() {
   );
 
   const handleEdit = useCallback(
-    async (id: string, updates: Record<string, unknown>) => {
+    async (
+      id: string,
+      updates: UpdateTransactionData,
+      options?: { silent?: boolean },
+    ) => {
       try {
-        await updateTransaction.mutateAsync({ id, ...updates } as Parameters<
-          typeof updateTransaction.mutateAsync
-        >[0]);
-        toast.success("Transaction updated");
+        await updateTransaction.mutateAsync({ id, ...updates });
+        if (!options?.silent) toast.success("Transaction updated");
+        return true;
       } catch {
-        toast.error("Failed to update transaction");
+        if (!options?.silent) toast.error("Failed to update transaction");
+        return false;
       }
     },
     [updateTransaction],

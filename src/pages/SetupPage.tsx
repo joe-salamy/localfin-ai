@@ -38,6 +38,10 @@ import type {
 } from "@/types";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
+import {
+  useResizableColumns,
+  type ResizableColumnDef,
+} from "@/features/table-layout/useResizableColumns";
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -106,6 +110,33 @@ function summarizeProviderSync(
   return `Synced ${totals.accounts} account(s), added ${totals.added} transaction(s), updated ${totals.updated}, removed ${totals.removed}.`;
 }
 const PLAID_OAUTH_STORAGE_KEY = "localfin:plaid-oauth-link";
+
+const SETUP_ACCOUNT_COLUMN_DEFS = [
+  { id: "select", defaultWidth: 48 },
+  { id: "name", defaultWidth: 180 },
+  { id: "type", defaultWidth: 112 },
+  { id: "color", defaultWidth: 96 },
+  { id: "initialBalance", defaultWidth: 140 },
+  { id: "balance", defaultWidth: 140 },
+  { id: "actions", defaultWidth: 112 },
+] satisfies ResizableColumnDef[];
+
+const SETUP_CATEGORY_COLUMN_DEFS = [
+  { id: "select", defaultWidth: 48 },
+  { id: "name", defaultWidth: 200 },
+  { id: "type", defaultWidth: 112 },
+  { id: "color", defaultWidth: 96 },
+  { id: "actions", defaultWidth: 96 },
+] satisfies ResizableColumnDef[];
+
+const SETUP_SUBCATEGORY_COLUMN_DEFS = [
+  { id: "select", defaultWidth: 48 },
+  { id: "name", defaultWidth: 200 },
+  { id: "category", defaultWidth: 180 },
+  { id: "monthlyGoal", defaultWidth: 140 },
+  { id: "color", defaultWidth: 96 },
+  { id: "actions", defaultWidth: 96 },
+] satisfies ResizableColumnDef[];
 
 function readStoredPlaidOAuthLinkToken(
   targetInstitution: PlaidTargetInstitution,
@@ -413,6 +444,13 @@ function AccountsSection() {
     key: "name",
     direction: "asc",
   });
+  const {
+    columns,
+    totalWidth,
+    getColStyle,
+    getHeaderStyle,
+    getResizeHandleProps,
+  } = useResizableColumns("setup.accounts", SETUP_ACCOUNT_COLUMN_DEFS);
 
   const sortedAccounts = useMemo(() => {
     return [...accounts].sort((a, b) => {
@@ -869,51 +907,115 @@ function AccountsSection() {
       </Card>
 
       {/* Table */}
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-xs text-muted-foreground">
-            <th className="w-8 pb-1 font-medium">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                disabled={selectableIds.length === 0}
-                onChange={toggleAllSelected}
-                aria-label="Select all accounts"
-                className="h-4 w-4 rounded border-border bg-background"
-              />
-            </th>
-            <th className="pb-1 font-medium">
-              <SortHeader
-                label="Name"
-                sortKey="name"
-                sort={sort}
-                onSort={(key) => setSort((current) => nextSort(current, key))}
-              />
-            </th>
-            <th className="pb-1 font-medium">
-              <SortHeader
-                label="Type"
-                sortKey="type"
-                sort={sort}
-                onSort={(key) => setSort((current) => nextSort(current, key))}
-              />
-            </th>
-            <th className="pb-1 font-medium">Color</th>
-            <th className="pb-1 text-right font-medium">Initial Balance</th>
-            <th className="pb-1 text-right font-medium">
-              <SortHeader
-                label="Balance"
-                sortKey="balance"
-                sort={sort}
-                align="right"
-                onSort={(key) => setSort((current) => nextSort(current, key))}
-              />
-            </th>
-            <th className="pb-1 text-right font-medium w-28">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedAccounts.map((a) => (
+      <div className="overflow-x-auto">
+        <table
+          className="w-full text-sm"
+          style={{ minWidth: totalWidth, tableLayout: "fixed" }}
+        >
+          <colgroup>
+            {columns.map((column) => (
+              <col key={column.id} style={getColStyle(column.id)} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr className="border-b border-border text-left text-xs text-muted-foreground">
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("select")}
+              >
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  disabled={selectableIds.length === 0}
+                  onChange={toggleAllSelected}
+                  aria-label="Select all accounts"
+                  className="h-4 w-4 rounded border-border bg-background"
+                />
+                <span
+                  {...getResizeHandleProps("select")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("name")}
+              >
+                <SortHeader
+                  label="Name"
+                  sortKey="name"
+                  sort={sort}
+                  onSort={(key) => setSort((current) => nextSort(current, key))}
+                />
+                <span
+                  {...getResizeHandleProps("name")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("type")}
+              >
+                <SortHeader
+                  label="Type"
+                  sortKey="type"
+                  sort={sort}
+                  onSort={(key) => setSort((current) => nextSort(current, key))}
+                />
+                <span
+                  {...getResizeHandleProps("type")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("color")}
+              >
+                Color
+                <span
+                  {...getResizeHandleProps("color")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 text-right font-medium"
+                style={getHeaderStyle("initialBalance")}
+              >
+                Initial Balance
+                <span
+                  {...getResizeHandleProps("initialBalance")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 text-right font-medium"
+                style={getHeaderStyle("balance")}
+              >
+                <SortHeader
+                  label="Balance"
+                  sortKey="balance"
+                  sort={sort}
+                  align="right"
+                  onSort={(key) => setSort((current) => nextSort(current, key))}
+                />
+                <span
+                  {...getResizeHandleProps("balance")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 text-right font-medium"
+                style={getHeaderStyle("actions")}
+              >
+                Actions
+                <span
+                  {...getResizeHandleProps("actions")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedAccounts.map((a) => (
             <tr
               key={a.id}
               tabIndex={0}
@@ -1050,8 +1152,9 @@ function AccountsSection() {
               )}
             </tr>
           ))}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
 
       {/* Add form */}
       {showAdd ? (
@@ -1284,6 +1387,13 @@ function CategoriesSection() {
     key: "name",
     direction: "asc",
   });
+  const {
+    columns,
+    totalWidth,
+    getColStyle,
+    getHeaderStyle,
+    getResizeHandleProps,
+  } = useResizableColumns("setup.categories", SETUP_CATEGORY_COLUMN_DEFS);
 
   const sortedCategories = useMemo(() => {
     return [...categories].sort((a, b) => {
@@ -1521,41 +1631,89 @@ function CategoriesSection() {
           </Button>
         </div>
       )}
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-xs text-muted-foreground">
-            <th className="w-8 pb-1 font-medium">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                disabled={selectableIds.length === 0}
-                onChange={toggleAllSelected}
-                aria-label="Select all categories"
-                className="h-4 w-4 rounded border-border bg-background"
-              />
-            </th>
-            <th className="pb-1 font-medium">
-              <SortHeader
-                label="Name"
-                sortKey="name"
-                sort={sort}
-                onSort={(key) => setSort((current) => nextSort(current, key))}
-              />
-            </th>
-            <th className="pb-1 font-medium">
-              <SortHeader
-                label="Type"
-                sortKey="type"
-                sort={sort}
-                onSort={(key) => setSort((current) => nextSort(current, key))}
-              />
-            </th>
-            <th className="pb-1 font-medium">Color</th>
-            <th className="pb-1 text-right font-medium w-20">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedCategories.map((c) => (
+      <div className="overflow-x-auto">
+        <table
+          className="w-full text-sm"
+          style={{ minWidth: totalWidth, tableLayout: "fixed" }}
+        >
+          <colgroup>
+            {columns.map((column) => (
+              <col key={column.id} style={getColStyle(column.id)} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr className="border-b border-border text-left text-xs text-muted-foreground">
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("select")}
+              >
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  disabled={selectableIds.length === 0}
+                  onChange={toggleAllSelected}
+                  aria-label="Select all categories"
+                  className="h-4 w-4 rounded border-border bg-background"
+                />
+                <span
+                  {...getResizeHandleProps("select")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("name")}
+              >
+                <SortHeader
+                  label="Name"
+                  sortKey="name"
+                  sort={sort}
+                  onSort={(key) => setSort((current) => nextSort(current, key))}
+                />
+                <span
+                  {...getResizeHandleProps("name")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("type")}
+              >
+                <SortHeader
+                  label="Type"
+                  sortKey="type"
+                  sort={sort}
+                  onSort={(key) => setSort((current) => nextSort(current, key))}
+                />
+                <span
+                  {...getResizeHandleProps("type")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("color")}
+              >
+                Color
+                <span
+                  {...getResizeHandleProps("color")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 text-right font-medium"
+                style={getHeaderStyle("actions")}
+              >
+                Actions
+                <span
+                  {...getResizeHandleProps("actions")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedCategories.map((c) => (
             <tr
               key={c.id}
               tabIndex={0}
@@ -1676,8 +1834,9 @@ function CategoriesSection() {
               )}
             </tr>
           ))}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
 
       {showAdd ? (
         <form onSubmit={handleAdd} className="mt-3 flex items-end gap-2">
@@ -1787,6 +1946,16 @@ function SubcategoriesSection() {
     key: "name",
     direction: "asc",
   });
+  const {
+    columns,
+    totalWidth,
+    getColStyle,
+    getHeaderStyle,
+    getResizeHandleProps,
+  } = useResizableColumns(
+    "setup.subcategories",
+    SETUP_SUBCATEGORY_COLUMN_DEFS,
+  );
 
   const categoryOptions = categories.map((c) => ({
     value: c.id,
@@ -2055,50 +2224,105 @@ function SubcategoriesSection() {
           </Button>
         </div>
       )}
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-xs text-muted-foreground">
-            <th className="w-8 pb-1 font-medium">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                disabled={selectableIds.length === 0}
-                onChange={toggleAllSelected}
-                aria-label="Select all subcategories"
-                className="h-4 w-4 rounded border-border bg-background"
-              />
-            </th>
-            <th className="pb-1 font-medium">
-              <SortHeader
-                label="Name"
-                sortKey="name"
-                sort={sort}
-                onSort={(key) => setSort((current) => nextSort(current, key))}
-              />
-            </th>
-            <th className="pb-1 font-medium">
-              <SortHeader
-                label="Category"
-                sortKey="category"
-                sort={sort}
-                onSort={(key) => setSort((current) => nextSort(current, key))}
-              />
-            </th>
-            <th className="pb-1 text-right font-medium">
-              <SortHeader
-                label="Monthly Goal"
-                sortKey="monthlyGoal"
-                sort={sort}
-                align="right"
-                onSort={(key) => setSort((current) => nextSort(current, key))}
-              />
-            </th>
-            <th className="pb-1 font-medium">Color</th>
-            <th className="pb-1 text-right font-medium w-20">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedSubcategories.map((s) => {
+      <div className="overflow-x-auto">
+        <table
+          className="w-full text-sm"
+          style={{ minWidth: totalWidth, tableLayout: "fixed" }}
+        >
+          <colgroup>
+            {columns.map((column) => (
+              <col key={column.id} style={getColStyle(column.id)} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr className="border-b border-border text-left text-xs text-muted-foreground">
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("select")}
+              >
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  disabled={selectableIds.length === 0}
+                  onChange={toggleAllSelected}
+                  aria-label="Select all subcategories"
+                  className="h-4 w-4 rounded border-border bg-background"
+                />
+                <span
+                  {...getResizeHandleProps("select")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("name")}
+              >
+                <SortHeader
+                  label="Name"
+                  sortKey="name"
+                  sort={sort}
+                  onSort={(key) => setSort((current) => nextSort(current, key))}
+                />
+                <span
+                  {...getResizeHandleProps("name")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("category")}
+              >
+                <SortHeader
+                  label="Category"
+                  sortKey="category"
+                  sort={sort}
+                  onSort={(key) => setSort((current) => nextSort(current, key))}
+                />
+                <span
+                  {...getResizeHandleProps("category")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 text-right font-medium"
+                style={getHeaderStyle("monthlyGoal")}
+              >
+                <SortHeader
+                  label="Monthly Goal"
+                  sortKey="monthlyGoal"
+                  sort={sort}
+                  align="right"
+                  onSort={(key) => setSort((current) => nextSort(current, key))}
+                />
+                <span
+                  {...getResizeHandleProps("monthlyGoal")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 font-medium"
+                style={getHeaderStyle("color")}
+              >
+                Color
+                <span
+                  {...getResizeHandleProps("color")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+              <th
+                className="relative pb-1 text-right font-medium"
+                style={getHeaderStyle("actions")}
+              >
+                Actions
+                <span
+                  {...getResizeHandleProps("actions")}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
+                />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedSubcategories.map((s) => {
             const parentCat = categoryMap.get(s.category_id);
             return (
               <tr
@@ -2245,8 +2469,9 @@ function SubcategoriesSection() {
               </tr>
             );
           })}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
 
       {showAdd ? (
         <form onSubmit={handleAdd} className="mt-3 flex items-end gap-2">
