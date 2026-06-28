@@ -1,6 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { toast } from "sonner";
+import { usePlaidLink } from "react-plaid-link";
+import type {
+  PlaidLinkError,
+  PlaidLinkOnSuccessMetadata,
+} from "react-plaid-link";
 import {
   ArrowDown,
   ArrowUp,
@@ -13,7 +18,12 @@ import {
   Lock,
   RefreshCw,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/Card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { SimpleSelect } from "@/components/ui/SimpleSelect";
@@ -22,8 +32,15 @@ import { EntityLabel } from "@/components/ui/EntityLabel";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
 import { useAccounts } from "@/hooks/useAccounts";
+import { useAccountLinking } from "@/hooks/useAccountLinking";
 import { useCategories } from "@/hooks/useCategories";
-import type { AccountWithBalance, Category, Subcategory } from "@/types";
+import type {
+  AccountWithBalance,
+  Category,
+  ProviderConnectionSummary,
+  Subcategory,
+  TargetInstitution,
+} from "@/types";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 
@@ -49,6 +66,210 @@ function TypeBadge({ type }: { type: string }) {
     >
       {type}
     </span>
+  );
+}
+
+type PlaidTargetInstitution = Extract<
+  TargetInstitution,
+  "us_bank" | "discover"
+>;
+
+function formatProviderName(provider: ProviderConnectionSummary["provider"]) {
+  return provider === "plaid" ? "Plaid" : "Akoya";
+}
+
+function formatConnectionStatus(status: ProviderConnectionSummary["status"]) {
+  return status.replace("_", " ");
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "Never";
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function summarizeProviderSync(
+  results: {
+    accountsUpserted: number;
+    transactionsAdded: number;
+    transactionsUpdated: number;
+    transactionsRemoved: number;
+  }[],
+) {
+  const totals = results.reduce(
+    (sum, result) => ({
+      accounts: sum.accounts + result.accountsUpserted,
+      added: sum.added + result.transactionsAdded,
+      updated: sum.updated + result.transactionsUpdated,
+      removed: sum.removed + result.transactionsRemoved,
+    }),
+    { accounts: 0, added: 0, updated: 0, removed: 0 },
+  );
+
+  return `Synced ${totals.accounts} account(s), added ${totals.added} transaction(s), updated ${totals.updated}, removed ${totals.removed}.`;
+}
+const PLAID_OAUTH_STORAGE_KEY = "localfin:plaid-oauth-link";
+
+
+function readStoredPlaidOAuthLinkToken(
+  targetInstitution: PlaidTargetInstitution,
+) {
+  if (
+    typeof window === "undefined" ||
+    !window.location.href.includes("oauth_state_id")
+  ) {
+    return null;
+  }
+  try {
+    const stored = window.sessionStorage.getItem(PLAID_OAUTH_STORAGE_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as {
+      targetInstitution?: unknown;
+      linkToken?: unknown;
+    };
+    if (
+      parsed.targetInstitution !== targetInstitution ||
+      typeof parsed.linkToken !== "string" ||
+      !parsed.linkToken
+    ) {
+      return null;
+    }
+    return parsed.linkToken;
+  } catch {
+    return null;
+  }
+}
+
+function storePlaidOAuthLinkToken(
+  targetInstitution: PlaidTargetInstitution,
+  linkToken: string,
+) {
+  try {
+    window.sessionStorage.setItem(
+      PLAID_OAUTH_STORAGE_KEY,
+      JSON.stringify({ targetInstitution, linkToken }),
+    );
+  } catch {
+    // If session storage is unavailable, non-OAuth Plaid Link still works.
+  }
+}
+
+function clearStoredPlaidOAuthLinkToken() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(PLAID_OAUTH_STORAGE_KEY);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
+
+interface PlaidConnectButtonProps {
+  targetInstitution: PlaidTargetInstitution;
+  label: string;
+  createLinkToken: (input: {
+    targetInstitution: PlaidTargetInstitution;
+  }) => Promise<{ data?: { link_token: string | null } }>;
+  exchangePublicToken: (input: {
+    publicToken: string;
+    targetInstitution: PlaidTargetInstitution;
+    metadata: unknown;
+  }) => Promise<unknown>;
+  loading?: boolean;
+}
+
+function PlaidConnectButton({
+  targetInstitution,
+  label,
+  createLinkToken,
+  exchangePublicToken,
+  loading,
+}: PlaidConnectButtonProps) {
+  const [linkToken, setLinkToken] = useState<string | null>(() =>
+    readStoredPlaidOAuthLinkToken(targetInstitution),
+  );
+  const [shouldOpen, setShouldOpen] = useState(
+    () => readStoredPlaidOAuthLinkToken(targetInstitution) !== null,
+  );
+  const receivedRedirectUri =
+    typeof window !== "undefined" &&
+    window.location.href.includes("oauth_state_id")
+      ? window.location.href
+      : undefined;
+
+  const { open, ready } = usePlaidLink({
+    token: linkToken,
+    ...(receivedRedirectUri ? { receivedRedirectUri } : {}),
+    onSuccess: (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
+      void exchangePublicToken({
+        publicToken,
+        targetInstitution,
+        metadata,
+      })
+        .then(() => {
+          toast.success("Plaid account connected");
+        })
+        .catch((error: unknown) => {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Failed to connect Plaid account",
+          );
+        })
+        .finally(() => {
+          clearStoredPlaidOAuthLinkToken();
+          setLinkToken(null);
+          setShouldOpen(false);
+        });
+    },
+    onExit: (error: PlaidLinkError | null) => {
+      if (error) {
+        toast.error(
+          error.display_message ||
+            error.error_message ||
+            "Plaid Link exited",
+        );
+      }
+      clearStoredPlaidOAuthLinkToken();
+      setShouldOpen(false);
+    },
+  });
+
+  useEffect(() => {
+    if (!shouldOpen || !ready || !linkToken) return;
+    open();
+    setShouldOpen(false);
+  }, [linkToken, open, ready, shouldOpen]);
+
+  async function handleClick() {
+    try {
+      const result = await createLinkToken({ targetInstitution });
+      const nextToken = result.data?.link_token;
+      if (!nextToken) {
+        throw new Error("Plaid Link token was not returned.");
+      }
+      storePlaidOAuthLinkToken(targetInstitution, nextToken);
+      setLinkToken(nextToken);
+      setShouldOpen(true);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to start Plaid Link",
+      );
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="secondary"
+      onClick={handleClick}
+      loading={loading || (shouldOpen && !ready)}
+    >
+      {label}
+    </Button>
   );
 }
 
@@ -160,6 +381,15 @@ function AccountsSection() {
     reconcileAccount,
     deleteAccount,
   } = useAccounts();
+  const {
+    connections,
+    isLoading: providerConnectionsLoading,
+    createPlaidLinkToken,
+    exchangePlaidPublicToken,
+    startAkoyaAuthorization,
+    syncProviderConnections,
+    disconnectProviderConnection,
+  } = useAccountLinking();
   type AccountSortKey = "name" | "type" | "balance";
 
   const [showAdd, setShowAdd] = useState(false);
@@ -182,6 +412,9 @@ function AccountsSection() {
     useState<AccountWithBalance | null>(null);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [disconnectTarget, setDisconnectTarget] =
+    useState<ProviderConnectionSummary | null>(null);
+  const [disconnectingProvider, setDisconnectingProvider] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [sectionFocused, setSectionFocused] = useState(false);
@@ -327,6 +560,60 @@ function AccountsSection() {
     }
   }
 
+  async function handleStartAkoyaAuthorization() {
+    try {
+      const result = await startAkoyaAuthorization.mutateAsync({
+        targetInstitution: "fidelity",
+      });
+      const authorizationUrl = result.data?.authorizationUrl;
+      if (!authorizationUrl) {
+        throw new Error("Akoya authorization URL was not returned.");
+      }
+      window.location.href = authorizationUrl;
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to start Akoya authorization",
+      );
+    }
+  }
+
+  async function handleSyncConnection(connection: ProviderConnectionSummary) {
+    if (connection.status !== "active") {
+      toast.error("Reconnect this provider before syncing.");
+      return;
+    }
+    try {
+      const result = await syncProviderConnections.mutateAsync({
+        connectionId: connection.id,
+      });
+      toast.success(summarizeProviderSync(result.data ?? []));
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to sync provider",
+      );
+    }
+  }
+
+  async function handleDisconnectProvider() {
+    if (!disconnectTarget) return;
+    setDisconnectingProvider(true);
+    try {
+      await disconnectProviderConnection.mutateAsync(disconnectTarget.id);
+      toast.success("Provider disconnected");
+      setDisconnectTarget(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to disconnect provider",
+      );
+    } finally {
+      setDisconnectingProvider(false);
+    }
+  }
+
   function startEdit(a: AccountWithBalance) {
     setEditId(a.id);
     setEditName(a.name);
@@ -443,6 +730,153 @@ function AccountsSection() {
           </Button>
         </div>
       )}
+      <Card className="mb-4">
+        <CardHeader className="mb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>Linked Providers</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Connect read-only Plaid or Akoya accounts, then sync manually
+                when you want LocalFin to import provider transactions.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <PlaidConnectButton
+                targetInstitution="us_bank"
+                label="Connect US Bank (Plaid)"
+                createLinkToken={createPlaidLinkToken.mutateAsync}
+                exchangePublicToken={exchangePlaidPublicToken.mutateAsync}
+                loading={
+                  createPlaidLinkToken.isPending ||
+                  exchangePlaidPublicToken.isPending
+                }
+              />
+              <PlaidConnectButton
+                targetInstitution="discover"
+                label="Connect Discover (Plaid)"
+                createLinkToken={createPlaidLinkToken.mutateAsync}
+                exchangePublicToken={exchangePlaidPublicToken.mutateAsync}
+                loading={
+                  createPlaidLinkToken.isPending ||
+                  exchangePlaidPublicToken.isPending
+                }
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={handleStartAkoyaAuthorization}
+                loading={startAkoyaAuthorization.isPending}
+              >
+                Connect Fidelity (Akoya)
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {providerConnectionsLoading ? (
+            <p className="text-sm text-muted-foreground">
+              Loading linked providers...
+            </p>
+          ) : connections.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No linked providers yet.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {connections.map((connection) => (
+                <div
+                  key={connection.id}
+                  className="rounded-md border border-border bg-background/60 p-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="font-medium text-foreground">
+                          {connection.institution_name}
+                        </h4>
+                        <span className="rounded bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
+                          {formatProviderName(connection.provider)}
+                        </span>
+                        <span className="rounded bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
+                          {formatConnectionStatus(connection.status)}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Last sync: {formatDateTime(connection.last_sync_at)}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleSyncConnection(connection)}
+                        loading={syncProviderConnections.isPending}
+                        disabled={connection.status !== "active"}
+                        title={
+                          connection.status === "active"
+                            ? "Sync now"
+                            : "Reconnect this provider before syncing"
+                        }
+                      >
+                        Sync now
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setDisconnectTarget(connection)}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+                  </div>
+
+                  {connection.accounts.length > 0 ? (
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {connection.accounts.map((account) => (
+                        <div
+                          key={account.id}
+                          className="rounded border border-border/70 px-2 py-1.5 text-sm"
+                        >
+                          <div className="flex justify-between gap-2">
+                            <span className="truncate">
+                              {account.name}
+                              {account.mask ? ` •${account.mask}` : ""}
+                            </span>
+                            <span className="font-mono">
+                              {account.current_balance == null
+                                ? "—"
+                                : formatCurrency(account.current_balance)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {account.provider_subtype ||
+                              account.provider_type ||
+                              account.type}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      No provider accounts linked yet.
+                    </p>
+                  )}
+
+                  {connection.last_error && (
+                    <p className="mt-3 rounded border border-red-900/60 bg-red-950/30 px-2 py-1.5 text-sm text-red-300">
+                      {connection.last_error}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Table */}
       <table className="w-full text-sm">
         <thead>
@@ -692,6 +1126,14 @@ function AccountsSection() {
         title="Delete Account"
         message={`Are you sure you want to delete "${deleteTarget?.name}"? This cannot be undone.`}
         isLoading={deleting}
+      />
+      <ConfirmDeleteModal
+        isOpen={!!disconnectTarget}
+        onClose={() => setDisconnectTarget(null)}
+        onConfirm={handleDisconnectProvider}
+        title="Disconnect Provider"
+        message={`Disconnect ${disconnectTarget?.institution_name ?? "provider"}? Local accounts and imported transactions will remain, but LocalFin will stop syncing this provider connection.`}
+        isLoading={disconnectingProvider}
       />
       {reconcileTarget && (
         <ReconcileAccountModal
@@ -1897,6 +2339,19 @@ export function SetupPage() {
   const [categoriesOpen, setCategoriesOpen] = useState(true);
   const [subcategoriesOpen, setSubcategoriesOpen] = useState(true);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("provider") !== "akoya") return;
+
+    const status = params.get("status");
+    if (status === "connected") {
+      toast.success("Akoya account connected");
+    } else if (status === "error") {
+      toast.error(params.get("message") || "Akoya connection failed");
+    }
+
+    window.history.replaceState(null, "", "/setup");
+  }, []);
   useShortcutScope("setup");
   useShortcut(
     "setup.toggleAccounts",

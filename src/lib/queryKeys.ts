@@ -42,6 +42,10 @@ export const queryKeys = {
     tagSummary: (startDate: string, endDate: string, filters?: Record<string, unknown>) =>
       [...queryKeys.dashboard.all, 'tag-summary', startDate, endDate, filters] as const,
   },
+  accountLinking: {
+    all: ['account-linking'] as const,
+    connections: () => ['account-linking', 'connections'] as const,
+  },
   ai: {
     conversations: () => ['ai', 'conversations'] as const,
     conversationMessages: (conversationId: string) =>
