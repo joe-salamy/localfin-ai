@@ -145,7 +145,7 @@ export function ChatSidePanel({
     (item) => item.id === conversationId,
   );
   const logHint = useMemo(
-    () => `logs/*-${conversationId}.jsonl`,
+    () => `logs/jsonl/*-${conversationId}.jsonl`,
     [conversationId],
   );
   const isStreaming = streamState !== null;

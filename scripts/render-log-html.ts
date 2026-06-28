@@ -1,4 +1,4 @@
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -145,6 +145,8 @@ const HEADER_KEYS = [
   "conversationId",
 ] as const;
 
+const LOG_HTML_DIRECTORY = path.resolve(process.cwd(), "logs", "html");
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -234,7 +236,7 @@ export function parseLogText(text: string, inputPath: string): LogEvent[] {
 
 export function outputPathFor(inputPath: string): string {
   return path.join(
-    path.dirname(inputPath),
+    LOG_HTML_DIRECTORY,
     `${path.basename(inputPath, path.extname(inputPath))}.html`,
   );
 }
@@ -310,6 +312,14 @@ function tagClassFor(tagName: string): PromptClass {
   return TAG_CLASS_MAP.get(tagName.toLowerCase()) ?? "prompt-unknown";
 }
 
+function sectionEndIndex(lines: string[], startIndex: number): number {
+  let endIndex = startIndex;
+  while (endIndex + 1 < lines.length && lines[endIndex + 1].trim() !== "") {
+    endIndex += 1;
+  }
+  return endIndex;
+}
+
 function findClosingTagLine(
   lines: string[],
   startIndex: number,
@@ -358,19 +368,28 @@ function recognizedSegmentAt(
   }
 
   if (trimmed === "Amount conventions:" || trimmed === "Failure conventions:") {
-    return { endIndex: startIndex, className: "prompt-rules" };
+    return {
+      endIndex: sectionEndIndex(lines, startIndex),
+      className: "prompt-rules",
+    };
   }
 
   if (trimmed === "Allowed action types:") {
-    return { endIndex: startIndex, className: "prompt-tools" };
+    return {
+      endIndex: sectionEndIndex(lines, startIndex),
+      className: "prompt-tools",
+    };
   }
 
   if (trimmed.startsWith("Transaction search supports")) {
-    let endIndex = startIndex;
-    while (endIndex + 1 < lines.length && lines[endIndex + 1].trim() !== "") {
-      endIndex += 1;
-    }
-    return { endIndex, className: "prompt-tools" };
+    return {
+      endIndex: sectionEndIndex(lines, startIndex),
+      className: "prompt-tools",
+    };
+  }
+
+  if (trimmed.startsWith("Use today's date ")) {
+    return { endIndex: startIndex, className: "prompt-rules" };
   }
 
   return null;
@@ -421,6 +440,15 @@ function renderPromptSegments(segments: PromptSegment[]): string {
     .join("\n");
 }
 
+function isEmptyPromptValue(value: unknown): boolean {
+  return (
+    value === null ||
+    value === undefined ||
+    (Array.isArray(value) && value.length === 0) ||
+    (isRecord(value) && Object.keys(value).length === 0)
+  );
+}
+
 function renderUserPromptJson(content: string): string | null {
   let parsed: unknown;
   try {
@@ -437,7 +465,7 @@ function renderUserPromptJson(content: string): string | null {
   const consumedKeys = new Set<string>();
 
   for (const [key, className] of USER_PROMPT_ORDER) {
-    if (!(key in parsed)) {
+    if (!(key in parsed) || isEmptyPromptValue(parsed[key])) {
       continue;
     }
 
@@ -455,6 +483,10 @@ function renderUserPromptJson(content: string): string | null {
     .sort((first, second) => first.localeCompare(second));
 
   for (const key of remainingKeys) {
+    if (isEmptyPromptValue(parsed[key])) {
+      continue;
+    }
+
     rendered.push(
       renderPromptCard(
         "prompt-metadata",
@@ -739,6 +771,9 @@ h1 {
   margin-bottom: 8px;
   font-size: 0.95rem;
 }
+.prompt-body p {
+  white-space: pre-line;
+}
 .prompt-body > :last-child,
 .prompt-body p:last-child {
   margin-bottom: 0;
@@ -800,6 +835,7 @@ export async function renderLogHtmlFile(rawInputPath: string): Promise<string> {
   const text = await readFile(inputPath, "utf8");
   const events = parseLogText(text, inputPath);
   const outputPath = outputPathFor(inputPath);
+  await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, renderLogHtml(events, inputPath), "utf8");
   return outputPath;
 }

@@ -96,7 +96,7 @@ export const OPENROUTER_CONFIG = {
   apiKeyPlaceholder: "your_openrouter_api_key_here",
   defaultOperation: "openrouter.chat_completion",
   providerName: "openrouter",
-  logDirectory: path.resolve(process.cwd(), "logs"),
+  logDirectory: path.resolve(process.cwd(), "logs", "jsonl"),
   logFileTimeZone: "America/Los_Angeles",
   maxLogIdLength: 120,
 } as const;
