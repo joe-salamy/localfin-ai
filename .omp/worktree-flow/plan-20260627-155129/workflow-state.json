@@ -1,0 +1,14 @@
+{
+  "audit_head_before": "f4503148645049a0b90974adabd75ab977ebae39",
+  "base": "main",
+  "completed_stage": "audit_complete",
+  "feature_branch": "feature/plan",
+  "feature_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-plan",
+  "integration_branch": null,
+  "integration_worktree": null,
+  "merge_mode": "squash",
+  "plan_path": "C:\\Users\\joesa\\Code\\localfin-ai-plan\\.omp\\worktree-flow\\plan\\plan.md",
+  "plan_title": "plan",
+  "run_id": "plan-20260627-155129",
+  "slug": "plan"
+}
