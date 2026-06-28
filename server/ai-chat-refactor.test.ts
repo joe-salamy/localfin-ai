@@ -204,7 +204,10 @@ test("search repair extracts tag names before target prepositions", () => {
     [{ type: "search_transactions", input: { searchQuery: '"Cabo Hotel"' } }],
     "Find the Cabo Hotel transaction and update it to add tag Reimbursable to it.",
     {
-      action: { type: "search_transactions", input: { searchQuery: '"Cabo Hotel"' } },
+      action: {
+        type: "search_transactions",
+        input: { searchQuery: '"Cabo Hotel"' },
+      },
       executedAction: {
         type: "search_transactions",
         input: { searchQuery: '"Cabo Hotel"' },

@@ -18,7 +18,9 @@ interface ApiEnvelope<T> {
 }
 
 async function useTempDatabase(t: TestContext) {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-provider-route-test-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "localfin-provider-route-test-"),
+  );
   closeDbForTests();
   process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
   delete process.env.LOCALFIN_PROVIDER_SECRET;
@@ -74,11 +76,14 @@ test("POST Plaid link-token validates target institution before provider env loo
     server.close();
   });
 
-  const response = await fetch(`${baseUrl}/api/account-linking/plaid/link-token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ targetInstitution: "fidelity" }),
-  });
+  const response = await fetch(
+    `${baseUrl}/api/account-linking/plaid/link-token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetInstitution: "fidelity" }),
+    },
+  );
   const body = (await response.json()) as ApiEnvelope<never>;
 
   assert.equal(response.status, 400);

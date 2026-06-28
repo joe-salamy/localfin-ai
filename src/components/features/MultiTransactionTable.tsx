@@ -22,7 +22,15 @@ import { useTags } from "@/hooks/useTags";
 import { TagPicker } from "@/components/features/TagPicker";
 import { formatDateInput, cn } from "@/lib/utils";
 import { normalizeTransactionAmount } from "@/lib/transactionAmounts";
-import type { AccountType, Category, CreateTagData, Subcategory, Tag, CreateTransactionData, TransactionKind } from "@/types";
+import type {
+  AccountType,
+  Category,
+  CreateTagData,
+  Subcategory,
+  Tag,
+  CreateTransactionData,
+  TransactionKind,
+} from "@/types";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
@@ -111,7 +119,12 @@ function displayAmountToNumber(val: string): number {
 
 function resolveKind(value: string): TransactionKind | null {
   const normalized = normaliseClipboardValue(value);
-  if (normalized === "income" || normalized === "expense" || normalized === "transfer" || normalized === "adjustment") {
+  if (
+    normalized === "income" ||
+    normalized === "expense" ||
+    normalized === "transfer" ||
+    normalized === "adjustment"
+  ) {
     return normalized;
   }
   return null;
@@ -225,7 +238,9 @@ function resolveTagIds(value: string, tags: Tag[]): string[] {
   for (const token of tokens) {
     const normalized = normaliseClipboardValue(token);
     const tag = tags.find(
-      (item) => item.id.toLowerCase() === normalized || item.name.toLowerCase() === normalized,
+      (item) =>
+        item.id.toLowerCase() === normalized ||
+        item.name.toLowerCase() === normalized,
     );
     if (tag && !selected.includes(tag.id)) selected.push(tag.id);
   }
@@ -339,7 +354,10 @@ function GroupedSubcategorySelect({
       }))
       .filter((g) => g.subs.length > 0);
   }, [categories, subcategories]);
-  const categoryLookup = useMemo(() => buildCategoryLookup(categories), [categories]);
+  const categoryLookup = useMemo(
+    () => buildCategoryLookup(categories),
+    [categories],
+  );
 
   return (
     <select
@@ -361,7 +379,10 @@ function GroupedSubcategorySelect({
     >
       <option value="">--</option>
       {filtered.map((group) => (
-        <optgroup key={group.category.id} label={formatCategoryLabel(group.category)}>
+        <optgroup
+          key={group.category.id}
+          label={formatCategoryLabel(group.category)}
+        >
           {group.subs.map((sub) => (
             <option key={sub.id} value={sub.id}>
               {formatSubcategoryLabel(sub, categoryLookup)}
@@ -385,7 +406,9 @@ export function MultiTransactionTable() {
 
   const [rows, setRows] = useState<TransactionRow[]>(initialRows);
   const [saving, setSaving] = useState(false);
-  const [flaggedWarningMatches, setFlaggedWarningMatches] = useState<FlaggedWordMatch[]>([]);
+  const [flaggedWarningMatches, setFlaggedWarningMatches] = useState<
+    FlaggedWordMatch[]
+  >([]);
   const [duplicatesChecked, setDuplicatesChecked] = useState(false);
   const [statementText, setStatementText] = useState("");
   const [statementAccountId, setStatementAccountId] = useState("");
@@ -403,7 +426,11 @@ export function MultiTransactionTable() {
   // ── Row manipulation ──────────────────────────────────────────────
 
   const updateRow = useCallback(
-    (id: string, field: keyof TransactionRow, value: string | boolean | string[]) => {
+    (
+      id: string,
+      field: keyof TransactionRow,
+      value: string | boolean | string[],
+    ) => {
       setRows((prev) =>
         prev.map((r) =>
           r.id === id ? { ...r, [field]: value, isDuplicate: false } : r,
@@ -439,25 +466,30 @@ export function MultiTransactionTable() {
     [updateRow],
   );
 
-  const handleKindChange = useCallback((row: TransactionRow, kind: TransactionKind) => {
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === row.id
-          ? {
-              ...r,
-              kind,
-              amount: formatAmountDisplay(
-                r.amount,
-                getAccountType(r.account_id, accounts),
+  const handleKindChange = useCallback(
+    (row: TransactionRow, kind: TransactionKind) => {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === row.id
+            ? {
+                ...r,
                 kind,
-              ),
-              subcategory_id: kindHasSubcategory(kind) ? r.subcategory_id : "",
-            }
-          : r,
-      ),
-    );
-    setDuplicatesChecked(false);
-  }, [accounts]);
+                amount: formatAmountDisplay(
+                  r.amount,
+                  getAccountType(r.account_id, accounts),
+                  kind,
+                ),
+                subcategory_id: kindHasSubcategory(kind)
+                  ? r.subcategory_id
+                  : "",
+              }
+            : r,
+        ),
+      );
+      setDuplicatesChecked(false);
+    },
+    [accounts],
+  );
 
   const removeRow = useCallback((id: string) => {
     setRows((prev) => {
@@ -473,17 +505,24 @@ export function MultiTransactionTable() {
   }, []);
 
   const focusCell = useCallback((index: number) => {
-    const cells = cellRefs.current.filter((cell): cell is HTMLElement => cell !== null);
+    const cells = cellRefs.current.filter(
+      (cell): cell is HTMLElement => cell !== null,
+    );
     if (cells.length === 0) return;
     const nextIndex = Math.max(0, Math.min(index, cells.length - 1));
     cells[nextIndex]?.focus();
   }, []);
 
-  const focusAdjacentCell = useCallback((direction: 1 | -1) => {
-    const active = document.activeElement;
-    const currentIndex = cellRefs.current.findIndex((cell) => cell === active);
-    focusCell(currentIndex >= 0 ? currentIndex + direction : 0);
-  }, [focusCell]);
+  const focusAdjacentCell = useCallback(
+    (direction: 1 | -1) => {
+      const active = document.activeElement;
+      const currentIndex = cellRefs.current.findIndex(
+        (cell) => cell === active,
+      );
+      focusCell(currentIndex >= 0 ? currentIndex + direction : 0);
+    },
+    [focusCell],
+  );
 
   // ── Paste handling ────────────────────────────────────────────────
 
@@ -496,7 +535,10 @@ export function MultiTransactionTable() {
       const text = e.clipboardData.getData("text/plain");
       const isStructuredPaste = text.includes("\t") || text.includes("\n");
       const isSelectPaste =
-        startField === "account_id" || startField === "subcategory_id" || startField === "kind" || startField === "tag_ids";
+        startField === "account_id" ||
+        startField === "subcategory_id" ||
+        startField === "kind" ||
+        startField === "tag_ids";
       if (!isStructuredPaste && !isSelectPaste) return;
 
       e.preventDefault();
@@ -576,7 +618,9 @@ export function MultiTransactionTable() {
           account_name:
             accounts.find((account) => account.id === row.account_id)?.name ??
             "Unknown",
-          amount: displayAmountToNumber(normalizeRowAmountDisplay(row, accounts)),
+          amount: displayAmountToNumber(
+            normalizeRowAmountDisplay(row, accounts),
+          ),
           account_type: getAccountType(row.account_id, accounts),
           date: row.date ? toApiDate(row.date) : undefined,
         })),
@@ -592,8 +636,9 @@ export function MultiTransactionTable() {
           return {
             ...row,
             kind: cat.kind,
-            subcategory_id:
-              kindHasSubcategory(cat.kind) ? cat.subcategory_id ?? row.subcategory_id : "",
+            subcategory_id: kindHasSubcategory(cat.kind)
+              ? (cat.subcategory_id ?? row.subcategory_id)
+              : "",
             categorizationSource: cat.source,
             aiSuggestedSubcategoryId:
               cat.source === "ai" ? cat.subcategory_id : null,
@@ -717,7 +762,9 @@ export function MultiTransactionTable() {
         name: r.name,
         amount: displayAmountToNumber(normalizeRowAmountDisplay(r, accounts)),
         kind: r.kind,
-        subcategory_id: kindHasSubcategory(r.kind) ? r.subcategory_id || null : null,
+        subcategory_id: kindHasSubcategory(r.kind)
+          ? r.subcategory_id || null
+          : null,
         comment: r.comment || null,
         ai_suggested: r.categorizationSource === "ai",
         tag_ids: r.tag_ids,
@@ -734,27 +781,65 @@ export function MultiTransactionTable() {
     } finally {
       setSaving(false);
     }
-  }, [accounts, filledRows, findTransactionMatches, duplicatesChecked, checkDuplicates, bulkCreateTransactions]);
+  }, [
+    accounts,
+    filledRows,
+    findTransactionMatches,
+    duplicatesChecked,
+    checkDuplicates,
+    bulkCreateTransactions,
+  ]);
 
   useShortcut("transactionInput.addRow", addRow);
-  useShortcut("transactionInput.aiCategorize", () => {
-    void handleAICategorize();
-  }, { enabled: !categorize.isPending });
+  useShortcut(
+    "transactionInput.aiCategorize",
+    () => {
+      void handleAICategorize();
+    },
+    { enabled: !categorize.isPending },
+  );
   useShortcut("transactionInput.clearAll", clearAll);
-  useShortcut("transactionInput.saveAll", () => {
-    void handleSave();
-  }, { enabled: !saving });
-  useShortcut("transactionInput.parseStatement", () => {
-    void handleParseStatement();
-  }, { enabled: !parseStatement.isPending });
-  useShortcut("transactionInput.focusStatementText", useCallback(() => statementTextRef.current?.focus(), []));
-  useShortcut("transactionInput.focusStatementAccount", useCallback(() => statementAccountRef.current?.focus(), []));
-  useShortcut("transactionInput.focusGrid", useCallback(() => focusCell(0), [focusCell]));
-  useShortcut("transactionInput.removeFocusedRow", useCallback(() => {
-    if (focusedRowId) removeRow(focusedRowId);
-  }, [focusedRowId, removeRow]), { enabled: focusedRowId !== null });
-  useShortcut("transactionInput.nextCell", useCallback(() => focusAdjacentCell(1), [focusAdjacentCell]));
-  useShortcut("transactionInput.previousCell", useCallback(() => focusAdjacentCell(-1), [focusAdjacentCell]));
+  useShortcut(
+    "transactionInput.saveAll",
+    () => {
+      void handleSave();
+    },
+    { enabled: !saving },
+  );
+  useShortcut(
+    "transactionInput.parseStatement",
+    () => {
+      void handleParseStatement();
+    },
+    { enabled: !parseStatement.isPending },
+  );
+  useShortcut(
+    "transactionInput.focusStatementText",
+    useCallback(() => statementTextRef.current?.focus(), []),
+  );
+  useShortcut(
+    "transactionInput.focusStatementAccount",
+    useCallback(() => statementAccountRef.current?.focus(), []),
+  );
+  useShortcut(
+    "transactionInput.focusGrid",
+    useCallback(() => focusCell(0), [focusCell]),
+  );
+  useShortcut(
+    "transactionInput.removeFocusedRow",
+    useCallback(() => {
+      if (focusedRowId) removeRow(focusedRowId);
+    }, [focusedRowId, removeRow]),
+    { enabled: focusedRowId !== null },
+  );
+  useShortcut(
+    "transactionInput.nextCell",
+    useCallback(() => focusAdjacentCell(1), [focusAdjacentCell]),
+  );
+  useShortcut(
+    "transactionInput.previousCell",
+    useCallback(() => focusAdjacentCell(-1), [focusAdjacentCell]),
+  );
 
   // ── Render ────────────────────────────────────────────────────────
 
@@ -763,17 +848,22 @@ export function MultiTransactionTable() {
     [accounts],
   );
 
-  const createTagForPicker = useCallback(async (data: CreateTagData): Promise<Tag> => {
-    try {
-      const result = await createTag.mutateAsync(data);
-      toast.success("Tag created");
-      if (!result.data) throw new Error("Tag creation returned no tag.");
-      return result.data;
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create tag.");
-      throw err;
-    }
-  }, [createTag]);
+  const createTagForPicker = useCallback(
+    async (data: CreateTagData): Promise<Tag> => {
+      try {
+        const result = await createTag.mutateAsync(data);
+        toast.success("Tag created");
+        if (!result.data) throw new Error("Tag creation returned no tag.");
+        return result.data;
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to create tag.",
+        );
+        throw err;
+      }
+    },
+    [createTag],
+  );
 
   return (
     <div className="space-y-3">
@@ -980,7 +1070,9 @@ export function MultiTransactionTable() {
                       cellRefs.current[idx * 8 + 3] = node;
                     }}
                     value={row.kind}
-                    onChange={(e) => handleKindChange(row, e.target.value as TransactionKind)}
+                    onChange={(e) =>
+                      handleKindChange(row, e.target.value as TransactionKind)
+                    }
                     onPaste={(e) => handlePaste(e, idx, "kind")}
                     onFocus={() => setFocusedRowId(row.id)}
                     className="h-7 w-24 rounded border border-border bg-input px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1043,7 +1135,10 @@ export function MultiTransactionTable() {
                     onChange={(val) => handleSubcategoryChange(row, val)}
                     categories={categories}
                     subcategories={subcategories}
-                    className={cn("w-36", !kindHasSubcategory(row.kind) && "opacity-60")}
+                    className={cn(
+                      "w-36",
+                      !kindHasSubcategory(row.kind) && "opacity-60",
+                    )}
                     disabled={!kindHasSubcategory(row.kind)}
                     onPaste={(e) => handlePaste(e, idx, "subcategory_id")}
                     onFocus={() => setFocusedRowId(row.id)}
@@ -1066,7 +1161,9 @@ export function MultiTransactionTable() {
                         cellRefs.current[idx * 8 + 6] = node;
                       }}
                       value={row.tag_ids}
-                      onChange={(tagIds) => updateRow(row.id, "tag_ids", tagIds)}
+                      onChange={(tagIds) =>
+                        updateRow(row.id, "tag_ids", tagIds)
+                      }
                       tags={tags}
                       onCreateTag={createTagForPicker}
                       placeholder="Tags"
@@ -1128,11 +1225,17 @@ export function MultiTransactionTable() {
         <div className="space-y-3">
           <div className="flex gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
-            <span>Review these transactions for interest, fees, or other configured flagged words.</span>
+            <span>
+              Review these transactions for interest, fees, or other configured
+              flagged words.
+            </span>
           </div>
           <ul className="max-h-56 space-y-2 overflow-y-auto text-sm">
             {flaggedWarningMatches.map((match, index) => (
-              <li key={`${match.name}-${index}`} className="rounded-md border border-border bg-secondary/20 px-3 py-2">
+              <li
+                key={`${match.name}-${index}`}
+                className="rounded-md border border-border bg-secondary/20 px-3 py-2"
+              >
                 <div className="font-medium text-foreground">{match.name}</div>
                 <div className="text-xs text-muted-foreground">
                   Matched: {match.words.join(", ")}
@@ -1141,7 +1244,11 @@ export function MultiTransactionTable() {
             ))}
           </ul>
           <div className="flex justify-end">
-            <Button type="button" size="sm" onClick={() => setFlaggedWarningMatches([])}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setFlaggedWarningMatches([])}
+            >
               Dismiss
             </Button>
           </div>

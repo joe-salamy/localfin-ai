@@ -37,10 +37,12 @@ Conflict resolution reported preserving the tag feature, previous audit fixes, a
 File: `src/components/features/TagPicker.tsx`
 
 Problem:
+
 - `handleCreate()` appended a created/existing tag ID to the stale `value` captured before the async create request resolved.
 - If a user selected another tag while creation was pending, the stale `onChange([...value, tag.id])` overwrote that newer selection.
 
 Fix:
+
 - Added a `valueRef` kept current with `useEffect`.
 - Merged created/existing tag IDs into the latest selection from `valueRef.current`.
 
@@ -49,11 +51,13 @@ Fix:
 File: `server/services/ai-chat/action-executor.ts`
 
 Problem:
+
 - `resolveExistingTagIds()` creates missing tag names.
 - `update_transaction` called it before confirming the transaction existed and before validating update fields.
 - A failed action like updating a missing transaction with `add_tag_names: ["Cabo Trip"]` could leave a new active tag behind.
 
 Fix:
+
 - Moved non-tag validation and existing-transaction lookup ahead of tag creation for `update_transaction`.
 - Tag creation now occurs only after those validations pass.
 
@@ -62,11 +66,13 @@ Fix:
 File: `server/services/ai-chat/action-executor.ts`
 
 Problem:
+
 - `bulk_update_transactions` with `comment` uses a per-transaction update path.
 - That path bypassed the service-level conflict guard for adding and removing the same tag in one bulk update.
 - Removal silently won.
 
 Fix:
+
 - Added `assertNoOverlappingTagEdits()` before either bulk branch runs.
 - Conflicting add/remove tag edits now fail consistently.
 

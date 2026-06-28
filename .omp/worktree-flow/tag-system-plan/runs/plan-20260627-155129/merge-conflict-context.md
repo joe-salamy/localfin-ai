@@ -1,16 +1,20 @@
 # Merge Conflict Context
 
 ## Branches
+
 - Base branch: main
 - Feature branch: feature/plan
 
 ## Plan
+
 - Path: .omp/worktree-flow/plan/plan.md
 
 ## Merge base
+
 3bac8b0bc6c29f0fcee7731d90e5c796485fe53d
 
 ## Conflicted files
+
 server/core-invariants.test.ts
 server/db/index.ts
 server/index.ts
@@ -37,6 +41,7 @@ src/pages/TransactionHistoryPage.tsx
 src/types/index.ts
 
 ## Status
+
 ```text
 M  server/agent-system.test.ts
 M  server/ai-chat-refactor.test.ts
@@ -80,18 +85,21 @@ UU src/types/index.ts
 ```
 
 ## Base commits since merge base
+
 ```text
 7302b4f prettier
 a1f8888 harness stuff
 ```
 
 ## Feature commits since merge base
+
 ```text
 40a7184 Fix audit findings
 f450314 Implement plan
 ```
 
 ## Resolution rules
+
 1. Latest base behavior is presumed correct unless the approved plan explicitly supersedes it.
 2. Feature intent comes from the approved plan and implementation summary.
 3. Preserve audited feature behavior when compatible with latest base.

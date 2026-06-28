@@ -1,9 +1,11 @@
 Implemented and committed the approved plan.
 
 Commit:
+
 - `2b6c86ffb348506b429b0b4d2ce4f54e9f0f9e6a` — `Implement plan`
 
 Changed files committed:
+
 - `package.json`
   - Added `log:view`: `tsx scripts/render-log-html.ts`
 - `scripts/render-log-html.ts`
@@ -12,9 +14,11 @@ Changed files committed:
   - Focused `node:test` coverage for parser/render/output behavior.
 
 Handoff artifact written and not committed:
+
 - `.omp/handoff/implementation-summary.md`
 
 Verification run:
+
 - `npm install`
   - Needed because `node_modules` was absent in this worktree.
 - `npx tsc --ignoreConfig --noEmit --target ES2022 --module esnext --moduleResolution bundler --types node --skipLibCheck --strict scripts/render-log-html.ts scripts/render-log-html.test.ts`
@@ -31,6 +35,7 @@ Verification run:
   - Passed.
 
 Final status:
+
 - No staged or unstaged tracked changes.
 - Only workflow artifacts remain untracked:
   - `.omp/handoff/`

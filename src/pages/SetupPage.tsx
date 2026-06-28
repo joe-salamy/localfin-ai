@@ -18,12 +18,7 @@ import {
   Lock,
   RefreshCw,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { SimpleSelect } from "@/components/ui/SimpleSelect";
@@ -112,7 +107,6 @@ function summarizeProviderSync(
 }
 const PLAID_OAUTH_STORAGE_KEY = "localfin:plaid-oauth-link";
 
-
 function readStoredPlaidOAuthLinkToken(
   targetInstitution: PlaidTargetInstitution,
 ) {
@@ -164,7 +158,6 @@ function clearStoredPlaidOAuthLinkToken() {
     // Ignore storage cleanup failures.
   }
 }
-
 
 interface PlaidConnectButtonProps {
   targetInstitution: PlaidTargetInstitution;
@@ -227,9 +220,7 @@ function PlaidConnectButton({
     onExit: (error: PlaidLinkError | null) => {
       if (error) {
         toast.error(
-          error.display_message ||
-            error.error_message ||
-            "Plaid Link exited",
+          error.display_message || error.error_message || "Plaid Link exited",
         );
       }
       clearStoredPlaidOAuthLinkToken();

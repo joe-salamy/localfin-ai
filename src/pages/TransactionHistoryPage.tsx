@@ -1,29 +1,41 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
-import type { BulkTransactionUpdateData, CreateTagData, Tag, TransactionFilters, TransactionKind } from '@/types';
-import { format, subDays } from 'date-fns';
-import { toast } from 'sonner';
-import { useSuspectTransactionFindings, useTransactions } from '@/hooks/useTransactions';
-import { useAccounts } from '@/hooks/useAccounts';
-import { useCategories } from '@/hooks/useCategories';
-import { useTags } from '@/hooks/useTags';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { MultiSelect } from '@/components/ui/MultiSelect';
-import { SimpleSelect } from '@/components/ui/SimpleSelect';
-import { TransactionTable } from '@/components/features/TransactionTable';
-import { BulkEditModal } from '@/components/features/BulkEditModal';
-import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
-import { DEFAULT_DATE_RANGE_DAYS, DATE_FORMAT } from '@/config/constants';
-import { dateRangePresets, type DateRangePreset } from '@/lib/dateRangePresets';
-import { formatCurrency } from '@/lib/utils';
-import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
-import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
-import { useFlaggedWords } from '@/features/flagged-words/hooks';
-import type { CommandId } from '@/features/shortcuts/commands';
-import { AlertTriangle, CheckCircle2, EyeOff, ScanSearch } from 'lucide-react';
+import { useState, useMemo, useCallback, useRef } from "react";
+import type {
+  BulkTransactionUpdateData,
+  CreateTagData,
+  Tag,
+  TransactionFilters,
+  TransactionKind,
+} from "@/types";
+import { format, subDays } from "date-fns";
+import { toast } from "sonner";
+import {
+  useSuspectTransactionFindings,
+  useTransactions,
+} from "@/hooks/useTransactions";
+import { useAccounts } from "@/hooks/useAccounts";
+import { useCategories } from "@/hooks/useCategories";
+import { useTags } from "@/hooks/useTags";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { MultiSelect } from "@/components/ui/MultiSelect";
+import { SimpleSelect } from "@/components/ui/SimpleSelect";
+import { TransactionTable } from "@/components/features/TransactionTable";
+import { BulkEditModal } from "@/components/features/BulkEditModal";
+import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
+import { DEFAULT_DATE_RANGE_DAYS, DATE_FORMAT } from "@/config/constants";
+import { dateRangePresets, type DateRangePreset } from "@/lib/dateRangePresets";
+import { formatCurrency } from "@/lib/utils";
+import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
+import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
+import { useFlaggedWords } from "@/features/flagged-words/hooks";
+import type { CommandId } from "@/features/shortcuts/commands";
+import { AlertTriangle, CheckCircle2, EyeOff, ScanSearch } from "lucide-react";
 
 const today = format(new Date(), DATE_FORMAT);
-const defaultStart = format(subDays(new Date(), DEFAULT_DATE_RANGE_DAYS), DATE_FORMAT);
+const defaultStart = format(
+  subDays(new Date(), DEFAULT_DATE_RANGE_DAYS),
+  DATE_FORMAT,
+);
 
 export function TransactionHistoryPage() {
   // Filter state
@@ -32,15 +44,17 @@ export function TransactionHistoryPage() {
   const [accountIds, setAccountIds] = useState<string[]>([]);
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [subcategoryIds, setSubcategoryIds] = useState<string[]>([]);
-  const [kindFilter, setKindFilter] = useState<'all' | TransactionKind | 'needsCategory'>('all');
+  const [kindFilter, setKindFilter] = useState<
+    "all" | TransactionKind | "needsCategory"
+  >("all");
   const [tagIds, setTagIds] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const startDateRef = useRef<HTMLInputElement>(null);
   const endDateRef = useRef<HTMLInputElement>(null);
   const accountRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  useShortcutScope('transactionHistory');
+  useShortcutScope("transactionHistory");
 
   // Applied filters (only update on Apply click)
   const [appliedFilters, setAppliedFilters] = useState<TransactionFilters>({
@@ -49,8 +63,8 @@ export function TransactionHistoryPage() {
   });
 
   // Sort state
-  const [sortColumn, setSortColumn] = useState('date');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [sortColumn, setSortColumn] = useState("date");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -60,8 +74,16 @@ export function TransactionHistoryPage() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   // Data hooks
-  const { transactions, isLoading, error, updateTransaction, deleteTransaction, bulkUpdateTransactions, bulkDeleteTransactions } = useTransactions(appliedFilters);
-  const suspectReview = useSuspectTransactionFindings({ status: 'open' });
+  const {
+    transactions,
+    isLoading,
+    error,
+    updateTransaction,
+    deleteTransaction,
+    bulkUpdateTransactions,
+    bulkDeleteTransactions,
+  } = useTransactions(appliedFilters);
+  const suspectReview = useSuspectTransactionFindings({ status: "open" });
   const flaggedWords = useFlaggedWords();
   const { accounts } = useAccounts();
   const { categories, subcategories } = useCategories();
@@ -76,29 +98,47 @@ export function TransactionHistoryPage() {
       categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
       subcategoryIds: subcategoryIds.length > 0 ? subcategoryIds : undefined,
       tagIds: tagIds.length > 0 ? tagIds : undefined,
-      kind: kindFilter !== 'all' && kindFilter !== 'needsCategory' ? kindFilter : undefined,
-      needsCategory: kindFilter === 'needsCategory' ? true : undefined,
+      kind:
+        kindFilter !== "all" && kindFilter !== "needsCategory"
+          ? kindFilter
+          : undefined,
+      needsCategory: kindFilter === "needsCategory" ? true : undefined,
       searchQuery: searchQuery || undefined,
     });
-  }, [accountIds, categoryIds, endDate, kindFilter, searchQuery, startDate, subcategoryIds, tagIds]);
+  }, [
+    accountIds,
+    categoryIds,
+    endDate,
+    kindFilter,
+    searchQuery,
+    startDate,
+    subcategoryIds,
+    tagIds,
+  ]);
 
-  const applyDateRangePreset = useCallback((preset: DateRangePreset) => {
-    const range = preset.getRange();
-    setStartDate(range.startDate);
-    setEndDate(range.endDate);
-    setSelectedIds(new Set());
-    setAppliedFilters({
-      startDate: range.startDate || undefined,
-      endDate: range.endDate || undefined,
-      accountIds: accountIds.length > 0 ? accountIds : undefined,
-      categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
-      subcategoryIds: subcategoryIds.length > 0 ? subcategoryIds : undefined,
-      tagIds: tagIds.length > 0 ? tagIds : undefined,
-      kind: kindFilter !== 'all' && kindFilter !== 'needsCategory' ? kindFilter : undefined,
-      needsCategory: kindFilter === 'needsCategory' ? true : undefined,
-      searchQuery: searchQuery || undefined,
-    });
-  }, [accountIds, categoryIds, kindFilter, searchQuery, subcategoryIds, tagIds]);
+  const applyDateRangePreset = useCallback(
+    (preset: DateRangePreset) => {
+      const range = preset.getRange();
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      setSelectedIds(new Set());
+      setAppliedFilters({
+        startDate: range.startDate || undefined,
+        endDate: range.endDate || undefined,
+        accountIds: accountIds.length > 0 ? accountIds : undefined,
+        categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
+        subcategoryIds: subcategoryIds.length > 0 ? subcategoryIds : undefined,
+        tagIds: tagIds.length > 0 ? tagIds : undefined,
+        kind:
+          kindFilter !== "all" && kindFilter !== "needsCategory"
+            ? kindFilter
+            : undefined,
+        needsCategory: kindFilter === "needsCategory" ? true : undefined,
+        searchQuery: searchQuery || undefined,
+      });
+    },
+    [accountIds, categoryIds, kindFilter, searchQuery, subcategoryIds, tagIds],
+  );
 
   // Sort transactions client-side
   const sortedTransactions = useMemo(() => {
@@ -106,64 +146,80 @@ export function TransactionHistoryPage() {
     sorted.sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
-        case 'date':
+        case "date":
           cmp = a.date.localeCompare(b.date);
           break;
-        case 'name':
+        case "name":
           cmp = a.name.localeCompare(b.name);
           break;
-        case 'amount':
+        case "amount":
           cmp = a.amount - b.amount;
           break;
-        case 'balance':
+        case "balance":
           cmp = (a.running_balance ?? 0) - (b.running_balance ?? 0);
           break;
         default:
           cmp = 0;
       }
-      return sortDirection === 'asc' ? cmp : -cmp;
+      return sortDirection === "asc" ? cmp : -cmp;
     });
     return sorted;
   }, [transactions, sortColumn, sortDirection]);
 
-  const handleSort = useCallback((column: string) => {
-    setSortDirection((prev) => (sortColumn === column ? (prev === 'asc' ? 'desc' : 'asc') : 'desc'));
-    setSortColumn(column);
-  }, [sortColumn]);
+  const handleSort = useCallback(
+    (column: string) => {
+      setSortDirection((prev) =>
+        sortColumn === column ? (prev === "asc" ? "desc" : "asc") : "desc",
+      );
+      setSortColumn(column);
+    },
+    [sortColumn],
+  );
 
-  const handleEdit = useCallback(async (id: string, updates: Record<string, unknown>) => {
-    try {
-      await updateTransaction.mutateAsync({ id, ...updates } as Parameters<typeof updateTransaction.mutateAsync>[0]);
-      toast.success('Transaction updated');
-    } catch {
-      toast.error('Failed to update transaction');
-    }
-  }, [updateTransaction]);
+  const handleEdit = useCallback(
+    async (id: string, updates: Record<string, unknown>) => {
+      try {
+        await updateTransaction.mutateAsync({ id, ...updates } as Parameters<
+          typeof updateTransaction.mutateAsync
+        >[0]);
+        toast.success("Transaction updated");
+      } catch {
+        toast.error("Failed to update transaction");
+      }
+    },
+    [updateTransaction],
+  );
 
-  const handleDelete = useCallback(async (id: string) => {
-    try {
-      await deleteTransaction.mutateAsync(id);
-      selectedIds.delete(id);
-      setSelectedIds(new Set(selectedIds));
-      toast.success('Transaction deleted');
-    } catch {
-      toast.error('Failed to delete transaction');
-    }
-  }, [deleteTransaction, selectedIds]);
+  const handleDelete = useCallback(
+    async (id: string) => {
+      try {
+        await deleteTransaction.mutateAsync(id);
+        selectedIds.delete(id);
+        setSelectedIds(new Set(selectedIds));
+        toast.success("Transaction deleted");
+      } catch {
+        toast.error("Failed to delete transaction");
+      }
+    },
+    [deleteTransaction, selectedIds],
+  );
 
-  const handleBulkEdit = useCallback(async (updates: BulkTransactionUpdateData) => {
-    try {
-      await bulkUpdateTransactions.mutateAsync({
-        ids: Array.from(selectedIds),
-        updates,
-      });
-      toast.success(`Updated ${selectedIds.size} transactions`);
-      setSelectedIds(new Set());
-      setBulkEditOpen(false);
-    } catch {
-      toast.error('Failed to bulk update');
-    }
-  }, [bulkUpdateTransactions, selectedIds]);
+  const handleBulkEdit = useCallback(
+    async (updates: BulkTransactionUpdateData) => {
+      try {
+        await bulkUpdateTransactions.mutateAsync({
+          ids: Array.from(selectedIds),
+          updates,
+        });
+        toast.success(`Updated ${selectedIds.size} transactions`);
+        setSelectedIds(new Set());
+        setBulkEditOpen(false);
+      } catch {
+        toast.error("Failed to bulk update");
+      }
+    },
+    [bulkUpdateTransactions, selectedIds],
+  );
 
   const handleBulkDelete = useCallback(async () => {
     try {
@@ -172,58 +228,90 @@ export function TransactionHistoryPage() {
       setSelectedIds(new Set());
       setBulkDeleteOpen(false);
     } catch {
-      toast.error('Failed to bulk delete');
+      toast.error("Failed to bulk delete");
     }
   }, [bulkDeleteTransactions, selectedIds]);
 
-  const handleCategoryIdsChange = useCallback((nextCategoryIds: string[]) => {
-    setCategoryIds(nextCategoryIds);
+  const handleCategoryIdsChange = useCallback(
+    (nextCategoryIds: string[]) => {
+      setCategoryIds(nextCategoryIds);
 
-    if (nextCategoryIds.length === 0) return;
-    const selectedCategories = new Set(nextCategoryIds);
-    const compatibleSubcategoryIds = new Set(
-      subcategories
-        .filter((subcategory) => selectedCategories.has(subcategory.category_id))
-        .map((subcategory) => subcategory.id),
-    );
-    setSubcategoryIds((current) => current.filter((id) => compatibleSubcategoryIds.has(id)));
-  }, [subcategories]);
+      if (nextCategoryIds.length === 0) return;
+      const selectedCategories = new Set(nextCategoryIds);
+      const compatibleSubcategoryIds = new Set(
+        subcategories
+          .filter((subcategory) =>
+            selectedCategories.has(subcategory.category_id),
+          )
+          .map((subcategory) => subcategory.id),
+      );
+      setSubcategoryIds((current) =>
+        current.filter((id) => compatibleSubcategoryIds.has(id)),
+      );
+    },
+    [subcategories],
+  );
 
   const tagOptions = tags.map((tag) => ({ value: tag.id, label: tag.name }));
 
-  const createTagForPicker = useCallback(async (data: CreateTagData): Promise<Tag> => {
-    try {
-      const result = await createTag.mutateAsync(data);
-      toast.success('Tag created');
-      if (!result.data) throw new Error('Tag creation returned no tag.');
-      return result.data;
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create tag');
-      throw err;
-    }
-  }, [createTag]);
+  const createTagForPicker = useCallback(
+    async (data: CreateTagData): Promise<Tag> => {
+      try {
+        const result = await createTag.mutateAsync(data);
+        toast.success("Tag created");
+        if (!result.data) throw new Error("Tag creation returned no tag.");
+        return result.data;
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to create tag",
+        );
+        throw err;
+      }
+    },
+    [createTag],
+  );
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
-  const categoryOptions = categories.map((category) => ({ value: category.id, label: category.name }));
-  const selectedCategorySet = useMemo(() => new Set(categoryIds), [categoryIds]);
+  const categoryOptions = categories.map((category) => ({
+    value: category.id,
+    label: category.name,
+  }));
+  const selectedCategorySet = useMemo(
+    () => new Set(categoryIds),
+    [categoryIds],
+  );
   const subcategoryOptions = subcategories
-    .filter((subcategory) => categoryIds.length === 0 || selectedCategorySet.has(subcategory.category_id))
+    .filter(
+      (subcategory) =>
+        categoryIds.length === 0 ||
+        selectedCategorySet.has(subcategory.category_id),
+    )
     .map((subcategory) => {
-      const category = categories.find((item) => item.id === subcategory.category_id);
+      const category = categories.find(
+        (item) => item.id === subcategory.category_id,
+      );
       return {
         value: subcategory.id,
-        label: category ? `${category.name} / ${subcategory.name}` : subcategory.name,
+        label: category
+          ? `${category.name} / ${subcategory.name}`
+          : subcategory.name,
       };
     });
-  const searchError = error instanceof Error && appliedFilters.searchQuery
-    ? error.message
-    : null;
+  const searchError =
+    error instanceof Error && appliedFilters.searchQuery ? error.message : null;
   const openSuspectFindings = suspectReview.findings;
-  const suspectCountBySeverity = useMemo(() => ({
-    high: openSuspectFindings.filter((finding) => finding.severity === 'high').length,
-    medium: openSuspectFindings.filter((finding) => finding.severity === 'medium').length,
-    low: openSuspectFindings.filter((finding) => finding.severity === 'low').length,
-  }), [openSuspectFindings]);
+  const suspectCountBySeverity = useMemo(
+    () => ({
+      high: openSuspectFindings.filter((finding) => finding.severity === "high")
+        .length,
+      medium: openSuspectFindings.filter(
+        (finding) => finding.severity === "medium",
+      ).length,
+      low: openSuspectFindings.filter((finding) => finding.severity === "low")
+        .length,
+    }),
+    [openSuspectFindings],
+  );
 
   const runSuspectScan = useCallback(async () => {
     try {
@@ -232,40 +320,95 @@ export function TransactionHistoryPage() {
         flaggedWords: flaggedWords.words,
       });
       const count = result.data?.findings.length ?? 0;
-      toast.success(`Scan complete: ${count} finding${count === 1 ? '' : 's'}`);
+      toast.success(`Scan complete: ${count} finding${count === 1 ? "" : "s"}`);
     } catch {
-      toast.error('Failed to scan suspect transactions');
+      toast.error("Failed to scan suspect transactions");
     }
   }, [appliedFilters, flaggedWords.words, suspectReview.runSuspectScan]);
 
-  const updateFindingStatus = useCallback(async (id: string, status: 'dismissed' | 'resolved') => {
-    try {
-      await suspectReview.updateFindingStatus.mutateAsync({ id, status });
-      toast.success(status === 'dismissed' ? 'Finding dismissed' : 'Finding resolved');
-    } catch {
-      toast.error('Failed to update finding');
-    }
-  }, [suspectReview.updateFindingStatus]);
+  const updateFindingStatus = useCallback(
+    async (id: string, status: "dismissed" | "resolved") => {
+      try {
+        await suspectReview.updateFindingStatus.mutateAsync({ id, status });
+        toast.success(
+          status === "dismissed" ? "Finding dismissed" : "Finding resolved",
+        );
+      } catch {
+        toast.error("Failed to update finding");
+      }
+    },
+    [suspectReview.updateFindingStatus],
+  );
 
-  const applyPreset1 = useCallback(() => dateRangePresets[0] && applyDateRangePreset(dateRangePresets[0]), [applyDateRangePreset]);
-  const applyPreset2 = useCallback(() => dateRangePresets[1] && applyDateRangePreset(dateRangePresets[1]), [applyDateRangePreset]);
-  const applyPreset3 = useCallback(() => dateRangePresets[2] && applyDateRangePreset(dateRangePresets[2]), [applyDateRangePreset]);
-  const applyPreset4 = useCallback(() => dateRangePresets[3] && applyDateRangePreset(dateRangePresets[3]), [applyDateRangePreset]);
-  const applyPreset5 = useCallback(() => dateRangePresets[4] && applyDateRangePreset(dateRangePresets[4]), [applyDateRangePreset]);
-  const applyPreset6 = useCallback(() => dateRangePresets[5] && applyDateRangePreset(dateRangePresets[5]), [applyDateRangePreset]);
-  useShortcut('transactionHistory.applyFilters', applyFilters);
-  useShortcut('transactionHistory.focusSearch', useCallback(() => searchRef.current?.focus(), []));
-  useShortcut('transactionHistory.focusStartDate', useCallback(() => startDateRef.current?.focus(), []));
-  useShortcut('transactionHistory.focusEndDate', useCallback(() => endDateRef.current?.focus(), []));
-  useShortcut('transactionHistory.focusAccount', useCallback(() => accountRef.current?.focus(), []));
-  useShortcut('transactionHistory.preset1', applyPreset1, { enabled: dateRangePresets.length > 0 });
-  useShortcut('transactionHistory.preset2', applyPreset2, { enabled: dateRangePresets.length > 1 });
-  useShortcut('transactionHistory.preset3', applyPreset3, { enabled: dateRangePresets.length > 2 });
-  useShortcut('transactionHistory.preset4', applyPreset4, { enabled: dateRangePresets.length > 3 });
-  useShortcut('transactionHistory.preset5', applyPreset5, { enabled: dateRangePresets.length > 4 });
-  useShortcut('transactionHistory.preset6', applyPreset6, { enabled: dateRangePresets.length > 5 });
-  useShortcut('transactionHistory.bulkEdit', useCallback(() => setBulkEditOpen(true), []), { enabled: selectedIds.size > 0 });
-  useShortcut('transactionHistory.bulkDelete', useCallback(() => setBulkDeleteOpen(true), []), { enabled: selectedIds.size > 0 });
+  const applyPreset1 = useCallback(
+    () => dateRangePresets[0] && applyDateRangePreset(dateRangePresets[0]),
+    [applyDateRangePreset],
+  );
+  const applyPreset2 = useCallback(
+    () => dateRangePresets[1] && applyDateRangePreset(dateRangePresets[1]),
+    [applyDateRangePreset],
+  );
+  const applyPreset3 = useCallback(
+    () => dateRangePresets[2] && applyDateRangePreset(dateRangePresets[2]),
+    [applyDateRangePreset],
+  );
+  const applyPreset4 = useCallback(
+    () => dateRangePresets[3] && applyDateRangePreset(dateRangePresets[3]),
+    [applyDateRangePreset],
+  );
+  const applyPreset5 = useCallback(
+    () => dateRangePresets[4] && applyDateRangePreset(dateRangePresets[4]),
+    [applyDateRangePreset],
+  );
+  const applyPreset6 = useCallback(
+    () => dateRangePresets[5] && applyDateRangePreset(dateRangePresets[5]),
+    [applyDateRangePreset],
+  );
+  useShortcut("transactionHistory.applyFilters", applyFilters);
+  useShortcut(
+    "transactionHistory.focusSearch",
+    useCallback(() => searchRef.current?.focus(), []),
+  );
+  useShortcut(
+    "transactionHistory.focusStartDate",
+    useCallback(() => startDateRef.current?.focus(), []),
+  );
+  useShortcut(
+    "transactionHistory.focusEndDate",
+    useCallback(() => endDateRef.current?.focus(), []),
+  );
+  useShortcut(
+    "transactionHistory.focusAccount",
+    useCallback(() => accountRef.current?.focus(), []),
+  );
+  useShortcut("transactionHistory.preset1", applyPreset1, {
+    enabled: dateRangePresets.length > 0,
+  });
+  useShortcut("transactionHistory.preset2", applyPreset2, {
+    enabled: dateRangePresets.length > 1,
+  });
+  useShortcut("transactionHistory.preset3", applyPreset3, {
+    enabled: dateRangePresets.length > 2,
+  });
+  useShortcut("transactionHistory.preset4", applyPreset4, {
+    enabled: dateRangePresets.length > 3,
+  });
+  useShortcut("transactionHistory.preset5", applyPreset5, {
+    enabled: dateRangePresets.length > 4,
+  });
+  useShortcut("transactionHistory.preset6", applyPreset6, {
+    enabled: dateRangePresets.length > 5,
+  });
+  useShortcut(
+    "transactionHistory.bulkEdit",
+    useCallback(() => setBulkEditOpen(true), []),
+    { enabled: selectedIds.size > 0 },
+  );
+  useShortcut(
+    "transactionHistory.bulkDelete",
+    useCallback(() => setBulkDeleteOpen(true), []),
+    { enabled: selectedIds.size > 0 },
+  );
 
   return (
     <div className="space-y-3">
@@ -274,7 +417,9 @@ export function TransactionHistoryPage() {
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-2">
         <div>
-          <label className="block text-xs text-muted-foreground mb-0.5">From</label>
+          <label className="block text-xs text-muted-foreground mb-0.5">
+            From
+          </label>
           <input
             ref={startDateRef}
             type="date"
@@ -284,7 +429,9 @@ export function TransactionHistoryPage() {
           />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-0.5">To</label>
+          <label className="block text-xs text-muted-foreground mb-0.5">
+            To
+          </label>
           <input
             ref={endDateRef}
             type="date"
@@ -335,12 +482,12 @@ export function TransactionHistoryPage() {
             value={kindFilter}
             onChange={(e) => setKindFilter(e.target.value as typeof kindFilter)}
             options={[
-              { value: 'all', label: 'All Types' },
-              { value: 'income', label: 'Income' },
-              { value: 'expense', label: 'Expense' },
-              { value: 'transfer', label: 'Transfer' },
-              { value: 'adjustment', label: 'Adjustment' },
-              { value: 'needsCategory', label: 'Needs Category' },
+              { value: "all", label: "All Types" },
+              { value: "income", label: "Income" },
+              { value: "expense", label: "Expense" },
+              { value: "transfer", label: "Transfer" },
+              { value: "adjustment", label: "Adjustment" },
+              { value: "needsCategory", label: "Needs Category" },
             ]}
             className="h-8 text-xs"
           />
@@ -352,7 +499,7 @@ export function TransactionHistoryPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search: coffee AND amount>5"
             className="h-8 text-xs"
-            onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
+            onKeyDown={(e) => e.key === "Enter" && applyFilters()}
           />
         </div>
         <Button size="sm" onClick={applyFilters} className="h-8 text-xs">
@@ -364,16 +511,17 @@ export function TransactionHistoryPage() {
         {dateRangePresets.map((preset, index) => {
           const range = preset.getRange();
           const isActive =
-            (appliedFilters.startDate ?? '') === range.startDate &&
-            (appliedFilters.endDate ?? '') === range.endDate;
-          const commandId = `transactionHistory.preset${index + 1}` as CommandId;
+            (appliedFilters.startDate ?? "") === range.startDate &&
+            (appliedFilters.endDate ?? "") === range.endDate;
+          const commandId =
+            `transactionHistory.preset${index + 1}` as CommandId;
 
           return (
             <Button
               key={preset.id}
               type="button"
               size="sm"
-              variant={isActive ? 'primary' : 'secondary'}
+              variant={isActive ? "primary" : "secondary"}
               onClick={() => applyDateRangePreset(preset)}
               className="h-7 px-2 text-xs"
             >
@@ -395,7 +543,7 @@ export function TransactionHistoryPage() {
               <div className="text-sm font-medium">Suspect Transactions</div>
               <div className="text-xs text-muted-foreground">
                 {openSuspectFindings.length === 0
-                  ? 'No open findings in the latest scan.'
+                  ? "No open findings in the latest scan."
                   : `${openSuspectFindings.length} open findings: ${suspectCountBySeverity.high} high, ${suspectCountBySeverity.medium} medium, ${suspectCountBySeverity.low} low.`}
               </div>
             </div>
@@ -409,22 +557,29 @@ export function TransactionHistoryPage() {
             className="h-8 text-xs"
           >
             <ScanSearch className="mr-1 h-3.5 w-3.5" />
-            {suspectReview.runSuspectScan.isPending ? 'Scanning...' : 'Scan Current Filters'}
+            {suspectReview.runSuspectScan.isPending
+              ? "Scanning..."
+              : "Scan Current Filters"}
           </Button>
         </div>
         {openSuspectFindings.length > 0 && (
           <div className="mt-3 max-h-72 divide-y divide-border overflow-y-auto rounded border border-border bg-background/40">
             {openSuspectFindings.slice(0, 8).map((finding) => (
-              <div key={finding.id} className="grid gap-2 p-2 text-xs md:grid-cols-[1fr_auto]">
+              <div
+                key={finding.id}
+                className="grid gap-2 p-2 text-xs md:grid-cols-[1fr_auto]"
+              >
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded px-1.5 py-0.5 font-medium uppercase ${
-                      finding.severity === 'high'
-                        ? 'bg-red-500/20 text-red-200'
-                        : finding.severity === 'medium'
-                          ? 'bg-amber-500/20 text-amber-200'
-                          : 'bg-secondary text-muted-foreground'
-                    }`}>
+                    <span
+                      className={`rounded px-1.5 py-0.5 font-medium uppercase ${
+                        finding.severity === "high"
+                          ? "bg-red-500/20 text-red-200"
+                          : finding.severity === "medium"
+                            ? "bg-amber-500/20 text-amber-200"
+                            : "bg-secondary text-muted-foreground"
+                      }`}
+                    >
                       {finding.severity}
                     </span>
                     <span className="font-medium text-foreground">
@@ -432,13 +587,18 @@ export function TransactionHistoryPage() {
                     </span>
                     {finding.transaction && (
                       <span className="font-mono text-muted-foreground">
-                        {finding.transaction.date} {formatCurrency(finding.transaction.amount)}
+                        {finding.transaction.date}{" "}
+                        {formatCurrency(finding.transaction.amount)}
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 text-muted-foreground">{finding.evidence.summary}</div>
+                  <div className="mt-1 text-muted-foreground">
+                    {finding.evidence.summary}
+                  </div>
                   <div className="mt-1 text-[11px] uppercase text-muted-foreground">
-                    {finding.reason_codes.map((reason) => reason.replaceAll('_', ' ')).join(', ')}
+                    {finding.reason_codes
+                      .map((reason) => reason.replaceAll("_", " "))
+                      .join(", ")}
                   </div>
                 </div>
                 <div className="flex items-start gap-1 md:justify-end">
@@ -446,7 +606,9 @@ export function TransactionHistoryPage() {
                     type="button"
                     size="sm"
                     variant="ghost"
-                    onClick={() => void updateFindingStatus(finding.id, 'dismissed')}
+                    onClick={() =>
+                      void updateFindingStatus(finding.id, "dismissed")
+                    }
                     disabled={suspectReview.updateFindingStatus.isPending}
                     className="h-7 px-2 text-xs"
                   >
@@ -457,7 +619,9 @@ export function TransactionHistoryPage() {
                     type="button"
                     size="sm"
                     variant="ghost"
-                    onClick={() => void updateFindingStatus(finding.id, 'resolved')}
+                    onClick={() =>
+                      void updateFindingStatus(finding.id, "resolved")
+                    }
                     disabled={suspectReview.updateFindingStatus.isPending}
                     className="h-7 px-2 text-xs"
                   >
@@ -474,12 +638,24 @@ export function TransactionHistoryPage() {
       {/* Action bar */}
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">{selectedIds.size} selected</span>
-          <Button size="sm" variant="secondary" onClick={() => setBulkEditOpen(true)} className="h-7 text-xs">
+          <span className="text-muted-foreground">
+            {selectedIds.size} selected
+          </span>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setBulkEditOpen(true)}
+            className="h-7 text-xs"
+          >
             Bulk Edit
             <ShortcutHint commandId="transactionHistory.bulkEdit" />
           </Button>
-          <Button size="sm" variant="destructive" onClick={() => setBulkDeleteOpen(true)} className="h-7 text-xs">
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => setBulkDeleteOpen(true)}
+            className="h-7 text-xs"
+          >
             Bulk Delete
             <ShortcutHint commandId="transactionHistory.bulkDelete" />
           </Button>
@@ -488,7 +664,9 @@ export function TransactionHistoryPage() {
 
       {/* Loading state */}
       {isLoading ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        <div className="py-12 text-center text-sm text-muted-foreground">
+          Loading...
+        </div>
       ) : (
         <TransactionTable
           transactions={sortedTransactions}
@@ -508,7 +686,7 @@ export function TransactionHistoryPage() {
       )}
 
       <div className="text-xs text-muted-foreground">
-        {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
+        {transactions.length} transaction{transactions.length !== 1 ? "s" : ""}
       </div>
 
       {/* Bulk edit modal */}
@@ -532,7 +710,7 @@ export function TransactionHistoryPage() {
         onClose={() => setBulkDeleteOpen(false)}
         onConfirm={handleBulkDelete}
         title="Bulk Delete"
-        message={`Delete ${selectedIds.size} selected transaction${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`}
+        message={`Delete ${selectedIds.size} selected transaction${selectedIds.size !== 1 ? "s" : ""}? This cannot be undone.`}
         isLoading={bulkDeleteTransactions.isPending}
       />
     </div>

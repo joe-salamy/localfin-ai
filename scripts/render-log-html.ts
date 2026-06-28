@@ -161,7 +161,9 @@ function requireLogEvent(value: unknown, index: number): LogEvent {
   if (isRecord(value)) {
     return value;
   }
-  throw new Error(`Unsupported log entry at index ${index}: expected an object`);
+  throw new Error(
+    `Unsupported log entry at index ${index}: expected an object`,
+  );
 }
 
 function parseEventArray(value: unknown[]): LogEvent[] {
@@ -251,7 +253,9 @@ function prettyJson(value: unknown): string {
 }
 
 function renderMarkdown(value: string): string {
-  return renderToStaticMarkup(createElement(ReactMarkdown, { children: value }));
+  return renderToStaticMarkup(
+    createElement(ReactMarkdown, { children: value }),
+  );
 }
 
 function renderPreformatted(value: unknown): string {
@@ -353,10 +357,7 @@ function recognizedSegmentAt(
     return { endIndex: lines.length - 1, className: "prompt-code" };
   }
 
-  if (
-    trimmed === "Amount conventions:" ||
-    trimmed === "Failure conventions:"
-  ) {
+  if (trimmed === "Amount conventions:" || trimmed === "Failure conventions:") {
     return { endIndex: startIndex, className: "prompt-rules" };
   }
 

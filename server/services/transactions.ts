@@ -68,7 +68,6 @@ interface RecentActivityRow {
   last_transaction_amount: number | null;
 }
 
-
 interface DuplicateCheckItem {
   date: string;
   name: string;
@@ -227,18 +226,24 @@ function normalizeTransactionFields(
   kind: TransactionKind;
   subcategory_id: string | null;
 } {
-  const kind = data.kind ?? inferTransactionKindForAccount(data.amount, accountType);
+  const kind =
+    data.kind ?? inferTransactionKindForAccount(data.amount, accountType);
   return {
     ...data,
     amount: normalizeTransactionAmount(data.amount, accountType, kind),
     kind,
-    subcategory_id: kind === "transfer" || kind === "adjustment" ? null : data.subcategory_id ?? null,
+    subcategory_id:
+      kind === "transfer" || kind === "adjustment"
+        ? null
+        : (data.subcategory_id ?? null),
   };
 }
 
 // ---------- CRUD ----------
 
-export function createTransaction(data: CreateTransactionData): TransactionWithDetails {
+export function createTransaction(
+  data: CreateTransactionData,
+): TransactionWithDetails {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -361,7 +366,9 @@ export function getTransactionsWithDetails(
 
   const rows = db.prepare(sql).all(...params) as TransactionWithDetailsRow[];
   const tagMap = getTagsForTransactions(rows.map((row) => row.id));
-  return rows.map((row) => rowToTransactionWithDetails(row, tagMap.get(row.id) ?? []));
+  return rows.map((row) =>
+    rowToTransactionWithDetails(row, tagMap.get(row.id) ?? []),
+  );
 }
 
 export function getTransactionById(id: string): TransactionWithDetails | null {
@@ -484,7 +491,12 @@ export function updateTransaction(
   `,
     )
     .get(id) as
-    | { id: string; kind: TransactionKind; amount: number; account_type: AccountType }
+    | {
+        id: string;
+        kind: TransactionKind;
+        amount: number;
+        account_type: AccountType;
+      }
     | undefined;
 
   if (!existing) {
@@ -500,7 +512,10 @@ export function updateTransaction(
           nextKind,
         )
       : undefined;
-  const nextTagIds = updates.tag_ids !== undefined ? assertActiveTags(updates.tag_ids) : undefined;
+  const nextTagIds =
+    updates.tag_ids !== undefined
+      ? assertActiveTags(updates.tag_ids)
+      : undefined;
   const setClauses: string[] = [];
   const params: unknown[] = [];
 
@@ -519,13 +534,19 @@ export function updateTransaction(
   if (updates.kind !== undefined) {
     setClauses.push("kind = ?");
     params.push(updates.kind);
-    if ((updates.kind === "transfer" || updates.kind === "adjustment") && updates.subcategory_id === undefined) {
+    if (
+      (updates.kind === "transfer" || updates.kind === "adjustment") &&
+      updates.subcategory_id === undefined
+    ) {
       setClauses.push("subcategory_id = ?");
       params.push(null);
     }
   }
   if (updates.subcategory_id !== undefined) {
-    const nextSubcategoryId = nextKind === "transfer" || nextKind === "adjustment" ? null : updates.subcategory_id;
+    const nextSubcategoryId =
+      nextKind === "transfer" || nextKind === "adjustment"
+        ? null
+        : updates.subcategory_id;
     if (nextSubcategoryId) {
       assertActiveSubcategory(nextSubcategoryId);
     }
@@ -579,7 +600,11 @@ export function bulkUpdateTransactions(
   }
 
   const hasTagUpdates = addTagIds.length > 0 || removeTagIds.length > 0;
-  if (updates.kind === undefined && updates.subcategory_id === undefined && !hasTagUpdates) {
+  if (
+    updates.kind === undefined &&
+    updates.subcategory_id === undefined &&
+    !hasTagUpdates
+  ) {
     throw new Error("At least one update field is required");
   }
 
@@ -595,7 +620,12 @@ export function bulkUpdateTransactions(
       WHERE t.deleted_at IS NULL AND t.id IN (${placeholders})
     `,
     )
-    .all(...ids) as { id: string; amount: number; kind: TransactionKind; account_type: AccountType }[];
+    .all(...ids) as {
+    id: string;
+    amount: number;
+    kind: TransactionKind;
+    account_type: AccountType;
+  }[];
 
   if (updates.kind !== undefined) {
     const nextKind = updates.kind;
@@ -624,7 +654,11 @@ export function bulkUpdateTransactions(
     );
     const updateAll = db.transaction(() => {
       for (const row of updateRows) {
-        const amount = normalizeTransactionAmount(row.amount, row.account_type, nextKind);
+        const amount = normalizeTransactionAmount(
+          row.amount,
+          row.account_type,
+          nextKind,
+        );
         const rowParams: unknown[] = [nextKind, amount];
         if (
           nextSubcategoryId !== undefined ||
@@ -636,7 +670,8 @@ export function bulkUpdateTransactions(
         rowParams.push(now, row.id);
         stmt.run(...rowParams);
         if (addTagIds.length > 0) addTransactionTags(row.id, addTagIds);
-        if (removeTagIds.length > 0) removeTransactionTags(row.id, removeTagIds);
+        if (removeTagIds.length > 0)
+          removeTransactionTags(row.id, removeTagIds);
       }
     });
     updateAll();
@@ -649,7 +684,9 @@ export function bulkUpdateTransactions(
       assertActiveSubcategory(nextSubcategoryId);
     }
     if (nextSubcategoryId !== null) {
-      setClauses.push("subcategory_id = CASE WHEN kind IN ('transfer', 'adjustment') THEN NULL ELSE ? END");
+      setClauses.push(
+        "subcategory_id = CASE WHEN kind IN ('transfer', 'adjustment') THEN NULL ELSE ? END",
+      );
     } else {
       setClauses.push("subcategory_id = ?");
     }
@@ -675,7 +712,8 @@ export function bulkUpdateTransactions(
     if (hasTagUpdates) {
       for (const row of updateRows) {
         if (addTagIds.length > 0) addTransactionTags(row.id, addTagIds);
-        if (removeTagIds.length > 0) removeTransactionTags(row.id, removeTagIds);
+        if (removeTagIds.length > 0)
+          removeTransactionTags(row.id, removeTagIds);
       }
     }
   });
@@ -725,7 +763,6 @@ export function bulkCreateTransactions(
 
   const ids: string[] = [];
 
-
   const insertAll = db.transaction(() => {
     for (const data of transactions) {
       const accountType = getActiveAccountType(data.account_id);
@@ -758,7 +795,10 @@ export function bulkCreateTransactions(
 
   return ids
     .map((id) => getTransactionById(id))
-    .filter((transaction): transaction is TransactionWithDetails => transaction !== null)
+    .filter(
+      (transaction): transaction is TransactionWithDetails =>
+        transaction !== null,
+    )
     .sort((a, b) => {
       if (a.date !== b.date) return b.date.localeCompare(a.date);
       return b.created_at.localeCompare(a.created_at);

@@ -47,7 +47,9 @@ function errorMessage(error: unknown) {
 }
 
 function frontendBaseUrl() {
-  return process.env[ENV_KEYS.frontendBaseUrl] ?? PROVIDER_CONFIG.frontendBaseUrl;
+  return (
+    process.env[ENV_KEYS.frontendBaseUrl] ?? PROVIDER_CONFIG.frontendBaseUrl
+  );
 }
 
 router.get("/connections", (_req: Request, res: Response) => {

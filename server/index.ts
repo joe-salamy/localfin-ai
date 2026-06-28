@@ -1,7 +1,7 @@
-import dotenv from 'dotenv';
-import { createApp } from './app.js';
-import { getDb } from './db/index.js';
-import { SERVER_CONFIG } from './config/app.js';
+import dotenv from "dotenv";
+import { createApp } from "./app.js";
+import { getDb } from "./db/index.js";
+import { SERVER_CONFIG } from "./config/app.js";
 
 dotenv.config();
 

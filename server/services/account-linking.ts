@@ -28,8 +28,14 @@ export function setProviderClientsForTests(clients: {
 }): () => void {
   const previousPlaid = plaidProviderClient;
   const previousAkoya = akoyaProviderClient;
-  plaidProviderClient = { ...plaidClient, ...clients.plaid } as PlaidProviderClient;
-  akoyaProviderClient = { ...akoyaClient, ...clients.akoya } as AkoyaProviderClient;
+  plaidProviderClient = {
+    ...plaidClient,
+    ...clients.plaid,
+  } as PlaidProviderClient;
+  akoyaProviderClient = {
+    ...akoyaClient,
+    ...clients.akoya,
+  } as AkoyaProviderClient;
   return () => {
     plaidProviderClient = previousPlaid;
     akoyaProviderClient = previousAkoya;
@@ -141,7 +147,6 @@ interface BalanceRow {
 interface TransactionIdRow {
   id: string;
 }
-
 
 interface ProviderAccountDraft {
   providerAccountId: string;
@@ -297,7 +302,9 @@ function connectionSummaryFromRow(
   };
 }
 
-function providerAccountSummaryFromRow(row: ProviderAccountRow): ProviderAccountSummary {
+function providerAccountSummaryFromRow(
+  row: ProviderAccountRow,
+): ProviderAccountSummary {
   return {
     id: row.id,
     local_account_id: row.local_account_id,
@@ -328,7 +335,9 @@ function getProviderAccounts(
   return rows.map(providerAccountSummaryFromRow);
 }
 
-function getConnectionById(connectionId: string): ProviderConnectionRow | undefined {
+function getConnectionById(
+  connectionId: string,
+): ProviderConnectionRow | undefined {
   const row = getDb()
     .prepare(
       `SELECT * FROM provider_connections
@@ -361,9 +370,10 @@ function inferInstitutionFromPlaidMetadata(metadata: unknown) {
   };
 }
 
-
 function normalizePlaidAccounts(response: unknown): ProviderAccountDraft[] {
-  const accounts = Array.isArray(response) ? response : readArray(response, "accounts");
+  const accounts = Array.isArray(response)
+    ? response
+    : readArray(response, "accounts");
   return accounts
     .map((account) => {
       const balances = readRecord(account)?.balances;
@@ -453,7 +463,11 @@ function resolveUniqueAccountName(
 ) {
   const providerLabel = provider === "plaid" ? "Plaid" : "Akoya";
   const suffix = providerAccountId.slice(-4) || crypto.randomUUID().slice(0, 4);
-  const candidates = [baseName, `${baseName} (${providerLabel})`, `${baseName} ${suffix}`];
+  const candidates = [
+    baseName,
+    `${baseName} (${providerLabel})`,
+    `${baseName} ${suffix}`,
+  ];
 
   for (const candidate of candidates) {
     const accountExists = db
@@ -463,9 +477,12 @@ function resolveUniqueAccountName(
       .prepare("SELECT 1 FROM categories WHERE name = ? AND deleted_at IS NULL")
       .get(candidate);
     const subcategoryExists = db
-      .prepare("SELECT 1 FROM subcategories WHERE name = ? AND deleted_at IS NULL")
+      .prepare(
+        "SELECT 1 FROM subcategories WHERE name = ? AND deleted_at IS NULL",
+      )
       .get(candidate);
-    if (!accountExists && !categoryExists && !subcategoryExists) return candidate;
+    if (!accountExists && !categoryExists && !subcategoryExists)
+      return candidate;
   }
 
   throw new Error(`Could not create a unique account name for ${baseName}`);
@@ -486,7 +503,12 @@ function createLinkedLocalAccount(
      VALUES (?, ?, ?, 0, NULL, ?, ?)`,
   ).run(
     accountId,
-    resolveUniqueAccountName(db, name, connection.provider, account.providerAccountId),
+    resolveUniqueAccountName(
+      db,
+      name,
+      connection.provider,
+      account.providerAccountId,
+    ),
     account.type,
     timestamp,
     timestamp,
@@ -504,7 +526,9 @@ function upsertProviderAccount(
       `SELECT * FROM provider_accounts
        WHERE connection_id = ? AND provider_account_id = ? AND deleted_at IS NULL`,
     )
-    .get(connection.id, account.providerAccountId) as ProviderAccountRow | undefined;
+    .get(connection.id, account.providerAccountId) as
+    | ProviderAccountRow
+    | undefined;
   const timestamp = nowIso();
   const lastBalanceAt = account.currentBalance === null ? null : timestamp;
 
@@ -561,7 +585,6 @@ function upsertProviderAccount(
   return localAccountId;
 }
 
-
 function insertProviderTransaction(
   db: Database.Database,
   draft: ProviderTransactionDraft,
@@ -575,7 +598,9 @@ function insertProviderTransaction(
        FROM transactions
        WHERE provider = ? AND provider_transaction_id = ? AND deleted_at IS NULL`,
     )
-    .get(draft.provider, draft.provider_transaction_id) as TransactionIdRow | undefined;
+    .get(draft.provider, draft.provider_transaction_id) as
+    | TransactionIdRow
+    | undefined;
   if (existing) {
     db.prepare(
       `UPDATE transactions
@@ -631,14 +656,19 @@ function createBalanceAdjustmentIfNeeded(
   warnings: string[],
 ) {
   if (account.currentBalance === null) {
-    warnings.push(`Missing provider balance for ${account.name}; skipped balance adjustment.`);
+    warnings.push(
+      `Missing provider balance for ${account.name}; skipped balance adjustment.`,
+    );
     return 0;
   }
 
   const localAccount = db
-    .prepare("SELECT id, name, type, initial_balance FROM accounts WHERE id = ?")
+    .prepare(
+      "SELECT id, name, type, initial_balance FROM accounts WHERE id = ?",
+    )
     .get(localAccountId) as AccountRow | undefined;
-  if (!localAccount) throw new Error(`Local account ${localAccountId} not found`);
+  if (!localAccount)
+    throw new Error(`Local account ${localAccountId} not found`);
 
   const balanceRow = db
     .prepare(
@@ -685,7 +715,10 @@ function applyNetworkPayload(
 ): ApplyCounts {
   const db = getDb();
   return db.transaction(() => {
-    const accountMap = new Map<string, { localAccountId: string; type: AccountType }>();
+    const accountMap = new Map<
+      string,
+      { localAccountId: string; type: AccountType }
+    >();
     let balanceAdjustmentsCreated = 0;
 
     for (const account of payload.accounts) {
@@ -702,7 +735,8 @@ function applyNetworkPayload(
       const providerAccountId =
         connection.provider === "plaid"
           ? readString(transaction, "account_id")
-          : readString(transaction, "accountId") ?? readString(transaction, "account_id");
+          : (readString(transaction, "accountId") ??
+            readString(transaction, "account_id"));
       if (!providerAccountId) continue;
       const localAccount = accountMap.get(providerAccountId);
       if (!localAccount) continue;
@@ -754,7 +788,9 @@ function applyNetworkPayload(
     }
 
     if (payload.refreshedAccessToken) {
-      const [ciphertext, iv, tag] = encryptedColumns(payload.refreshedAccessToken);
+      const [ciphertext, iv, tag] = encryptedColumns(
+        payload.refreshedAccessToken,
+      );
       db.prepare(
         `UPDATE provider_connections
          SET encrypted_access_token = ?, access_token_iv = ?, access_token_tag = ?
@@ -762,7 +798,9 @@ function applyNetworkPayload(
       ).run(ciphertext, iv, tag, connection.id);
     }
     if (payload.refreshedRefreshToken) {
-      const [ciphertext, iv, tag] = encryptedColumns(payload.refreshedRefreshToken);
+      const [ciphertext, iv, tag] = encryptedColumns(
+        payload.refreshedRefreshToken,
+      );
       db.prepare(
         `UPDATE provider_connections
          SET encrypted_refresh_token = ?, refresh_token_iv = ?, refresh_token_tag = ?
@@ -787,7 +825,9 @@ function applyNetworkPayload(
   })();
 }
 
-async function fetchPlaidPayload(connection: ProviderConnectionRow): Promise<NetworkPayload> {
+async function fetchPlaidPayload(
+  connection: ProviderConnectionRow,
+): Promise<NetworkPayload> {
   const accessToken = decryptAccessToken(connection);
   const balances = await plaidProviderClient.getBalances(accessToken);
   const accounts = normalizePlaidAccounts(balances);
@@ -820,9 +860,11 @@ async function fetchPlaidPayload(connection: ProviderConnectionRow): Promise<Net
     const transactions = await collectPages();
     return { accounts, ...transactions };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown Plaid error";
+    const message =
+      error instanceof Error ? error.message : "Unknown Plaid error";
     const errorRecord = readRecord(error);
-    const errorCode = readString(errorRecord, "error_code") ?? readString(errorRecord, "code");
+    const errorCode =
+      readString(errorRecord, "error_code") ?? readString(errorRecord, "code");
     if (
       errorCode !== "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION" &&
       !message.includes("TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION")
@@ -841,15 +883,20 @@ async function fetchPlaidPayload(connection: ProviderConnectionRow): Promise<Net
   }
 }
 
-async function fetchAkoyaPayload(connection: ProviderConnectionRow): Promise<NetworkPayload> {
+async function fetchAkoyaPayload(
+  connection: ProviderConnectionRow,
+): Promise<NetworkPayload> {
   const refreshToken = decryptRefreshToken(connection);
   try {
     const refreshed = await akoyaProviderClient.refreshTokens({ refreshToken });
     const refreshedRecord = readRecord(refreshed);
     const idToken =
-      readString(refreshedRecord, "id_token") ?? readString(refreshedRecord, "access_token");
-    const nextRefreshToken = readString(refreshedRecord, "refresh_token") ?? refreshToken;
-    if (!idToken) throw new Error("Akoya refresh response did not include an id_token");
+      readString(refreshedRecord, "id_token") ??
+      readString(refreshedRecord, "access_token");
+    const nextRefreshToken =
+      readString(refreshedRecord, "refresh_token") ?? refreshToken;
+    if (!idToken)
+      throw new Error("Akoya refresh response did not include an id_token");
 
     const akoyaProviderId = connection.akoya_provider_id ?? undefined;
     const balances = await akoyaProviderClient.getBalances({
@@ -880,7 +927,16 @@ async function fetchAkoyaPayload(connection: ProviderConnectionRow): Promise<Net
         const transactions = transactionArrays(page);
         for (const transaction of transactions) {
           const record = readRecord(transaction);
-          added.push(record ? { ...record, accountId: readString(record, "accountId") ?? account.providerAccountId } : transaction);
+          added.push(
+            record
+              ? {
+                  ...record,
+                  accountId:
+                    readString(record, "accountId") ??
+                    account.providerAccountId,
+                }
+              : transaction,
+          );
         }
         if (transactions.length < limit) break;
         offset += limit;
@@ -897,9 +953,15 @@ async function fetchAkoyaPayload(connection: ProviderConnectionRow): Promise<Net
       refreshedRefreshToken: nextRefreshToken,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown Akoya error";
+    const message =
+      error instanceof Error ? error.message : "Unknown Akoya error";
     const status = readNumber(error, "status");
-    if (status === 401 || status === 403 || message.includes("401") || message.includes("403")) {
+    if (
+      status === 401 ||
+      status === 403 ||
+      message.includes("401") ||
+      message.includes("403")
+    ) {
       markConnectionError(connection.id, message, "needs_reauth");
     }
     throw error;
@@ -915,7 +977,9 @@ export function listProviderConnections(): ProviderConnectionSummary[] {
        ORDER BY created_at DESC`,
     )
     .all() as ProviderConnectionRow[];
-  return rows.map((row) => connectionSummaryFromRow(row, getProviderAccounts(db, row.id)));
+  return rows.map((row) =>
+    connectionSummaryFromRow(row, getProviderAccounts(db, row.id)),
+  );
 }
 
 export async function createPlaidLinkToken(
@@ -926,7 +990,8 @@ export async function createPlaidLinkToken(
   }
   const result = await plaidProviderClient.createPlaidLinkToken();
   const linkToken = readString(result, "link_token");
-  if (!linkToken) throw new Error("Plaid link token response did not include a link_token");
+  if (!linkToken)
+    throw new Error("Plaid link token response did not include a link_token");
   return {
     link_token: linkToken,
     expiration: readString(result, "expiration"),
@@ -941,12 +1006,20 @@ export async function exchangePlaidPublicToken(input: {
   if (!PLAID_TARGETS.has(input.targetInstitution)) {
     throw new Error("Plaid linking is only supported for US Bank and Discover");
   }
-  const exchange = await plaidProviderClient.exchangePublicToken(input.publicToken);
+  const exchange = await plaidProviderClient.exchangePublicToken(
+    input.publicToken,
+  );
   const exchangeRecord = readRecord(exchange);
-  const accessToken = readString(exchangeRecord, "access_token") ?? readString(exchangeRecord, "accessToken");
-  const itemId = readString(exchangeRecord, "item_id") ?? readString(exchangeRecord, "itemId");
+  const accessToken =
+    readString(exchangeRecord, "access_token") ??
+    readString(exchangeRecord, "accessToken");
+  const itemId =
+    readString(exchangeRecord, "item_id") ??
+    readString(exchangeRecord, "itemId");
   if (!accessToken || !itemId) {
-    throw new Error("Plaid public token exchange did not return an access token and item id");
+    throw new Error(
+      "Plaid public token exchange did not return an access token and item id",
+    );
   }
   const balances = await plaidProviderClient.getBalances(accessToken);
   const accounts = normalizePlaidAccounts(balances);
@@ -985,7 +1058,10 @@ export async function exchangePlaidPublicToken(input: {
 
   const created = getConnectionById(connectionId);
   if (!created) throw new Error("Provider connection was not created");
-  return connectionSummaryFromRow(created, getProviderAccounts(db, connectionId));
+  return connectionSummaryFromRow(
+    created,
+    getProviderAccounts(db, connectionId),
+  );
 }
 
 export function createAkoyaAuthorizationUrl(
@@ -1005,8 +1081,10 @@ export function createAkoyaAuthorizationUrl(
        ) VALUES (?, 'akoya', 'fidelity', ?, ?)`,
     )
     .run(state, redirectUri, expiresAt);
-  const authBaseUrl = process.env[ENV_KEYS.akoyaAuthBaseUrl] ?? PROVIDER_CONFIG.akoyaAuthBaseUrl;
-  const connector = process.env[ENV_KEYS.akoyaConnector] ?? PROVIDER_CONFIG.akoyaConnector;
+  const authBaseUrl =
+    process.env[ENV_KEYS.akoyaAuthBaseUrl] ?? PROVIDER_CONFIG.akoyaAuthBaseUrl;
+  const connector =
+    process.env[ENV_KEYS.akoyaConnector] ?? PROVIDER_CONFIG.akoyaConnector;
   const scope = encodeURIComponent(PROVIDER_CONFIG.akoyaScope);
   const authorizationUrl = `${authBaseUrl}/auth?connector=${encodeURIComponent(
     connector,
@@ -1040,14 +1118,19 @@ export async function handleAkoyaCallback(input: {
     redirectUri,
   });
   const tokenRecord = readRecord(tokens);
-  const idToken = readString(tokenRecord, "id_token") ?? readString(tokenRecord, "access_token");
+  const idToken =
+    readString(tokenRecord, "id_token") ??
+    readString(tokenRecord, "access_token");
   const refreshToken = readString(tokenRecord, "refresh_token");
   if (!idToken || !refreshToken) {
-    throw new Error("Akoya token exchange did not return id_token and refresh_token");
+    throw new Error(
+      "Akoya token exchange did not return id_token and refresh_token",
+    );
   }
 
   const [accessCiphertext, accessIv, accessTag] = encryptedColumns(idToken);
-  const [refreshCiphertext, refreshIv, refreshTag] = encryptedColumns(refreshToken);
+  const [refreshCiphertext, refreshIv, refreshTag] =
+    encryptedColumns(refreshToken);
   const timestamp = nowIso();
   const connectionId = crypto.randomUUID();
   db.transaction(() => {
@@ -1078,14 +1161,20 @@ export async function handleAkoyaCallback(input: {
 
   const created = getConnectionById(connectionId);
   if (!created) throw new Error("Provider connection was not created");
-  return connectionSummaryFromRow(created, getProviderAccounts(db, connectionId));
+  return connectionSummaryFromRow(
+    created,
+    getProviderAccounts(db, connectionId),
+  );
 }
 
-export async function syncProviderConnections(input: { connectionId?: string } = {}): Promise<ProviderSyncResult[]> {
+export async function syncProviderConnections(
+  input: { connectionId?: string } = {},
+): Promise<ProviderSyncResult[]> {
   const db = getDb();
   const connections = input.connectionId
     ? [getConnectionById(input.connectionId)].filter(
-        (connection): connection is ProviderConnectionRow => connection !== undefined,
+        (connection): connection is ProviderConnectionRow =>
+          connection !== undefined,
       )
     : (db
         .prepare(
@@ -1096,7 +1185,9 @@ export async function syncProviderConnections(input: { connectionId?: string } =
         .all() as ProviderConnectionRow[]);
 
   if (input.connectionId && connections.length === 0) {
-    throw new Error(`Provider connection with id "${input.connectionId}" not found`);
+    throw new Error(
+      `Provider connection with id "${input.connectionId}" not found`,
+    );
   }
   if (input.connectionId && connections[0]?.status !== "active") {
     throw new Error(
@@ -1124,7 +1215,9 @@ export async function syncProviderConnections(input: { connectionId?: string } =
   return results;
 }
 
-export async function disconnectProviderConnection(connectionId: string): Promise<void> {
+export async function disconnectProviderConnection(
+  connectionId: string,
+): Promise<void> {
   const connection = getConnectionById(connectionId);
   if (!connection) {
     throw new Error(`Provider connection with id "${connectionId}" not found`);
@@ -1134,11 +1227,19 @@ export async function disconnectProviderConnection(connectionId: string): Promis
     await plaidProviderClient.removeItem(decryptAccessToken(connection));
   } else {
     try {
-      await akoyaProviderClient.revokeToken({ refreshToken: decryptRefreshToken(connection) });
+      await akoyaProviderClient.revokeToken({
+        refreshToken: decryptRefreshToken(connection),
+      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown Akoya revoke error";
+      const message =
+        error instanceof Error ? error.message : "Unknown Akoya revoke error";
       const status = readNumber(error, "status");
-      if (status !== 404 && status !== 501 && !message.includes("404") && !message.includes("501")) {
+      if (
+        status !== 404 &&
+        status !== 501 &&
+        !message.includes("404") &&
+        !message.includes("501")
+      ) {
         throw error;
       }
     }

@@ -1,9 +1,15 @@
 // === ENUMS ===
-export type AccountType = 'asset' | 'liability';
-export type CategoryType = 'income' | 'expense';
-export type TransactionKind = 'income' | 'expense' | 'transfer' | 'adjustment';
-export type TagType = 'custom' | 'trip' | 'event' | 'person' | 'reimbursable' | 'tax';
-export type GoalPeriod = 'weekly' | 'monthly' | 'quarterly' | 'annual';
+export type AccountType = "asset" | "liability";
+export type CategoryType = "income" | "expense";
+export type TransactionKind = "income" | "expense" | "transfer" | "adjustment";
+export type TagType =
+  | "custom"
+  | "trip"
+  | "event"
+  | "person"
+  | "reimbursable"
+  | "tax";
+export type GoalPeriod = "weekly" | "monthly" | "quarterly" | "annual";
 
 // === CORE ENTITIES ===
 
@@ -308,21 +314,24 @@ export interface TransactionFilters {
 
 // === SUSPECT TRANSACTION REVIEW ===
 
-export type SuspectFindingStatus = 'open' | 'dismissed' | 'resolved';
-export type SuspectSeverity = 'low' | 'medium' | 'high';
+export type SuspectFindingStatus = "open" | "dismissed" | "resolved";
+export type SuspectSeverity = "low" | "medium" | "high";
 export type SuspectReasonCode =
-  | 'exact_duplicate'
-  | 'near_duplicate'
-  | 'large_amount_outlier'
-  | 'merchant_amount_outlier'
-  | 'rapid_small_charge_cluster'
-  | 'missing_category'
-  | 'unmatched_transfer_like'
-  | 'flagged_word';
+  | "exact_duplicate"
+  | "near_duplicate"
+  | "large_amount_outlier"
+  | "merchant_amount_outlier"
+  | "rapid_small_charge_cluster"
+  | "missing_category"
+  | "unmatched_transfer_like"
+  | "flagged_word";
 
 export interface SuspectEvidence {
   summary: string;
-  details?: Record<string, string | number | boolean | null | string[] | number[]>;
+  details?: Record<
+    string,
+    string | number | boolean | null | string[] | number[]
+  >;
 }
 
 export interface SuspectScanRun {
@@ -380,7 +389,7 @@ export interface EnrichedTransaction extends ParsedTransaction {
   subcategory_id: string | null;
   subcategory_name: string | null;
   category_name: string | null;
-  categorizationSource: 'lookup' | 'ai' | 'none';
+  categorizationSource: "lookup" | "ai" | "none";
   isDuplicate: boolean;
 }
 

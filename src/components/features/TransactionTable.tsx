@@ -1,27 +1,49 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ClipboardEvent } from 'react';
-import type { CreateTagData, SuspectTransactionFinding, TransactionKind, TransactionWithDetails, Subcategory, Tag } from '@/types';
-import { format, parseISO } from 'date-fns';
-import { Pencil, Trash2, Check, X, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
-import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
-import { TagChip, TagPicker } from '@/components/features/TagPicker';
-import { EntityLabel } from '@/components/ui/EntityLabel';
-import { formatCurrency, cn } from '@/lib/utils';
-import { DISPLAY_DATE_FORMAT } from '@/config/constants';
-import { buildCategoryLookup, formatSubcategoryLabel, formatNullableSubcategoryLabel } from '@/lib/categoryLabels';
-import { ShortcutHint } from '@/features/shortcuts/ShortcutHint';
-import { useShortcut, useShortcutScope } from '@/features/shortcuts/hooks';
-import { useAmountGradient } from '@/features/display-settings/hooks';
-import { useFlaggedWords } from '@/features/flagged-words/hooks';
-import type { Category } from '@/types';
-import { scaleValueColorClass, transactionAmountScaleValue } from '@/lib/financialColorScale';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ClipboardEvent } from "react";
+import type {
+  CreateTagData,
+  SuspectTransactionFinding,
+  TransactionKind,
+  TransactionWithDetails,
+  Subcategory,
+  Tag,
+} from "@/types";
+import { format, parseISO } from "date-fns";
+import {
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  ArrowUp,
+  ArrowDown,
+  AlertTriangle,
+} from "lucide-react";
+import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
+import { TagChip, TagPicker } from "@/components/features/TagPicker";
+import { EntityLabel } from "@/components/ui/EntityLabel";
+import { formatCurrency, cn } from "@/lib/utils";
+import { DISPLAY_DATE_FORMAT } from "@/config/constants";
+import {
+  buildCategoryLookup,
+  formatSubcategoryLabel,
+  formatNullableSubcategoryLabel,
+} from "@/lib/categoryLabels";
+import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
+import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
+import { useAmountGradient } from "@/features/display-settings/hooks";
+import { useFlaggedWords } from "@/features/flagged-words/hooks";
+import type { Category } from "@/types";
+import {
+  scaleValueColorClass,
+  transactionAmountScaleValue,
+} from "@/lib/financialColorScale";
 
 interface TransactionTableProps {
   transactions: TransactionWithDetails[];
   selectedIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
   sortColumn: string;
-  sortDirection: 'asc' | 'desc';
+  sortDirection: "asc" | "desc";
   onSort: (column: string) => void;
   onEdit: (id: string, updates: Record<string, unknown>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -46,36 +68,57 @@ function normalizeClipboardValue(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function resolveSubcategoryId(value: string, subcategories: Subcategory[]): string | null {
+function resolveSubcategoryId(
+  value: string,
+  subcategories: Subcategory[],
+): string | null {
   const normalized = normalizeClipboardValue(value);
   if (!normalized) return null;
 
-  const parts = value.split('>').map((part) => part.trim()).filter(Boolean);
-  const candidateName = normalizeClipboardValue(parts[parts.length - 1] ?? value);
+  const parts = value
+    .split(">")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const candidateName = normalizeClipboardValue(
+    parts[parts.length - 1] ?? value,
+  );
 
-  return subcategories.find((subcategory) => (
-    subcategory.id.toLowerCase() === normalized ||
-    subcategory.name.toLowerCase() === normalized ||
-    subcategory.name.toLowerCase() === candidateName
-  ))?.id ?? null;
+  return (
+    subcategories.find(
+      (subcategory) =>
+        subcategory.id.toLowerCase() === normalized ||
+        subcategory.name.toLowerCase() === normalized ||
+        subcategory.name.toLowerCase() === candidateName,
+    )?.id ?? null
+  );
 }
 
 function kindHasSubcategory(kind: TransactionKind): boolean {
-  return kind !== 'transfer' && kind !== 'adjustment';
+  return kind !== "transfer" && kind !== "adjustment";
 }
 
-function SortIcon({ column, sortColumn, sortDirection }: { column: string; sortColumn: string; sortDirection: 'asc' | 'desc' }) {
+function SortIcon({
+  column,
+  sortColumn,
+  sortDirection,
+}: {
+  column: string;
+  sortColumn: string;
+  sortDirection: "asc" | "desc";
+}) {
   if (column !== sortColumn) return null;
-  return sortDirection === 'asc'
-    ? <ArrowUp className="inline h-3 w-3 ml-0.5" />
-    : <ArrowDown className="inline h-3 w-3 ml-0.5" />;
+  return sortDirection === "asc" ? (
+    <ArrowUp className="inline h-3 w-3 ml-0.5" />
+  ) : (
+    <ArrowDown className="inline h-3 w-3 ml-0.5" />
+  );
 }
 
 const sortableColumns = [
-  { id: 'date', label: 'Date', align: 'left' },
-  { id: 'name', label: 'Name', align: 'left' },
-  { id: 'amount', label: 'Amount', align: 'right' },
-  { id: 'balance', label: 'Balance', align: 'right' },
+  { id: "date", label: "Date", align: "left" },
+  { id: "name", label: "Name", align: "left" },
+  { id: "amount", label: "Amount", align: "right" },
+  { id: "balance", label: "Balance", align: "right" },
 ] as const;
 
 export function TransactionTable({
@@ -94,16 +137,30 @@ export function TransactionTable({
   onCreateTag,
 }: TransactionTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<EditState>({ date: '', name: '', amount: '', kind: 'expense', subcategory_id: '', comment: '', tag_ids: [] });
+  const [editState, setEditState] = useState<EditState>({
+    date: "",
+    name: "",
+    amount: "",
+    kind: "expense",
+    subcategory_id: "",
+    comment: "",
+    tag_ids: [],
+  });
   const [saving, setSaving] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<TransactionWithDetails | null>(null);
+  const [deleteTarget, setDeleteTarget] =
+    useState<TransactionWithDetails | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [focusedId, setFocusedId] = useState<string | null>(transactions[0]?.id ?? null);
+  const [focusedId, setFocusedId] = useState<string | null>(
+    transactions[0]?.id ?? null,
+  );
   const [tableFocused, setTableFocused] = useState(false);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const getGradientStyle = useAmountGradient(
     transactions.flatMap((transaction) => {
-      const scaleValue = transactionAmountScaleValue(transaction.amount, transaction.kind);
+      const scaleValue = transactionAmountScaleValue(
+        transaction.amount,
+        transaction.kind,
+      );
       return scaleValue == null ? [] : [scaleValue];
     }),
   );
@@ -112,7 +169,7 @@ export function TransactionTable({
   const suspectFindingsByTransaction = useMemo(() => {
     const groups = new Map<string, SuspectTransactionFinding[]>();
     for (const finding of suspectFindings) {
-      if (finding.status !== 'open') continue;
+      if (finding.status !== "open") continue;
       const current = groups.get(finding.transaction_id);
       if (current) {
         current.push(finding);
@@ -123,18 +180,28 @@ export function TransactionTable({
     return groups;
   }, [suspectFindings]);
 
-  const allSelected = transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
-  const focusedTransaction = transactions.find((transaction) => transaction.id === focusedId) ?? transactions[0] ?? null;
+  const allSelected =
+    transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
+  const focusedTransaction =
+    transactions.find((transaction) => transaction.id === focusedId) ??
+    transactions[0] ??
+    null;
 
-  useShortcutScope('transactionHistoryTable', tableFocused || editingId !== null);
-  useShortcutScope('transactionHistoryEdit', editingId !== null);
+  useShortcutScope(
+    "transactionHistoryTable",
+    tableFocused || editingId !== null,
+  );
+  useShortcutScope("transactionHistoryEdit", editingId !== null);
 
   useEffect(() => {
     if (transactions.length === 0) {
       setFocusedId(null);
       return;
     }
-    if (!focusedId || !transactions.some((transaction) => transaction.id === focusedId)) {
+    if (
+      !focusedId ||
+      !transactions.some((transaction) => transaction.id === focusedId)
+    ) {
       setFocusedId(transactions[0]?.id ?? null);
     }
   }, [focusedId, transactions]);
@@ -147,15 +214,18 @@ export function TransactionTable({
     }
   }, [allSelected, onSelectionChange, transactions]);
 
-  const toggleOne = useCallback((id: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    onSelectionChange(next);
-  }, [onSelectionChange, selectedIds]);
+  const toggleOne = useCallback(
+    (id: string) => {
+      const next = new Set(selectedIds);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      onSelectionChange(next);
+    },
+    [onSelectionChange, selectedIds],
+  );
 
   const focusRow = useCallback((id: string | null) => {
     if (!id) return;
@@ -163,12 +233,21 @@ export function TransactionTable({
     rowRefs.current.get(id)?.focus();
   }, []);
 
-  const focusRowByOffset = useCallback((offset: number) => {
-    if (transactions.length === 0) return;
-    const currentIndex = Math.max(0, transactions.findIndex((transaction) => transaction.id === focusedId));
-    const nextIndex = Math.max(0, Math.min(currentIndex + offset, transactions.length - 1));
-    focusRow(transactions[nextIndex]?.id ?? null);
-  }, [focusRow, focusedId, transactions]);
+  const focusRowByOffset = useCallback(
+    (offset: number) => {
+      if (transactions.length === 0) return;
+      const currentIndex = Math.max(
+        0,
+        transactions.findIndex((transaction) => transaction.id === focusedId),
+      );
+      const nextIndex = Math.max(
+        0,
+        Math.min(currentIndex + offset, transactions.length - 1),
+      );
+      focusRow(transactions[nextIndex]?.id ?? null);
+    },
+    [focusRow, focusedId, transactions],
+  );
 
   const startEdit = useCallback((t: TransactionWithDetails) => {
     setEditingId(t.id);
@@ -177,8 +256,8 @@ export function TransactionTable({
       name: t.name,
       amount: String(t.amount),
       kind: t.kind,
-      subcategory_id: t.subcategory_id ?? '',
-      comment: t.comment ?? '',
+      subcategory_id: t.subcategory_id ?? "",
+      comment: t.comment ?? "",
       tag_ids: t.tags.map((tag) => tag.id),
     });
   }, []);
@@ -196,7 +275,9 @@ export function TransactionTable({
         name: editState.name,
         amount: parseFloat(editState.amount),
         kind: editState.kind,
-        subcategory_id: kindHasSubcategory(editState.kind) ? editState.subcategory_id || null : null,
+        subcategory_id: kindHasSubcategory(editState.kind)
+          ? editState.subcategory_id || null
+          : null,
         comment: editState.comment || null,
         tag_ids: editState.tag_ids,
       });
@@ -217,28 +298,74 @@ export function TransactionTable({
     }
   };
 
-  useShortcut('transactionHistory.selectAll', toggleAll);
-  useShortcut('transactionHistory.toggleFocusedRow', useCallback(() => {
-    if (focusedTransaction) toggleOne(focusedTransaction.id);
-  }, [focusedTransaction, toggleOne]));
-  useShortcut('transactionHistory.editFocusedRow', useCallback(() => {
-    if (focusedTransaction && editingId === null) startEdit(focusedTransaction);
-  }, [editingId, focusedTransaction, startEdit]));
-  useShortcut('transactionHistory.saveEdit', useCallback(() => {
-    void saveEdit();
-  }, [saveEdit]));
-  useShortcut('transactionHistory.cancelEdit', cancelEdit, { enabled: editingId !== null });
-  useShortcut('transactionHistory.deleteFocusedRow', useCallback(() => {
-    if (focusedTransaction && editingId === null) setDeleteTarget(focusedTransaction);
-  }, [editingId, focusedTransaction]));
-  useShortcut('transactionHistory.sortDate', useCallback(() => onSort('date'), [onSort]));
-  useShortcut('transactionHistory.sortName', useCallback(() => onSort('name'), [onSort]));
-  useShortcut('transactionHistory.sortAmount', useCallback(() => onSort('amount'), [onSort]));
-  useShortcut('transactionHistory.sortBalance', useCallback(() => onSort('balance'), [onSort]));
-  useShortcut('transactionHistory.nextRow', useCallback(() => focusRowByOffset(1), [focusRowByOffset]));
-  useShortcut('transactionHistory.previousRow', useCallback(() => focusRowByOffset(-1), [focusRowByOffset]));
-  useShortcut('transactionHistory.firstRow', useCallback(() => focusRow(transactions[0]?.id ?? null), [focusRow, transactions]));
-  useShortcut('transactionHistory.lastRow', useCallback(() => focusRow(transactions[transactions.length - 1]?.id ?? null), [focusRow, transactions]));
+  useShortcut("transactionHistory.selectAll", toggleAll);
+  useShortcut(
+    "transactionHistory.toggleFocusedRow",
+    useCallback(() => {
+      if (focusedTransaction) toggleOne(focusedTransaction.id);
+    }, [focusedTransaction, toggleOne]),
+  );
+  useShortcut(
+    "transactionHistory.editFocusedRow",
+    useCallback(() => {
+      if (focusedTransaction && editingId === null)
+        startEdit(focusedTransaction);
+    }, [editingId, focusedTransaction, startEdit]),
+  );
+  useShortcut(
+    "transactionHistory.saveEdit",
+    useCallback(() => {
+      void saveEdit();
+    }, [saveEdit]),
+  );
+  useShortcut("transactionHistory.cancelEdit", cancelEdit, {
+    enabled: editingId !== null,
+  });
+  useShortcut(
+    "transactionHistory.deleteFocusedRow",
+    useCallback(() => {
+      if (focusedTransaction && editingId === null)
+        setDeleteTarget(focusedTransaction);
+    }, [editingId, focusedTransaction]),
+  );
+  useShortcut(
+    "transactionHistory.sortDate",
+    useCallback(() => onSort("date"), [onSort]),
+  );
+  useShortcut(
+    "transactionHistory.sortName",
+    useCallback(() => onSort("name"), [onSort]),
+  );
+  useShortcut(
+    "transactionHistory.sortAmount",
+    useCallback(() => onSort("amount"), [onSort]),
+  );
+  useShortcut(
+    "transactionHistory.sortBalance",
+    useCallback(() => onSort("balance"), [onSort]),
+  );
+  useShortcut(
+    "transactionHistory.nextRow",
+    useCallback(() => focusRowByOffset(1), [focusRowByOffset]),
+  );
+  useShortcut(
+    "transactionHistory.previousRow",
+    useCallback(() => focusRowByOffset(-1), [focusRowByOffset]),
+  );
+  useShortcut(
+    "transactionHistory.firstRow",
+    useCallback(
+      () => focusRow(transactions[0]?.id ?? null),
+      [focusRow, transactions],
+    ),
+  );
+  useShortcut(
+    "transactionHistory.lastRow",
+    useCallback(
+      () => focusRow(transactions[transactions.length - 1]?.id ?? null),
+      [focusRow, transactions],
+    ),
+  );
 
   const applySubcategoryPaste = async (
     e: ClipboardEvent<HTMLElement>,
@@ -246,22 +373,29 @@ export function TransactionTable({
   ) => {
     if (e.defaultPrevented) return;
 
-    const text = e.clipboardData.getData('text/plain');
+    const text = e.clipboardData.getData("text/plain");
     const values = text
       .split(/\r?\n/)
-      .map((line) => line.split('\t')[0]?.trim() ?? '')
+      .map((line) => line.split("\t")[0]?.trim() ?? "")
       .filter(Boolean);
     if (values.length === 0) return;
 
-    const resolvedIds = values.map((value) => resolveSubcategoryId(value, subcategories));
+    const resolvedIds = values.map((value) =>
+      resolveSubcategoryId(value, subcategories),
+    );
     if (resolvedIds.every((id) => !id)) return;
 
     e.preventDefault();
 
     if (editingId === transaction.id) {
-      const firstResolvedId = resolvedIds.find((id): id is string => id != null);
+      const firstResolvedId = resolvedIds.find(
+        (id): id is string => id != null,
+      );
       if (firstResolvedId) {
-        setEditState((current) => ({ ...current, subcategory_id: firstResolvedId }));
+        setEditState((current) => ({
+          ...current,
+          subcategory_id: firstResolvedId,
+        }));
       }
       return;
     }
@@ -269,12 +403,21 @@ export function TransactionTable({
     const targetTransactions =
       selectedIds.size > 0
         ? transactions.filter((item) => selectedIds.has(item.id))
-        : transactions.slice(transactions.findIndex((item) => item.id === transaction.id));
-    const updates = values.length === 1
-      ? targetTransactions.map((item) => ({ item, subcategoryId: resolvedIds[0] }))
-      : targetTransactions
-        .slice(0, resolvedIds.length)
-        .map((item, index) => ({ item, subcategoryId: resolvedIds[index] }));
+        : transactions.slice(
+            transactions.findIndex((item) => item.id === transaction.id),
+          );
+    const updates =
+      values.length === 1
+        ? targetTransactions.map((item) => ({
+            item,
+            subcategoryId: resolvedIds[0],
+          }))
+        : targetTransactions
+            .slice(0, resolvedIds.length)
+            .map((item, index) => ({
+              item,
+              subcategoryId: resolvedIds[index],
+            }));
 
     for (const update of updates) {
       if (!update.subcategoryId) continue;
@@ -282,20 +425,25 @@ export function TransactionTable({
     }
   };
 
-  const headerClass = 'px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider';
-  const cellClass = 'px-2 py-1.5 text-sm whitespace-nowrap';
+  const headerClass =
+    "px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider";
+  const cellClass = "px-2 py-1.5 text-sm whitespace-nowrap";
   const renderSortableHeader = (col: (typeof sortableColumns)[number]) => (
     <th
       key={col.id}
       className={cn(
         headerClass,
-        col.align === 'right' && 'text-right',
-        'cursor-pointer select-none hover:text-foreground',
+        col.align === "right" && "text-right",
+        "cursor-pointer select-none hover:text-foreground",
       )}
       onClick={() => onSort(col.id)}
     >
       {col.label}
-      <SortIcon column={col.id} sortColumn={sortColumn} sortDirection={sortDirection} />
+      <SortIcon
+        column={col.id}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+      />
     </th>
   );
 
@@ -313,7 +461,7 @@ export function TransactionTable({
         <table className="w-full">
           <thead className="bg-secondary/50">
             <tr>
-              <th className={cn(headerClass, 'w-8')}>
+              <th className={cn(headerClass, "w-8")}>
                 <input
                   type="checkbox"
                   checked={allSelected}
@@ -328,13 +476,16 @@ export function TransactionTable({
               <th className={headerClass}>Type</th>
               <th className={headerClass}>Subcategory</th>
               <th className={headerClass}>Tags</th>
-              <th className={cn(headerClass, 'w-20')}>Actions</th>
+              <th className={cn(headerClass, "w-20")}>Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {transactions.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-2 py-8 text-center text-sm text-muted-foreground">
+                <td
+                  colSpan={11}
+                  className="px-2 py-8 text-center text-sm text-muted-foreground"
+                >
                   No transactions found.
                 </td>
               </tr>
@@ -343,16 +494,27 @@ export function TransactionTable({
               const isEditing = editingId === t.id;
               const flaggedWords = findMatches(t.name);
               const isFlagged = flaggedWords.length > 0;
-              const openSuspectFindings = suspectFindingsByTransaction.get(t.id) ?? [];
-              const topSuspectSeverity = openSuspectFindings.some((finding) => finding.severity === 'high')
-                ? 'high'
-                : openSuspectFindings.some((finding) => finding.severity === 'medium')
-                  ? 'medium'
+              const openSuspectFindings =
+                suspectFindingsByTransaction.get(t.id) ?? [];
+              const topSuspectSeverity = openSuspectFindings.some(
+                (finding) => finding.severity === "high",
+              )
+                ? "high"
+                : openSuspectFindings.some(
+                      (finding) => finding.severity === "medium",
+                    )
+                  ? "medium"
                   : openSuspectFindings.length > 0
-                    ? 'low'
+                    ? "low"
                     : null;
-              const amountScaleValue = transactionAmountScaleValue(t.amount, t.kind);
-              const amountGradientStyle = amountScaleValue == null ? undefined : getGradientStyle(amountScaleValue);
+              const amountScaleValue = transactionAmountScaleValue(
+                t.amount,
+                t.kind,
+              );
+              const amountGradientStyle =
+                amountScaleValue == null
+                  ? undefined
+                  : getGradientStyle(amountScaleValue);
               return (
                 <tr
                   key={t.id}
@@ -365,17 +527,27 @@ export function TransactionTable({
                   }}
                   tabIndex={0}
                   onFocus={() => setFocusedId(t.id)}
-                  title={openSuspectFindings.length > 0
-                    ? openSuspectFindings.map((finding) => finding.evidence.summary).join(' ')
-                    : isFlagged ? `Flagged words: ${flaggedWords.join(', ')}` : undefined}
+                  title={
+                    openSuspectFindings.length > 0
+                      ? openSuspectFindings
+                          .map((finding) => finding.evidence.summary)
+                          .join(" ")
+                      : isFlagged
+                        ? `Flagged words: ${flaggedWords.join(", ")}`
+                        : undefined
+                  }
                   className={cn(
-                    'outline-none hover:bg-secondary/30 focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring',
-                    selectedIds.has(t.id) && 'bg-secondary/20',
-                    focusedId === t.id && 'bg-secondary/30',
-                    topSuspectSeverity === 'low' && 'bg-amber-500/10 hover:bg-amber-500/15 focus-visible:bg-amber-500/15',
-                    topSuspectSeverity === 'medium' && 'bg-amber-500/20 hover:bg-amber-500/25 focus-visible:bg-amber-500/25',
-                    topSuspectSeverity === 'high' && 'bg-red-500/25 hover:bg-red-500/30 focus-visible:bg-red-500/30',
-                    isFlagged && 'bg-red-500/25 hover:bg-red-500/30 focus-visible:bg-red-500/30',
+                    "outline-none hover:bg-secondary/30 focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring",
+                    selectedIds.has(t.id) && "bg-secondary/20",
+                    focusedId === t.id && "bg-secondary/30",
+                    topSuspectSeverity === "low" &&
+                      "bg-amber-500/10 hover:bg-amber-500/15 focus-visible:bg-amber-500/15",
+                    topSuspectSeverity === "medium" &&
+                      "bg-amber-500/20 hover:bg-amber-500/25 focus-visible:bg-amber-500/25",
+                    topSuspectSeverity === "high" &&
+                      "bg-red-500/25 hover:bg-red-500/30 focus-visible:bg-red-500/30",
+                    isFlagged &&
+                      "bg-red-500/25 hover:bg-red-500/30 focus-visible:bg-red-500/30",
                   )}
                 >
                   <td className={cellClass}>
@@ -391,15 +563,21 @@ export function TransactionTable({
                       <input
                         type="date"
                         value={editState.date}
-                        onChange={(e) => setEditState({ ...editState, date: e.target.value })}
+                        onChange={(e) =>
+                          setEditState({ ...editState, date: e.target.value })
+                        }
                         className="h-7 w-32 rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       />
                     ) : (
                       format(parseISO(t.date), DISPLAY_DATE_FORMAT)
                     )}
                   </td>
-                  <td className={cn(cellClass, 'text-xs')}>
-                    <EntityLabel id={t.account_id} name={t.account_name} color={t.account_color} />
+                  <td className={cn(cellClass, "text-xs")}>
+                    <EntityLabel
+                      id={t.account_id}
+                      name={t.account_name}
+                      color={t.account_color}
+                    />
                   </td>
                   <td className={cellClass}>
                     {isEditing ? (
@@ -407,13 +585,20 @@ export function TransactionTable({
                         <input
                           type="text"
                           value={editState.name}
-                          onChange={(e) => setEditState({ ...editState, name: e.target.value })}
+                          onChange={(e) =>
+                            setEditState({ ...editState, name: e.target.value })
+                          }
                           className="h-7 w-40 rounded border border-border bg-input px-1.5 text-xs text-foreground"
                         />
                         <input
                           type="text"
                           value={editState.comment}
-                          onChange={(e) => setEditState({ ...editState, comment: e.target.value })}
+                          onChange={(e) =>
+                            setEditState({
+                              ...editState,
+                              comment: e.target.value,
+                            })
+                          }
                           placeholder="Comment..."
                           className="h-7 w-40 rounded border border-border bg-input px-1.5 text-xs text-muted-foreground"
                         />
@@ -430,36 +615,58 @@ export function TransactionTable({
                           <span>{t.name}</span>
                         </span>
                         {t.comment && (
-                          <span className="block text-xs text-muted-foreground truncate max-w-[200px]">{t.comment}</span>
+                          <span className="block text-xs text-muted-foreground truncate max-w-[200px]">
+                            {t.comment}
+                          </span>
                         )}
                       </div>
                     )}
                   </td>
-                  <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
+                  <td
+                    className={cn(
+                      cellClass,
+                      "text-right font-mono tabular-nums",
+                    )}
+                  >
                     {isEditing ? (
                       <input
                         type="number"
                         step="0.01"
                         value={editState.amount}
-                        onChange={(e) => setEditState({ ...editState, amount: e.target.value })}
+                        onChange={(e) =>
+                          setEditState({ ...editState, amount: e.target.value })
+                        }
                         className="h-7 w-24 rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       />
                     ) : (
                       <span
-                        className={amountScaleValue == null ? 'text-muted-foreground' : scaleValueColorClass(amountScaleValue)}
+                        className={
+                          amountScaleValue == null
+                            ? "text-muted-foreground"
+                            : scaleValueColorClass(amountScaleValue)
+                        }
                         style={amountGradientStyle}
                       >
                         {formatCurrency(t.amount)}
                       </span>
                     )}
                   </td>
-                  <td className={cn(cellClass, 'text-right font-mono tabular-nums')}>
+                  <td
+                    className={cn(
+                      cellClass,
+                      "text-right font-mono tabular-nums",
+                    )}
+                  >
                     {formatCurrency(t.running_balance ?? 0)}
                   </td>
-                  <td className={cn(cellClass, 'text-xs')}>
-                    <EntityLabel id={t.category_id} name={t.category_name} color={t.category_color} />
+                  <td className={cn(cellClass, "text-xs")}>
+                    <EntityLabel
+                      id={t.category_id}
+                      name={t.category_name}
+                      color={t.category_color}
+                    />
                   </td>
-                  <td className={cn(cellClass, 'text-xs')}>
+                  <td className={cn(cellClass, "text-xs")}>
                     {isEditing ? (
                       <select
                         value={editState.kind}
@@ -468,8 +675,9 @@ export function TransactionTable({
                             ...editState,
                             kind: e.target.value as TransactionKind,
                             subcategory_id:
-                              e.target.value === 'transfer' || e.target.value === 'adjustment'
-                                ? ''
+                              e.target.value === "transfer" ||
+                              e.target.value === "adjustment"
+                                ? ""
                                 : editState.subcategory_id,
                           })
                         }
@@ -481,7 +689,9 @@ export function TransactionTable({
                         <option value="adjustment">Adjustment</option>
                       </select>
                     ) : (
-                      <span className="capitalize text-muted-foreground">{t.kind}</span>
+                      <span className="capitalize text-muted-foreground">
+                        {t.kind}
+                      </span>
                     )}
                   </td>
                   <td
@@ -493,7 +703,12 @@ export function TransactionTable({
                     {isEditing ? (
                       <select
                         value={editState.subcategory_id}
-                        onChange={(e) => setEditState({ ...editState, subcategory_id: e.target.value })}
+                        onChange={(e) =>
+                          setEditState({
+                            ...editState,
+                            subcategory_id: e.target.value,
+                          })
+                        }
                         onPaste={(e) => void applySubcategoryPaste(e, t)}
                         disabled={!kindHasSubcategory(editState.kind)}
                         className="h-7 w-36 rounded border border-border bg-input px-1.5 text-xs text-foreground"
@@ -509,7 +724,10 @@ export function TransactionTable({
                       <span className="text-xs">
                         <EntityLabel
                           id={t.subcategory_id}
-                          name={formatNullableSubcategoryLabel(t.subcategory_name, t.category_type)}
+                          name={formatNullableSubcategoryLabel(
+                            t.subcategory_name,
+                            t.category_type,
+                          )}
                           color={t.subcategory_color}
                         />
                       </span>
@@ -519,7 +737,9 @@ export function TransactionTable({
                     {isEditing ? (
                       <TagPicker
                         value={editState.tag_ids}
-                        onChange={(tagIds) => setEditState({ ...editState, tag_ids: tagIds })}
+                        onChange={(tagIds) =>
+                          setEditState({ ...editState, tag_ids: tagIds })
+                        }
                         tags={tags}
                         onCreateTag={onCreateTag}
                         placeholder="Tags"
@@ -588,7 +808,11 @@ export function TransactionTable({
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         title="Delete Transaction"
-        message={deleteTarget ? `Delete "${deleteTarget.name}" (${formatCurrency(deleteTarget.amount)})?` : ''}
+        message={
+          deleteTarget
+            ? `Delete "${deleteTarget.name}" (${formatCurrency(deleteTarget.amount)})?`
+            : ""
+        }
         isLoading={deleting}
       />
     </>

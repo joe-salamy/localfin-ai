@@ -3,6 +3,7 @@ Use the merge-conflict-resolver skill.
 Resolve merge conflicts in this integration worktree.
 
 Read:
+
 - `.omp/handoff/merge-conflict-context.md`
 - `.omp/worktree-flow/plan/plan.md`
 - `.omp/handoff/implementation-summary.md`

@@ -1,4 +1,10 @@
-import type { Account, Category, SpendingGoalWithDetails, Subcategory, Tag } from "../../../src/types/index.js";
+import type {
+  Account,
+  Category,
+  SpendingGoalWithDetails,
+  Subcategory,
+  Tag,
+} from "../../../src/types/index.js";
 import { asString, hasAnyField, optionalTagType } from "./input-validators.js";
 
 export function findByName<T extends { name: string }>(
@@ -19,9 +25,12 @@ export function findAllByName<T extends { name: string }>(
   return items.filter((item) => item.name.trim().toLowerCase() === normalized);
 }
 
-export function describeEntityCandidate(
-  item: { id: string; name: string; type?: string; category_id?: string },
-): string {
+export function describeEntityCandidate(item: {
+  id: string;
+  name: string;
+  type?: string;
+  category_id?: string;
+}): string {
   const details = [
     `id=${item.id}`,
     item.type ? `type=${item.type}` : undefined,
@@ -152,7 +161,10 @@ export function resolveTag(
   input: Record<string, unknown>,
   tags: Tag[],
 ): string | undefined {
-  const requestedType = optionalTagType(input.tag_type ?? input.type, "resolve_tag");
+  const requestedType = optionalTagType(
+    input.tag_type ?? input.type,
+    "resolve_tag",
+  );
   const candidates = requestedType
     ? tags.filter((tag) => tag.type === requestedType)
     : tags;
@@ -172,7 +184,10 @@ export function resolveRequestedTag(
     return undefined;
   }
 
-  const requestedType = optionalTagType(input.tag_type ?? input.type, actionType);
+  const requestedType = optionalTagType(
+    input.tag_type ?? input.type,
+    actionType,
+  );
   const candidates = requestedType
     ? tags.filter((tag) => tag.type === requestedType)
     : tags;

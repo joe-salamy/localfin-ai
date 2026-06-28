@@ -143,7 +143,7 @@ User preferences already settled: expose the script through `package.json` as an
       - user message content as JSON with `message: "Add **coffee** to groceries"`, `currentPage`, `context`, and `previousTurns`,
       - `responseText: "**Done**"`,
       - `actions` with one sample action.
-      Assert generated HTML includes `Allowed action types`, `Tools / actions`, `User request`, `Context`, `<strong>coffee</strong>`, `<strong>Done</strong>`, and the action type.
+        Assert generated HTML includes `Allowed action types`, `Tools / actions`, `User request`, `Context`, `<strong>coffee</strong>`, `<strong>Done</strong>`, and the action type.
     - JSON fixture shaped as `{ "messages": [...] }` parses as one event per message object.
     - Invalid JSON Lines input throws an error whose message starts with `Invalid JSON on line 2:`.
     - `renderLogHtmlFile` writes the `.html` file beside a temp `.jsonl` input and returns the output path.

@@ -38,8 +38,10 @@ interface CategoryFlowRow {
   total: number;
 }
 
-
-function buildSankeyTagFilter(tagIds?: string[]): { clause: string; params: string[] } {
+function buildSankeyTagFilter(tagIds?: string[]): {
+  clause: string;
+  params: string[];
+} {
   if (!tagIds || tagIds.length === 0) {
     return { clause: "", params: [] };
   }
@@ -66,7 +68,10 @@ export function prepareNetWorthData(
   endDate: string,
 ): NetWorthDataPoint[] {
   const db = getDb();
-  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
+  const effectiveStartDate = clampStartDateToFirstTransaction(
+    startDate,
+    endDate,
+  );
   const start = parseISO(effectiveStartDate);
   const end = parseISO(endDate);
   const totalDays = differenceInDays(end, start);
@@ -106,7 +111,8 @@ export function prepareNetWorthData(
 
   while (
     isBefore(current, end) ||
-    format(current, DATE_CONFIG.isoDateFormat) === format(end, DATE_CONFIG.isoDateFormat)
+    format(current, DATE_CONFIG.isoDateFormat) ===
+      format(end, DATE_CONFIG.isoDateFormat)
   ) {
     const dateStr = format(current, DATE_CONFIG.isoDateFormat);
     const formattedDate = format(current, dateFormat);
@@ -116,7 +122,10 @@ export function prepareNetWorthData(
       formattedDate,
       netWorth: 0,
       accountColors: Object.fromEntries(
-        accounts.map((account) => [account.name, resolveEntityColor(account.id, account.color)]),
+        accounts.map((account) => [
+          account.name,
+          resolveEntityColor(account.id, account.color),
+        ]),
       ),
     };
 
@@ -147,7 +156,8 @@ export function prepareNetWorthData(
     // Ensure we don't go past the end date
     if (
       isBefore(end, current) &&
-      format(current, DATE_CONFIG.isoDateFormat) !== format(end, DATE_CONFIG.isoDateFormat)
+      format(current, DATE_CONFIG.isoDateFormat) !==
+        format(end, DATE_CONFIG.isoDateFormat)
     ) {
       break;
     }
@@ -162,7 +172,10 @@ export function prepareSankeyData(
   tagIds?: string[],
 ): SankeyData {
   const db = getDb();
-  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
+  const effectiveStartDate = clampStartDateToFirstTransaction(
+    startDate,
+    endDate,
+  );
   const tagFilter = buildSankeyTagFilter(tagIds);
 
   // Get income flows (positive amounts in income categories)
@@ -218,7 +231,11 @@ export function prepareSankeyData(
     }
   }
 
-  function addLabeledNode(id: string, displayName: string, color: string): void {
+  function addLabeledNode(
+    id: string,
+    displayName: string,
+    color: string,
+  ): void {
     if (!nodeSet.has(id)) {
       nodeSet.add(id);
       nodes.push({ id, displayName, nodeColor: color });
@@ -229,7 +246,10 @@ export function prepareSankeyData(
   let totalIncome = 0;
   let totalExpenses = 0;
 
-  const incomeCategoryTotals = new Map<string, { name: string; total: number }>();
+  const incomeCategoryTotals = new Map<
+    string,
+    { name: string; total: number }
+  >();
   for (const row of incomeRows) {
     totalIncome += row.total;
     const categoryId = `income-category:${row.category_id}`;
@@ -240,7 +260,10 @@ export function prepareSankeyData(
     });
   }
 
-  const expenseCategoryTotals = new Map<string, { name: string; total: number }>();
+  const expenseCategoryTotals = new Map<
+    string,
+    { name: string; total: number }
+  >();
   for (const row of expenseRows) {
     totalExpenses += row.total;
     const categoryId = `expense-category:${row.category_id}`;
@@ -273,7 +296,11 @@ export function prepareSankeyData(
   }
 
   for (const [categoryId, category] of incomeCategoryTotals) {
-    links.push({ source: categoryId, target: "Total Income", value: category.total });
+    links.push({
+      source: categoryId,
+      target: "Total Income",
+      value: category.total,
+    });
   }
 
   // Total Income -> Total Expenses
@@ -295,12 +322,17 @@ export function prepareSankeyData(
 
   // Total Expenses -> Expense categories -> Expense subcategories
   for (const [categoryId, category] of expenseCategoryTotals) {
-    const categoryRow = expenseRows.find((row) => `expense-category:${row.category_id}` === categoryId);
+    const categoryRow = expenseRows.find(
+      (row) => `expense-category:${row.category_id}` === categoryId,
+    );
     addLabeledNode(
       categoryId,
       category.name,
       categoryRow
-        ? resolveEntityColor(categoryRow.category_id, categoryRow.category_color)
+        ? resolveEntityColor(
+            categoryRow.category_id,
+            categoryRow.category_color,
+          )
         : "#6b3434",
     );
     links.push({

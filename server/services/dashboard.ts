@@ -109,7 +109,10 @@ export function getAccountSummary(
   endDate: string,
 ): { accounts: AccountSummary[]; netWorth: NetWorthSummary } {
   const db = getDb();
-  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
+  const effectiveStartDate = clampStartDateToFirstTransaction(
+    startDate,
+    endDate,
+  );
 
   const accounts = db
     .prepare(
@@ -127,7 +130,8 @@ export function getAccountSummary(
       )
       .get(account.id, effectiveStartDate) as BalanceRow;
 
-    const startingBalance = account.initial_balance + balanceRow.starting_balance;
+    const startingBalance =
+      account.initial_balance + balanceRow.starting_balance;
 
     // Transactions within range
     const transactions = db
@@ -189,7 +193,10 @@ export function getCategorySummary(
   tagIds?: string[],
 ): CategorySummary[] {
   const db = getDb();
-  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
+  const effectiveStartDate = clampStartDateToFirstTransaction(
+    startDate,
+    endDate,
+  );
   const rangeDays =
     differenceInDays(parseISO(endDate), parseISO(effectiveStartDate)) + 1;
   const tagFilter = buildTagFilterClause("t", tagIds);
@@ -218,7 +225,11 @@ export function getCategorySummary(
      GROUP BY c.id, s.id
      ORDER BY c.type, c.name, s.name`,
     )
-    .all(effectiveStartDate, endDate, ...tagFilter.params) as CategoryGroupRow[];
+    .all(
+      effectiveStartDate,
+      endDate,
+      ...tagFilter.params,
+    ) as CategoryGroupRow[];
 
   // Group by category
   const categoryMap = new Map<string, CategorySummary>();
@@ -275,7 +286,10 @@ export function getDashboardMetrics(
   tagIds?: string[],
 ): DashboardMetrics {
   const db = getDb();
-  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
+  const effectiveStartDate = clampStartDateToFirstTransaction(
+    startDate,
+    endDate,
+  );
   const tagFilter = buildTagFilterClause("t", tagIds);
 
   const row = db
@@ -303,7 +317,10 @@ export function getTagSummary(
   tagIds?: string[],
 ): TagSummary[] {
   const db = getDb();
-  const effectiveStartDate = clampStartDateToFirstTransaction(startDate, endDate);
+  const effectiveStartDate = clampStartDateToFirstTransaction(
+    startDate,
+    endDate,
+  );
   const selectedTagClause =
     tagIds && tagIds.length > 0
       ? `AND tag.id IN (${tagIds.map(() => "?").join(", ")})`
@@ -360,7 +377,11 @@ export function getTagSummary(
        GROUP BY tag.id, c.id
        ORDER BY lower(tag.name), c.name`,
     )
-    .all(effectiveStartDate, endDate, ...selectedTagParams) as TagCategorySummaryRow[];
+    .all(
+      effectiveStartDate,
+      endDate,
+      ...selectedTagParams,
+    ) as TagCategorySummaryRow[];
 
   const categoriesByTagId = new Map<string, TagSummary["categories"]>();
   for (const row of categoryRows) {
@@ -368,7 +389,8 @@ export function getTagSummary(
     categories.push({
       category_id: row.category_id,
       category_name: row.category_name,
-      category_type: row.category_type as TagSummary["categories"][number]["category_type"],
+      category_type:
+        row.category_type as TagSummary["categories"][number]["category_type"],
       category_color: row.category_color,
       expense_total: row.expense_total,
       income_total: row.income_total,

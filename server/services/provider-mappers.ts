@@ -82,13 +82,19 @@ function fallbackProviderTransactionId(input: {
 }): string {
   return crypto
     .createHash("sha256")
-    .update(`${input.provider}:${input.providerAccountId}:${input.date}:${input.name}:${input.amount}`)
+    .update(
+      `${input.provider}:${input.providerAccountId}:${input.date}:${input.name}:${input.amount}`,
+    )
     .digest("hex");
 }
 
-export function mapPlaidAccountTypeToLocal(type: string | null | undefined): AccountType {
+export function mapPlaidAccountTypeToLocal(
+  type: string | null | undefined,
+): AccountType {
   const normalized = type?.trim().toLowerCase();
-  return normalized === "credit" || normalized === "loan" ? "liability" : "asset";
+  return normalized === "credit" || normalized === "loan"
+    ? "liability"
+    : "asset";
 }
 
 export function mapAkoyaAccountTypeToLocal(
@@ -117,7 +123,9 @@ export function mapPlaidTransactionToLocal(input: {
 }): ProviderTransactionDraft {
   const providerAccountId =
     firstNonEmpty(input.transaction.account_id) ?? "unknown-plaid-account";
-  const date = toIsoDate(input.transaction.date ?? input.transaction.authorized_date);
+  const date = toIsoDate(
+    input.transaction.date ?? input.transaction.authorized_date,
+  );
   const name =
     firstNonEmpty(
       input.transaction.merchant_name,
@@ -172,7 +180,9 @@ export function mapAkoyaTransactionToLocal(input: {
       input.transaction.memo,
     ) ?? "Provider transaction";
   const rawAmount = Math.abs(
-    toFiniteNumber(input.transaction.amount ?? input.transaction.transactionAmount),
+    toFiniteNumber(
+      input.transaction.amount ?? input.transaction.transactionAmount,
+    ),
   );
   const signedAmount = toFiniteNumber(
     input.transaction.amount ?? input.transaction.transactionAmount,

@@ -31,7 +31,10 @@ import type {
   TagType,
 } from "../../../src/types/index.js";
 import type { AIAction, ExecutedAction } from "./types.js";
-import { DEFAULT_BULK_TRANSACTION_LIMIT, MAX_BULK_TRANSACTION_LIMIT } from "./constants.js";
+import {
+  DEFAULT_BULK_TRANSACTION_LIMIT,
+  MAX_BULK_TRANSACTION_LIMIT,
+} from "./constants.js";
 import {
   asNullableString,
   asNumber,
@@ -97,12 +100,15 @@ function resolveExistingTagIds(
   nameFields: string[],
 ): string[] {
   const ids = idFields.flatMap((field) => normalizeStringList(input[field]));
-  const names = nameFields.flatMap((field) => normalizeStringList(input[field]));
-  const resolvedNames = names.map((name) =>
-    resolveTag({ tag_name: name, tag_type: input.tag_type }, tags) ??
-    resolveOrCreateTagsByName([
-      { name, type: optionalTagType(input.tag_type, actionType) },
-    ])[0]?.id,
+  const names = nameFields.flatMap((field) =>
+    normalizeStringList(input[field]),
+  );
+  const resolvedNames = names.map(
+    (name) =>
+      resolveTag({ tag_name: name, tag_type: input.tag_type }, tags) ??
+      resolveOrCreateTagsByName([
+        { name, type: optionalTagType(input.tag_type, actionType) },
+      ])[0]?.id,
   );
   return [...ids, ...resolvedNames].filter((id): id is string => Boolean(id));
 }
@@ -137,16 +143,22 @@ function existingTagIds(
   nameFields: string[],
 ): string[] {
   const ids = idFields.flatMap((field) => normalizeStringList(input[field]));
-  const names = nameFields.flatMap((field) => normalizeStringList(input[field]));
+  const names = nameFields.flatMap((field) =>
+    normalizeStringList(input[field]),
+  );
   const resolvedNames = names.map((name) => {
     const id = resolveTag({ tag_name: name, tag_type: input.tag_type }, tags);
-    if (!id) throw new Error(`${actionType} references an unknown tag "${name}"`);
+    if (!id)
+      throw new Error(`${actionType} references an unknown tag "${name}"`);
     return id;
   });
   return [...ids, ...resolvedNames];
 }
 
-function assertNoOverlappingTagEdits(addTagIds: string[], removeTagIds: string[]): void {
+function assertNoOverlappingTagEdits(
+  addTagIds: string[],
+  removeTagIds: string[],
+): void {
   const addTagSet = new Set(addTagIds);
   for (const tagId of removeTagIds) {
     if (addTagSet.has(tagId)) {
@@ -330,7 +342,8 @@ export function executeAction(action: AIAction): ExecutedAction {
                 asString(input.current_name) ??
                 asString(input.tag_name) ??
                 asString(input.name),
-              tag_type: asString(input.current_type) ?? asString(input.tag_type),
+              tag_type:
+                asString(input.current_type) ?? asString(input.tag_type),
             },
             tags,
           );
@@ -460,7 +473,9 @@ export function executeAction(action: AIAction): ExecutedAction {
           throw new Error(`${action.type} requires at least one update field`);
         }
         const filtersResult = getTransactionsWithDetails(filters);
-        const transactionIds = filtersResult.map((transaction) => transaction.id);
+        const transactionIds = filtersResult.map(
+          (transaction) => transaction.id,
+        );
         const kind = hasKindUpdate
           ? optionalTransactionKind(updateInput.kind, action.type)
           : undefined;
@@ -497,7 +512,9 @@ export function executeAction(action: AIAction): ExecutedAction {
             for (const tagId of removeTagIds) nextTagIds.delete(tagId);
             updateTransaction(transaction.id, {
               ...(hasKindUpdate ? { kind } : {}),
-              ...(hasSubcategoryUpdate ? { subcategory_id: subcategoryId } : {}),
+              ...(hasSubcategoryUpdate
+                ? { subcategory_id: subcategoryId }
+                : {}),
               comment: asNullableString(updateInput.comment) ?? null,
               ...(addTagIds.length > 0 || removeTagIds.length > 0
                 ? { tag_ids: Array.from(nextTagIds) }
@@ -509,7 +526,9 @@ export function executeAction(action: AIAction): ExecutedAction {
             ...(hasKindUpdate ? { kind } : {}),
             ...(hasSubcategoryUpdate ? { subcategory_id: subcategoryId } : {}),
             ...(addTagIds.length > 0 ? { add_tag_ids: addTagIds } : {}),
-            ...(removeTagIds.length > 0 ? { remove_tag_ids: removeTagIds } : {}),
+            ...(removeTagIds.length > 0
+              ? { remove_tag_ids: removeTagIds }
+              : {}),
           });
         }
 

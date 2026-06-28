@@ -46,7 +46,10 @@ function requireNormalizedName(name: string): string {
   return normalized;
 }
 
-function findActiveTagByNameAndType(name: string, type: TagType): TagRow | undefined {
+function findActiveTagByNameAndType(
+  name: string,
+  type: TagType,
+): TagRow | undefined {
   const db = getDb();
   return db
     .prepare(
@@ -59,7 +62,11 @@ function findActiveTagByNameAndType(name: string, type: TagType): TagRow | undef
     .get(name, type) as TagRow | undefined;
 }
 
-function checkTagUniqueness(name: string, type: TagType, excludeId?: string): void {
+function checkTagUniqueness(
+  name: string,
+  type: TagType,
+  excludeId?: string,
+): void {
   const db = getDb();
   const existing = excludeId
     ? db
@@ -83,11 +90,17 @@ function checkTagUniqueness(name: string, type: TagType, excludeId?: string): vo
         .get(name, type);
 
   if (existing) {
-    throw new Error(`A tag with the name "${name}" and type "${type}" already exists`);
+    throw new Error(
+      `A tag with the name "${name}" and type "${type}" already exists`,
+    );
   }
 }
 
-export function createTag(data: { name: string; type?: TagType; color?: string | null }): Tag {
+export function createTag(data: {
+  name: string;
+  type?: TagType;
+  color?: string | null;
+}): Tag {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -107,7 +120,9 @@ export function createTag(data: { name: string; type?: TagType; color?: string |
 export function getTags(): Tag[] {
   const db = getDb();
   const rows = db
-    .prepare("SELECT * FROM tags WHERE deleted_at IS NULL ORDER BY type, lower(name), created_at")
+    .prepare(
+      "SELECT * FROM tags WHERE deleted_at IS NULL ORDER BY type, lower(name), created_at",
+    )
     .all() as TagRow[];
   return rows.map(rowToTag);
 }
@@ -134,7 +149,10 @@ export function updateTag(
     throw new Error(`Tag with id "${id}" not found`);
   }
 
-  const name = updates.name !== undefined ? requireNormalizedName(updates.name) : existing.name;
+  const name =
+    updates.name !== undefined
+      ? requireNormalizedName(updates.name)
+      : existing.name;
   const type = updates.type ?? (existing.type as TagType);
   const color = updates.color !== undefined ? updates.color : existing.color;
 
@@ -142,8 +160,9 @@ export function updateTag(
     checkTagUniqueness(name, type, id);
   }
 
-  db.prepare("UPDATE tags SET name = ?, type = ?, color = ?, updated_at = ? WHERE id = ?")
-    .run(name, type, color, now, id);
+  db.prepare(
+    "UPDATE tags SET name = ?, type = ?, color = ?, updated_at = ? WHERE id = ?",
+  ).run(name, type, color, now, id);
 
   const row = db.prepare("SELECT * FROM tags WHERE id = ?").get(id) as TagRow;
   return rowToTag(row);
@@ -154,7 +173,9 @@ export function deleteTag(id: string): void {
   const now = new Date().toISOString();
   const deleteTagTransaction = db.transaction(() => {
     const result = db
-      .prepare("UPDATE tags SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL")
+      .prepare(
+        "UPDATE tags SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+      )
       .run(now, now, id);
 
     if (result.changes === 0) {
@@ -178,7 +199,9 @@ export function assertActiveTags(tagIds: string[]): string[] {
     uniqueIds.push(id);
   }
 
-  const stmt = db.prepare("SELECT 1 FROM tags WHERE id = ? AND deleted_at IS NULL");
+  const stmt = db.prepare(
+    "SELECT 1 FROM tags WHERE id = ? AND deleted_at IS NULL",
+  );
   for (const id of uniqueIds) {
     if (!stmt.get(id)) {
       throw new Error(`Tag with id "${id}" not found`);
@@ -188,7 +211,9 @@ export function assertActiveTags(tagIds: string[]): string[] {
   return uniqueIds;
 }
 
-export function getTagsForTransactions(transactionIds: string[]): Map<string, Tag[]> {
+export function getTagsForTransactions(
+  transactionIds: string[],
+): Map<string, Tag[]> {
   const db = getDb();
   const result = new Map<string, Tag[]>();
   if (transactionIds.length === 0) return result;
@@ -218,12 +243,19 @@ export function getTagsForTransactions(transactionIds: string[]): Map<string, Ta
   return result;
 }
 
-export function replaceTransactionTags(transactionId: string, tagIds: string[]): void {
+export function replaceTransactionTags(
+  transactionId: string,
+  tagIds: string[],
+): void {
   const db = getDb();
   const activeTagIds = assertActiveTags(tagIds);
   const replaceTags = db.transaction(() => {
-    db.prepare("DELETE FROM transaction_tags WHERE transaction_id = ?").run(transactionId);
-    const stmt = db.prepare("INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)");
+    db.prepare("DELETE FROM transaction_tags WHERE transaction_id = ?").run(
+      transactionId,
+    );
+    const stmt = db.prepare(
+      "INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)",
+    );
     for (const tagId of activeTagIds) {
       stmt.run(transactionId, tagId);
     }
@@ -232,13 +264,18 @@ export function replaceTransactionTags(transactionId: string, tagIds: string[]):
   replaceTags();
 }
 
-export function addTransactionTags(transactionId: string, tagIds: string[]): void {
+export function addTransactionTags(
+  transactionId: string,
+  tagIds: string[],
+): void {
   const db = getDb();
   const activeTagIds = assertActiveTags(tagIds);
   if (activeTagIds.length === 0) return;
 
   const addTags = db.transaction(() => {
-    const stmt = db.prepare("INSERT OR IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)");
+    const stmt = db.prepare(
+      "INSERT OR IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)",
+    );
     for (const tagId of activeTagIds) {
       stmt.run(transactionId, tagId);
     }
@@ -247,7 +284,10 @@ export function addTransactionTags(transactionId: string, tagIds: string[]): voi
   addTags();
 }
 
-export function removeTransactionTags(transactionId: string, tagIds: string[]): void {
+export function removeTransactionTags(
+  transactionId: string,
+  tagIds: string[],
+): void {
   const db = getDb();
   const activeTagIds = assertActiveTags(tagIds);
   if (activeTagIds.length === 0) return;
@@ -260,7 +300,9 @@ export function removeTransactionTags(transactionId: string, tagIds: string[]): 
   ).run(transactionId, ...activeTagIds);
 }
 
-export function resolveOrCreateTagsByName(items: Array<{ name: string; type?: TagType }>): Tag[] {
+export function resolveOrCreateTagsByName(
+  items: Array<{ name: string; type?: TagType }>,
+): Tag[] {
   const tagsByKey = new Map<string, Tag>();
   const resolvedTags: Tag[] = [];
 

@@ -437,7 +437,11 @@ test("agent refuses deletion and streaming emits a traceable lifecycle", async (
 
 test("agent creates an explicit trip tag and assigns it to a transaction", async (t) => {
   const { db } = await createFixture(t);
-  createAccount({ name: "Travel Checking", type: "asset", initial_balance: 2000 });
+  createAccount({
+    name: "Travel Checking",
+    type: "asset",
+    initial_balance: 2000,
+  });
   createNamedCategory("Travel", "expense");
   createNamedSubcategory("Lodging", "Travel");
   const calls = installOpenRouterMock(() => ({
@@ -507,7 +511,10 @@ test("agent creates an explicit trip tag and assigns it to a transaction", async
     input: { searchQuery: '"Cabo Hotel"', tagIds: [transaction.tags[0]?.id] },
   });
   const tagFilteredResults = tagFilteredSearch.result;
-  assert.ok(Array.isArray(tagFilteredResults), "expected tag-filtered search results");
+  assert.ok(
+    Array.isArray(tagFilteredResults),
+    "expected tag-filtered search results",
+  );
   assert.deepEqual(
     tagFilteredResults.map((item) => item.id),
     [transaction.id],
@@ -526,7 +533,10 @@ test("agent update failure does not create explicit add-tag side effects", async
   });
 
   assert.equal(result.status, "error");
-  assert.match(result.error ?? "", /Transaction with id "missing-transaction" not found/);
+  assert.match(
+    result.error ?? "",
+    /Transaction with id "missing-transaction" not found/,
+  );
   assert.deepEqual(getTags(), []);
 });
 
@@ -534,7 +544,10 @@ test("agent rejects conflicting bulk tag edits when also updating comments", asy
   await createFixture(t);
   const account = createAccount({ name: "Checking", type: "asset" });
   const categoryId = createNamedCategory("Travel", "expense");
-  const subcategory = createSubcategory({ name: "Hotels", category_id: categoryId });
+  const subcategory = createSubcategory({
+    name: "Hotels",
+    category_id: categoryId,
+  });
   const tag = createTag({ name: "Cabo Trip", type: "trip" });
   const transaction = createTransaction({
     account_id: account.id,
@@ -560,15 +573,24 @@ test("agent rejects conflicting bulk tag edits when also updating comments", asy
 
   assert.equal(result.status, "error");
   assert.match(result.error ?? "", /Cannot add and remove the same tag/);
-  const unchanged = getTransactionsWithDetails({ searchQuery: '"Cabo Hotel"' })[0];
+  const unchanged = getTransactionsWithDetails({
+    searchQuery: '"Cabo Hotel"',
+  })[0];
   assert.equal(unchanged?.id, transaction.id);
   assert.equal(unchanged?.comment, null);
-  assert.deepEqual(unchanged?.tags.map((item) => item.id), [tag.id]);
+  assert.deepEqual(
+    unchanged?.tags.map((item) => item.id),
+    [tag.id],
+  );
 });
 
 test("agent does not infer tags without explicit tag wording", async (t) => {
   await createFixture(t);
-  createAccount({ name: "Travel Checking", type: "asset", initial_balance: 2000 });
+  createAccount({
+    name: "Travel Checking",
+    type: "asset",
+    initial_balance: 2000,
+  });
   createNamedCategory("Travel", "expense");
   createNamedSubcategory("Lodging", "Travel");
   const calls = installOpenRouterMock(() => ({

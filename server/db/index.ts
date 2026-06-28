@@ -1,9 +1,9 @@
-import Database from 'better-sqlite3';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { seed } from './seed.js';
-import { DATABASE_CONFIG } from '../config/app.js';
+import Database from "better-sqlite3";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { seed } from "./seed.js";
+import { DATABASE_CONFIG } from "../config/app.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,11 +34,14 @@ export function getDb(): Database.Database {
   db = new Database(dbPath);
 
   // Enable WAL mode and foreign keys
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
 
   // Run schema
-  const schema = fs.readFileSync(path.resolve(__dirname, DATABASE_CONFIG.schemaFileName), 'utf-8');
+  const schema = fs.readFileSync(
+    path.resolve(__dirname, DATABASE_CONFIG.schemaFileName),
+    "utf-8",
+  );
   db.exec(schema);
   migrate(db);
 
@@ -49,8 +52,14 @@ export function getDb(): Database.Database {
   return db;
 }
 
-function columnExists(database: Database.Database, tableName: string, columnName: string): boolean {
-  const rows = database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+function columnExists(
+  database: Database.Database,
+  tableName: string,
+  columnName: string,
+): boolean {
+  const rows = database
+    .prepare(`PRAGMA table_info(${tableName})`)
+    .all() as Array<{ name: string }>;
   return rows.some((row) => row.name === columnName);
 }
 
@@ -61,15 +70,23 @@ function tableExists(database: Database.Database, tableName: string): boolean {
   return Boolean(row);
 }
 
-function addColumnIfMissing(database: Database.Database, tableName: string, columnDefinition: string): void {
+function addColumnIfMissing(
+  database: Database.Database,
+  tableName: string,
+  columnDefinition: string,
+): void {
   const [columnName] = columnDefinition.split(/\s+/);
   if (!columnName || columnExists(database, tableName, columnName)) return;
   database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition}`);
 }
 
-function transactionKindConstraintAllowsAdjustment(database: Database.Database): boolean {
+function transactionKindConstraintAllowsAdjustment(
+  database: Database.Database,
+): boolean {
   const row = database
-    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'transactions'")
+    .prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'transactions'",
+    )
     .get() as { sql: string } | undefined;
 
   return row?.sql.includes("'adjustment'") ?? false;
@@ -78,7 +95,7 @@ function transactionKindConstraintAllowsAdjustment(database: Database.Database):
 function migrateTransactionKindConstraint(database: Database.Database): void {
   if (transactionKindConstraintAllowsAdjustment(database)) return;
 
-  const hadTransactionTagsTable = tableExists(database, 'transaction_tags');
+  const hadTransactionTagsTable = tableExists(database, "transaction_tags");
   if (hadTransactionTagsTable) {
     database.exec(`
       DROP TABLE IF EXISTS temp.transaction_tags_kind_migration;
@@ -317,12 +334,20 @@ function ensureProviderTables(database: Database.Database): void {
 }
 
 function ensureProviderTransactionColumns(database: Database.Database): void {
-  addColumnIfMissing(database, 'transactions', "provider TEXT CHECK(provider IN ('plaid', 'akoya'))");
-  addColumnIfMissing(database, 'transactions', 'provider_connection_id TEXT');
-  addColumnIfMissing(database, 'transactions', 'provider_account_id TEXT');
-  addColumnIfMissing(database, 'transactions', 'provider_transaction_id TEXT');
-  addColumnIfMissing(database, 'transactions', 'provider_pending_transaction_id TEXT');
-  addColumnIfMissing(database, 'transactions', 'provider_synced_at TEXT');
+  addColumnIfMissing(
+    database,
+    "transactions",
+    "provider TEXT CHECK(provider IN ('plaid', 'akoya'))",
+  );
+  addColumnIfMissing(database, "transactions", "provider_connection_id TEXT");
+  addColumnIfMissing(database, "transactions", "provider_account_id TEXT");
+  addColumnIfMissing(database, "transactions", "provider_transaction_id TEXT");
+  addColumnIfMissing(
+    database,
+    "transactions",
+    "provider_pending_transaction_id TEXT",
+  );
+  addColumnIfMissing(database, "transactions", "provider_synced_at TEXT");
   database.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_provider_transaction
       ON transactions(provider, provider_transaction_id)
@@ -334,14 +359,34 @@ function ensureProviderTransactionColumns(database: Database.Database): void {
 }
 
 function migrate(database: Database.Database): void {
-  const hadInitialBalanceColumn = columnExists(database, 'accounts', 'initial_balance');
-  addColumnIfMissing(database, 'accounts', 'initial_balance REAL NOT NULL DEFAULT 0');
-  addColumnIfMissing(database, 'accounts', 'color TEXT');
-  addColumnIfMissing(database, 'categories', 'color TEXT');
-  addColumnIfMissing(database, 'subcategories', 'color TEXT');
-  addColumnIfMissing(database, 'transactions', "kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer', 'adjustment'))");
-  addColumnIfMissing(database, 'transactions', 'is_initial_balance INTEGER NOT NULL DEFAULT 0');
-  addColumnIfMissing(database, 'transactions', 'ai_suggested INTEGER NOT NULL DEFAULT 0');
+  const hadInitialBalanceColumn = columnExists(
+    database,
+    "accounts",
+    "initial_balance",
+  );
+  addColumnIfMissing(
+    database,
+    "accounts",
+    "initial_balance REAL NOT NULL DEFAULT 0",
+  );
+  addColumnIfMissing(database, "accounts", "color TEXT");
+  addColumnIfMissing(database, "categories", "color TEXT");
+  addColumnIfMissing(database, "subcategories", "color TEXT");
+  addColumnIfMissing(
+    database,
+    "transactions",
+    "kind TEXT NOT NULL DEFAULT 'expense' CHECK(kind IN ('income', 'expense', 'transfer', 'adjustment'))",
+  );
+  addColumnIfMissing(
+    database,
+    "transactions",
+    "is_initial_balance INTEGER NOT NULL DEFAULT 0",
+  );
+  addColumnIfMissing(
+    database,
+    "transactions",
+    "ai_suggested INTEGER NOT NULL DEFAULT 0",
+  );
   migrateTransactionKindConstraint(database);
   database.exec(`
     UPDATE transactions

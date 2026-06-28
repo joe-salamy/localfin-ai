@@ -48,26 +48,43 @@ interface StatusRow {
 
 const plaidState: PlaidFixtureState = {
   balances: { accounts: [] },
-  syncPages: [{ added: [], modified: [], removed: [], next_cursor: null, has_more: false }],
+  syncPages: [
+    {
+      added: [],
+      modified: [],
+      removed: [],
+      next_cursor: null,
+      has_more: false,
+    },
+  ],
   exchange: { access_token: "plaid-access-token", item_id: "plaid-item-1" },
 };
 const akoyaState: AkoyaFixtureState = {
-  exchange: { id_token: "akoya-id-token", refresh_token: "akoya-refresh-token" },
-  refresh: { id_token: "akoya-refreshed-id-token", refresh_token: "akoya-next-refresh-token" },
+  exchange: {
+    id_token: "akoya-id-token",
+    refresh_token: "akoya-refresh-token",
+  },
+  refresh: {
+    id_token: "akoya-refreshed-id-token",
+    refresh_token: "akoya-next-refresh-token",
+  },
   balances: { accounts: [] },
   transactions: [],
   lastProviderIds: [],
 };
 
-
 async function useTempDatabase(t: TestContext) {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-provider-test-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "localfin-provider-test-"),
+  );
   closeDbForTests();
   process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
-  process.env.LOCALFIN_PROVIDER_SECRET = "provider-test-secret-at-least-32-characters";
+  process.env.LOCALFIN_PROVIDER_SECRET =
+    "provider-test-secret-at-least-32-characters";
   process.env.AKOYA_CLIENT_ID = "akoya-client-id";
   process.env.AKOYA_CLIENT_SECRET = "akoya-client-secret";
-  process.env.AKOYA_REDIRECT_URI = "http://localhost:3001/api/account-linking/akoya/callback";
+  process.env.AKOYA_REDIRECT_URI =
+    "http://localhost:3001/api/account-linking/akoya/callback";
   t.after(async () => {
     closeDbForTests();
     if (originalDbPath === undefined) {
@@ -85,7 +102,10 @@ async function useTempDatabase(t: TestContext) {
 }
 
 function resetProviderState() {
-  plaidState.exchange = { access_token: "plaid-access-token", item_id: "plaid-item-1" };
+  plaidState.exchange = {
+    access_token: "plaid-access-token",
+    item_id: "plaid-item-1",
+  };
   plaidState.balances = {
     accounts: [
       {
@@ -99,10 +119,22 @@ function resetProviderState() {
     ],
   };
   plaidState.syncPages = [
-    { added: [], modified: [], removed: [], next_cursor: "cursor-empty", has_more: false },
+    {
+      added: [],
+      modified: [],
+      removed: [],
+      next_cursor: "cursor-empty",
+      has_more: false,
+    },
   ];
-  akoyaState.exchange = { id_token: "akoya-id-token", refresh_token: "akoya-refresh-token" };
-  akoyaState.refresh = { id_token: "akoya-refreshed-id-token", refresh_token: "akoya-next-refresh-token" };
+  akoyaState.exchange = {
+    id_token: "akoya-id-token",
+    refresh_token: "akoya-refresh-token",
+  };
+  akoyaState.refresh = {
+    id_token: "akoya-refreshed-id-token",
+    refresh_token: "akoya-next-refresh-token",
+  };
   akoyaState.balances = { accounts: [] };
   akoyaState.transactions = [];
   akoyaState.lastProviderIds = [];
@@ -111,7 +143,10 @@ function resetProviderState() {
 function installProviderClientMocks(t: TestContext) {
   const restore = service.setProviderClientsForTests({
     plaid: {
-      createPlaidLinkToken: async () => ({ link_token: "link-token", expiration: null }),
+      createPlaidLinkToken: async () => ({
+        link_token: "link-token",
+        expiration: null,
+      }),
       exchangePublicToken: async () => plaidState.exchange,
       getBalances: async () => plaidState.balances,
       syncTransactions: async () => plaidState.syncPages.shift(),
@@ -163,7 +198,9 @@ test("Plaid linking creates encrypted connection, provider accounts, and local a
     .prepare("SELECT COUNT(*) AS count FROM accounts WHERE deleted_at IS NULL")
     .get() as CountRow;
   const providerAccountCount = db
-    .prepare("SELECT COUNT(*) AS count FROM provider_accounts WHERE deleted_at IS NULL")
+    .prepare(
+      "SELECT COUNT(*) AS count FROM provider_accounts WHERE deleted_at IS NULL",
+    )
     .get() as CountRow;
   assert.equal(accountCount.count, 1);
   assert.equal(providerAccountCount.count, 1);
@@ -203,17 +240,23 @@ test("first Plaid sync imports transactions, cursor, and provider balance adjust
     },
   ];
 
-  const [result] = await service.syncProviderConnections({ connectionId: connection.id });
+  const [result] = await service.syncProviderConnections({
+    connectionId: connection.id,
+  });
 
   assert.equal(result.transactionsAdded, 2);
   assert.equal(result.balanceAdjustmentsCreated, 1);
   assert.equal(result.connectionId, connection.id);
   const db = getDb();
   const cursor = db
-    .prepare("SELECT transactions_cursor FROM provider_connections WHERE id = ?")
+    .prepare(
+      "SELECT transactions_cursor FROM provider_connections WHERE id = ?",
+    )
     .get(connection.id) as CursorRow;
   const plaidTransactionCount = db
-    .prepare("SELECT COUNT(*) AS count FROM transactions WHERE provider = 'plaid' AND deleted_at IS NULL")
+    .prepare(
+      "SELECT COUNT(*) AS count FROM transactions WHERE provider = 'plaid' AND deleted_at IS NULL",
+    )
     .get() as CountRow;
   assert.equal(cursor.transactions_cursor, "cursor-1");
   assert.equal(plaidTransactionCount.count, 3);
@@ -246,7 +289,9 @@ test("repeating the same Plaid sync does not duplicate transactions or adjustmen
   plaidState.syncPages = [repeatedPage];
   await service.syncProviderConnections({ connectionId: connection.id });
   plaidState.syncPages = [repeatedPage];
-  const [second] = await service.syncProviderConnections({ connectionId: connection.id });
+  const [second] = await service.syncProviderConnections({
+    connectionId: connection.id,
+  });
 
   const db = getDb();
   assert.equal(second.transactionsAdded, 0);
@@ -257,7 +302,9 @@ test("repeating the same Plaid sync does not duplicate transactions or adjustmen
     )
     .get() as CountRow;
   const adjustmentCount = db
-    .prepare("SELECT COUNT(*) AS count FROM transactions WHERE kind = 'adjustment' AND deleted_at IS NULL")
+    .prepare(
+      "SELECT COUNT(*) AS count FROM transactions WHERE kind = 'adjustment' AND deleted_at IS NULL",
+    )
     .get() as CountRow;
   assert.equal(repeatedTransactionCount.count, 1);
   assert.equal(adjustmentCount.count, 1);
@@ -300,12 +347,16 @@ test("Plaid removed transaction soft-deletes the provider transaction without de
     },
   ];
 
-  const [removed] = await service.syncProviderConnections({ connectionId: connection.id });
+  const [removed] = await service.syncProviderConnections({
+    connectionId: connection.id,
+  });
 
   const db = getDb();
   assert.equal(removed.transactionsRemoved, 1);
   const removedRow = db
-    .prepare("SELECT deleted_at FROM transactions WHERE provider_transaction_id = 'tx-remove-1'")
+    .prepare(
+      "SELECT deleted_at FROM transactions WHERE provider_transaction_id = 'tx-remove-1'",
+    )
     .get() as DeletedAtRow;
   const accountCount = db
     .prepare("SELECT COUNT(*) AS count FROM accounts WHERE deleted_at IS NULL")
@@ -344,7 +395,9 @@ test("Akoya 401 after refresh marks connection needs_reauth and preserves local 
        'income', 0, 0, 'akoya', ?, 'akoya-account-1', 'akoya-existing', ?, ?
      )`,
   ).run(connection.id, timestamp, timestamp);
-  akoyaState.balances = Object.assign(new Error("Akoya returned 401"), { status: 401 });
+  akoyaState.balances = Object.assign(new Error("Akoya returned 401"), {
+    status: 401,
+  });
 
   await assert.rejects(
     service.syncProviderConnections({ connectionId: connection.id }),
@@ -355,7 +408,9 @@ test("Akoya 401 after refresh marks connection needs_reauth and preserves local 
     .prepare("SELECT status FROM provider_connections WHERE id = ?")
     .get(connection.id) as StatusRow;
   const accountCount = db
-    .prepare("SELECT COUNT(*) AS count FROM accounts WHERE id = 'local-akoya-account' AND deleted_at IS NULL")
+    .prepare(
+      "SELECT COUNT(*) AS count FROM accounts WHERE id = 'local-akoya-account' AND deleted_at IS NULL",
+    )
     .get() as CountRow;
   const transactionCount = db
     .prepare(
@@ -391,7 +446,10 @@ test("Akoya sync uses the provider id stored on the connection", async (t) => {
 
   await service.syncProviderConnections({ connectionId: connection.id });
 
-  assert.deepEqual(akoyaState.lastProviderIds, ["stored-provider-id", "stored-provider-id"]);
+  assert.deepEqual(akoyaState.lastProviderIds, [
+    "stored-provider-id",
+    "stored-provider-id",
+  ]);
 });
 
 test("Plaid sync skips null provider balances instead of zeroing accounts", async (t) => {
@@ -416,7 +474,9 @@ test("Plaid sync skips null provider balances instead of zeroing accounts", asyn
     metadata: { institution: { institution_id: "ins_1", name: "US Bank" } },
   });
 
-  const results = await service.syncProviderConnections({ connectionId: connection.id });
+  const results = await service.syncProviderConnections({
+    connectionId: connection.id,
+  });
   const adjustmentCount = getDb()
     .prepare(
       "SELECT COUNT(*) AS count FROM transactions WHERE name = 'Provider balance sync' AND deleted_at IS NULL",
@@ -438,7 +498,9 @@ test("syncing an inactive requested connection rejects instead of returning an e
     metadata: { institution: { institution_id: "ins_1", name: "US Bank" } },
   });
   getDb()
-    .prepare("UPDATE provider_connections SET status = 'needs_reauth' WHERE id = ?")
+    .prepare(
+      "UPDATE provider_connections SET status = 'needs_reauth' WHERE id = ?",
+    )
     .run(connection.id);
 
   await assert.rejects(
@@ -456,7 +518,9 @@ test("Akoya 403 after refresh marks connection needs_reauth", async (t) => {
     code: "oauth-code",
     state: authorization.state,
   });
-  akoyaState.balances = Object.assign(new Error("Akoya returned 403"), { status: 403 });
+  akoyaState.balances = Object.assign(new Error("Akoya returned 403"), {
+    status: 403,
+  });
 
   await assert.rejects(
     service.syncProviderConnections({ connectionId: connection.id }),

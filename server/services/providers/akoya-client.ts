@@ -1,4 +1,4 @@
-import { ENV_KEYS, PROVIDER_CONFIG } from '../../config/app.js';
+import { ENV_KEYS, PROVIDER_CONFIG } from "../../config/app.js";
 
 export interface AkoyaRuntimeConfig {
   clientId: string;
@@ -59,114 +59,158 @@ function readEnv(envKey: string, fallback?: string): string {
 
 function redactProviderText(value: string): string {
   return value
-    .replace(/("(?:access_token|refresh_token|id_token|public_token|token|secret)"\s*:\s*")[^"]+(")/gi, '$1[REDACTED]$2')
-    .replace(/((?:access_token|refresh_token|id_token|public_token|token|secret)=)[^&\s]+/gi, '$1[REDACTED]')
-    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[REDACTED]');
+    .replace(
+      /("(?:access_token|refresh_token|id_token|public_token|token|secret)"\s*:\s*")[^"]+(")/gi,
+      "$1[REDACTED]$2",
+    )
+    .replace(
+      /((?:access_token|refresh_token|id_token|public_token|token|secret)=)[^&\s]+/gi,
+      "$1[REDACTED]",
+    )
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, "$1[REDACTED]");
 }
 
 function trimTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, '');
+  return value.replace(/\/+$/, "");
 }
 
 export function getAkoyaRuntimeConfig(): AkoyaRuntimeConfig {
-  const connector = readEnv(ENV_KEYS.akoyaConnector, PROVIDER_CONFIG.akoyaConnector);
+  const connector = readEnv(
+    ENV_KEYS.akoyaConnector,
+    PROVIDER_CONFIG.akoyaConnector,
+  );
   return {
     clientId: readEnv(ENV_KEYS.akoyaClientId),
     clientSecret: readEnv(ENV_KEYS.akoyaClientSecret),
-    authBaseUrl: trimTrailingSlash(readEnv(ENV_KEYS.akoyaAuthBaseUrl, PROVIDER_CONFIG.akoyaAuthBaseUrl)),
-    apiBaseUrl: trimTrailingSlash(readEnv(ENV_KEYS.akoyaApiBaseUrl, PROVIDER_CONFIG.akoyaApiBaseUrl)),
+    authBaseUrl: trimTrailingSlash(
+      readEnv(ENV_KEYS.akoyaAuthBaseUrl, PROVIDER_CONFIG.akoyaAuthBaseUrl),
+    ),
+    apiBaseUrl: trimTrailingSlash(
+      readEnv(ENV_KEYS.akoyaApiBaseUrl, PROVIDER_CONFIG.akoyaApiBaseUrl),
+    ),
     redirectUri: readEnv(ENV_KEYS.akoyaRedirectUri),
     connector,
-    providerId: readEnv(ENV_KEYS.akoyaProviderId, connector || PROVIDER_CONFIG.akoyaProviderId),
-    apiVersion: readEnv(ENV_KEYS.akoyaApiVersion, PROVIDER_CONFIG.akoyaApiVersion),
+    providerId: readEnv(
+      ENV_KEYS.akoyaProviderId,
+      connector || PROVIDER_CONFIG.akoyaProviderId,
+    ),
+    apiVersion: readEnv(
+      ENV_KEYS.akoyaApiVersion,
+      PROVIDER_CONFIG.akoyaApiVersion,
+    ),
     scope: PROVIDER_CONFIG.akoyaScope,
   };
 }
 
 async function readResponseText(response: Response): Promise<string> {
-  const contentType = response.headers.get('content-type') ?? '';
-  if (contentType.includes('application/json')) {
-    const body = await response.json() as unknown;
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const body = (await response.json()) as unknown;
     return JSON.stringify(body);
   }
   return response.text();
 }
 
-async function parseJsonResponse<T>(providerAction: string, response: Response): Promise<T> {
+async function parseJsonResponse<T>(
+  providerAction: string,
+  response: Response,
+): Promise<T> {
   if (response.ok) {
     return response.json() as Promise<T>;
   }
 
   const body = await readResponseText(response);
-  throw new Error(`Akoya ${providerAction} failed status ${response.status}: ${redactProviderText(body)}`);
+  throw new Error(
+    `Akoya ${providerAction} failed status ${response.status}: ${redactProviderText(body)}`,
+  );
 }
 
 function createBasicAuthHeader(clientId: string, clientSecret: string): string {
-  return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
+  return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
 }
 
-export async function exchangeCodeForTokens(input: ExchangeCodeForTokensInput): Promise<AkoyaTokenResponse> {
+export async function exchangeCodeForTokens(
+  input: ExchangeCodeForTokensInput,
+): Promise<AkoyaTokenResponse> {
   const config = getAkoyaRuntimeConfig();
   const body = new URLSearchParams({
-    grant_type: 'authorization_code',
+    grant_type: "authorization_code",
     redirect_uri: input.redirectUri ?? config.redirectUri,
     code: input.code,
   });
 
   const response = await fetch(`${config.authBaseUrl}/token`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      Authorization: createBasicAuthHeader(config.clientId, config.clientSecret),
-      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: createBasicAuthHeader(
+        config.clientId,
+        config.clientSecret,
+      ),
+      "Content-Type": "application/x-www-form-urlencoded",
     },
     body,
   });
-  return parseJsonResponse<AkoyaTokenResponse>('authorization code exchange', response);
+  return parseJsonResponse<AkoyaTokenResponse>(
+    "authorization code exchange",
+    response,
+  );
 }
 
-export async function refreshTokens(input: RefreshTokensInput): Promise<AkoyaTokenResponse> {
+export async function refreshTokens(
+  input: RefreshTokensInput,
+): Promise<AkoyaTokenResponse> {
   const config = getAkoyaRuntimeConfig();
   const body = new URLSearchParams({
-    grant_type: 'refresh_token',
+    grant_type: "refresh_token",
     refresh_token: input.refreshToken,
     client_id: config.clientId,
     client_secret: config.clientSecret,
   });
 
   const response = await fetch(`${config.authBaseUrl}/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  return parseJsonResponse<AkoyaTokenResponse>('token refresh', response);
+  return parseJsonResponse<AkoyaTokenResponse>("token refresh", response);
 }
 
-export async function getBalances(input: GetAkoyaBalancesInput): Promise<unknown> {
+export async function getBalances(
+  input: GetAkoyaBalancesInput,
+): Promise<unknown> {
   const config = getAkoyaRuntimeConfig();
   const providerId = encodeURIComponent(input.providerId ?? config.providerId);
   const apiVersion = encodeURIComponent(config.apiVersion);
-  const response = await fetch(`${config.apiBaseUrl}/balances/${apiVersion}/${providerId}?mode=standard`, {
-    headers: { Authorization: `Bearer ${input.idToken}` },
-  });
-  return parseJsonResponse<unknown>('balance retrieval', response);
+  const response = await fetch(
+    `${config.apiBaseUrl}/balances/${apiVersion}/${providerId}?mode=standard`,
+    {
+      headers: { Authorization: `Bearer ${input.idToken}` },
+    },
+  );
+  return parseJsonResponse<unknown>("balance retrieval", response);
 }
 
-export async function getTransactions(input: GetAkoyaTransactionsInput): Promise<unknown> {
+export async function getTransactions(
+  input: GetAkoyaTransactionsInput,
+): Promise<unknown> {
   const config = getAkoyaRuntimeConfig();
   const providerId = encodeURIComponent(input.providerId ?? config.providerId);
   const accountId = encodeURIComponent(input.accountId);
   const apiVersion = encodeURIComponent(config.apiVersion);
   const params = new URLSearchParams({
-    mode: 'standard',
+    mode: "standard",
     startTime: input.startTime,
     endTime: input.endTime,
     limit: String(input.limit ?? 500),
     offset: String(input.offset ?? 0),
   });
-  const response = await fetch(`${config.apiBaseUrl}/transactions/${apiVersion}/${providerId}/${accountId}?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${input.idToken}` },
-  });
-  return parseJsonResponse<unknown>('transactions retrieval', response);
+  const response = await fetch(
+    `${config.apiBaseUrl}/transactions/${apiVersion}/${providerId}/${accountId}?${params.toString()}`,
+    {
+      headers: { Authorization: `Bearer ${input.idToken}` },
+    },
+  );
+  return parseJsonResponse<unknown>("transactions retrieval", response);
 }
 
 export async function revokeToken(input: RevokeTokenInput): Promise<void> {
@@ -175,12 +219,12 @@ export async function revokeToken(input: RevokeTokenInput): Promise<void> {
     client_id: config.clientId,
     client_secret: config.clientSecret,
     token: input.refreshToken,
-    token_type_hint: 'refresh_token',
+    token_type_hint: "refresh_token",
   });
 
   const response = await fetch(`${config.authBaseUrl}/revoke`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
 
@@ -189,5 +233,7 @@ export async function revokeToken(input: RevokeTokenInput): Promise<void> {
   }
 
   const responseBody = await readResponseText(response);
-  throw new Error(`Akoya token revocation failed status ${response.status}: ${redactProviderText(responseBody)}`);
+  throw new Error(
+    `Akoya token revocation failed status ${response.status}: ${redactProviderText(responseBody)}`,
+  );
 }

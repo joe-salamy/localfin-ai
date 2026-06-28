@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '@/lib/api';
-import { queryKeys } from '@/lib/queryKeys';
+import { useQuery } from "@tanstack/react-query";
+import { apiGet } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
 import type {
   AccountSummaryResponse,
   CategorySummary,
@@ -9,7 +9,7 @@ import type {
   NetWorthSummary,
   SankeyData,
   TagSummary,
-} from '@/types/index';
+} from "@/types/index";
 
 const EMPTY_NET_WORTH: NetWorthSummary = {
   total_assets: 0,
@@ -17,10 +17,20 @@ const EMPTY_NET_WORTH: NetWorthSummary = {
   net_worth: 0,
 };
 
-export function useDashboard(startDate: string, endDate: string, filters?: { tagIds?: string[] }) {
+export function useDashboard(
+  startDate: string,
+  endDate: string,
+  filters?: { tagIds?: string[] },
+) {
   const dateParams = `?startDate=${startDate}&endDate=${endDate}`;
-  const transactionReportQuery = buildDashboardQueryString(startDate, endDate, filters);
-  const transactionReportFilters = filters?.tagIds?.length ? { tagIds: filters.tagIds } : undefined;
+  const transactionReportQuery = buildDashboardQueryString(
+    startDate,
+    endDate,
+    filters,
+  );
+  const transactionReportFilters = filters?.tagIds?.length
+    ? { tagIds: filters.tagIds }
+    : undefined;
 
   const accountSummaryQuery = useQuery({
     queryKey: queryKeys.dashboard.accountSummary(startDate, endDate),
@@ -30,14 +40,24 @@ export function useDashboard(startDate: string, endDate: string, filters?: { tag
   });
 
   const categorySummaryQuery = useQuery({
-    queryKey: queryKeys.dashboard.categorySummary(startDate, endDate, transactionReportFilters),
+    queryKey: queryKeys.dashboard.categorySummary(
+      startDate,
+      endDate,
+      transactionReportFilters,
+    ),
     queryFn: () =>
-      apiGet<CategorySummary[]>(`/dashboard/category-summary${transactionReportQuery}`),
+      apiGet<CategorySummary[]>(
+        `/dashboard/category-summary${transactionReportQuery}`,
+      ),
     select: (res) => res.data ?? [],
   });
 
   const metricsQuery = useQuery({
-    queryKey: queryKeys.dashboard.metrics(startDate, endDate, transactionReportFilters),
+    queryKey: queryKeys.dashboard.metrics(
+      startDate,
+      endDate,
+      transactionReportFilters,
+    ),
     queryFn: () =>
       apiGet<DashboardMetrics>(`/dashboard/metrics${transactionReportQuery}`),
     select: (res) => res.data,
@@ -51,14 +71,22 @@ export function useDashboard(startDate: string, endDate: string, filters?: { tag
   });
 
   const sankeyChartQuery = useQuery({
-    queryKey: queryKeys.dashboard.sankeyChart(startDate, endDate, transactionReportFilters),
+    queryKey: queryKeys.dashboard.sankeyChart(
+      startDate,
+      endDate,
+      transactionReportFilters,
+    ),
     queryFn: () =>
       apiGet<SankeyData>(`/dashboard/charts/sankey${transactionReportQuery}`),
     select: (res) => res.data,
   });
 
   const tagSummaryQuery = useQuery({
-    queryKey: queryKeys.dashboard.tagSummary(startDate, endDate, transactionReportFilters),
+    queryKey: queryKeys.dashboard.tagSummary(
+      startDate,
+      endDate,
+      transactionReportFilters,
+    ),
     queryFn: () =>
       apiGet<TagSummary[]>(`/dashboard/tag-summary${transactionReportQuery}`),
     select: (res) => res.data ?? [],
@@ -88,6 +116,6 @@ function buildDashboardQueryString(
   filters?: { tagIds?: string[] },
 ): string {
   const params = new URLSearchParams({ startDate, endDate });
-  filters?.tagIds?.forEach((tagId) => params.append('tagIds', tagId));
+  filters?.tagIds?.forEach((tagId) => params.append("tagIds", tagId));
   return `?${params.toString()}`;
 }

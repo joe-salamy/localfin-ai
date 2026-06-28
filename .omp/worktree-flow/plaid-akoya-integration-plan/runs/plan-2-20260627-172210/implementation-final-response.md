@@ -10,6 +10,7 @@ Implemented the approved plan and committed it.
   - `?? .omp/handoff/`
 
 Implemented scope:
+
 - Plaid/Akoya dependencies and provider env config.
 - `createApp()` Express factoring and `/api/account-linking` mount.
 - Provider SQLite schema/migrations.
@@ -22,6 +23,7 @@ Implemented scope:
 - Provider mapper, sync, and route tests.
 
 Verification run:
+
 - `npm run typecheck` â€” passed.
 - `npm run lint` â€” passed.
 - `node --import tsx --test server/provider-mappers.test.ts server/provider-sync.test.ts server/account-linking-routes.test.ts` â€” passed, 13/13.
@@ -29,4 +31,5 @@ Verification run:
 - Additional migration rerun after fixing legacy DB startup: `node --import tsx --test --test-reporter=tap server/core-invariants.test.ts --test-name-pattern "tag migration|database migration"` â€” passed, 14/14 under this Node runner.
 
 Skipped:
+
 - Plaid sandbox manual smoke, Akoya sandbox manual smoke, and Add Transactions live provider sync smoke were not run because provider credentials/live connections were unavailable in this worktree.

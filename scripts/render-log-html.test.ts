@@ -4,7 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 // @ts-expect-error TS5097: node --import tsx executes this required .ts test import directly.
-import { outputPathFor, parseLogText, renderLogHtml, renderLogHtmlFile } from "./render-log-html.ts";
+import {
+  outputPathFor,
+  parseLogText,
+  renderLogHtml,
+  renderLogHtmlFile,
+} from "./render-log-html.ts";
 
 test("outputPathFor replaces the input extension with html", () => {
   assert.equal(path.basename(outputPathFor("C:/tmp/log.json")), "log.html");
@@ -87,7 +92,10 @@ test("renderLogHtmlFile writes html beside the input file", async (t) => {
   });
 
   const inputPath = path.join(tempDir, "log.jsonl");
-  await writeFile(inputPath, `${JSON.stringify({ operation: "assistant.chat" })}\n`);
+  await writeFile(
+    inputPath,
+    `${JSON.stringify({ operation: "assistant.chat" })}\n`,
+  );
 
   const outputPath = await renderLogHtmlFile(inputPath);
   const output = await readFile(outputPath, "utf8");

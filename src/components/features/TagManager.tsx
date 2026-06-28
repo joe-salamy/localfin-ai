@@ -1,16 +1,23 @@
-import { useMemo, useState } from 'react';
-import { Pencil, Save, Trash2, X } from 'lucide-react';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/Button';
-import { ColorPicker } from '@/components/ui/ColorPicker';
-import { SimpleSelect } from '@/components/ui/SimpleSelect';
-import { ConfirmDeleteModal } from '@/components/features/ConfirmDeleteModal';
-import { TagChip } from '@/components/features/TagPicker';
-import { useTags } from '@/hooks/useTags';
-import { resolveEntityColor } from '@/lib/colors';
-import type { Tag, TagType } from '@/types';
+import { useMemo, useState } from "react";
+import { Pencil, Save, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/Button";
+import { ColorPicker } from "@/components/ui/ColorPicker";
+import { SimpleSelect } from "@/components/ui/SimpleSelect";
+import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
+import { TagChip } from "@/components/features/TagPicker";
+import { useTags } from "@/hooks/useTags";
+import { resolveEntityColor } from "@/lib/colors";
+import type { Tag, TagType } from "@/types";
 
-const TAG_TYPES: TagType[] = ['custom', 'trip', 'event', 'person', 'reimbursable', 'tax'];
+const TAG_TYPES: TagType[] = [
+  "custom",
+  "trip",
+  "event",
+  "person",
+  "reimbursable",
+  "tax",
+];
 const tagTypeOptions = TAG_TYPES.map((type) => ({
   value: type,
   label: type.charAt(0).toUpperCase() + type.slice(1),
@@ -18,17 +25,23 @@ const tagTypeOptions = TAG_TYPES.map((type) => ({
 
 export function TagManager() {
   const { tags, isLoading, createTag, updateTag, deleteTag } = useTags();
-  const [name, setName] = useState('');
-  const [type, setType] = useState<TagType>('custom');
+  const [name, setName] = useState("");
+  const [type, setType] = useState<TagType>("custom");
   const [color, setColor] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editType, setEditType] = useState<TagType>('custom');
+  const [editName, setEditName] = useState("");
+  const [editType, setEditType] = useState<TagType>("custom");
   const [editColor, setEditColor] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Tag | null>(null);
 
   const sortedTags = useMemo(
-    () => [...tags].filter((tag) => !tag.deleted_at).sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name)),
+    () =>
+      [...tags]
+        .filter((tag) => !tag.deleted_at)
+        .sort(
+          (a, b) =>
+            a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
+        ),
     [tags],
   );
 
@@ -40,36 +53,41 @@ export function TagManager() {
   };
 
   const create = async () => {
-    const nextName = name.trim().replace(/\s+/g, ' ');
+    const nextName = name.trim().replace(/\s+/g, " ");
     if (!nextName) {
-      toast.error('Tag name is required');
+      toast.error("Tag name is required");
       return;
     }
 
     try {
       await createTag.mutateAsync({ name: nextName, type, color });
-      toast.success('Tag created');
-      setName('');
-      setType('custom');
+      toast.success("Tag created");
+      setName("");
+      setType("custom");
       setColor(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create tag');
+      toast.error(err instanceof Error ? err.message : "Failed to create tag");
     }
   };
 
   const saveEdit = async (id: string) => {
-    const nextName = editName.trim().replace(/\s+/g, ' ');
+    const nextName = editName.trim().replace(/\s+/g, " ");
     if (!nextName) {
-      toast.error('Tag name is required');
+      toast.error("Tag name is required");
       return;
     }
 
     try {
-      await updateTag.mutateAsync({ id, name: nextName, type: editType, color: editColor });
-      toast.success('Tag updated');
+      await updateTag.mutateAsync({
+        id,
+        name: nextName,
+        type: editType,
+        color: editColor,
+      });
+      toast.success("Tag updated");
       setEditId(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update tag');
+      toast.error(err instanceof Error ? err.message : "Failed to update tag");
     }
   };
 
@@ -78,11 +96,11 @@ export function TagManager() {
 
     try {
       await deleteTag.mutateAsync(deleteTarget.id);
-      toast.success('Tag deleted');
+      toast.success("Tag deleted");
       setDeleteTarget(null);
       if (editId === deleteTarget.id) setEditId(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete tag');
+      toast.error(err instanceof Error ? err.message : "Failed to delete tag");
     }
   };
 
@@ -91,7 +109,9 @@ export function TagManager() {
       <div className="rounded-md border border-border bg-secondary/10 p-3">
         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem_auto_auto] md:items-end">
           <label className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">Name</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              Name
+            </span>
             <input
               type="text"
               value={name}
@@ -107,10 +127,20 @@ export function TagManager() {
             options={tagTypeOptions}
           />
           <div className="space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">Color</div>
-            <ColorPicker value={color} onChange={setColor} label="New tag color" />
+            <div className="text-xs font-medium text-muted-foreground">
+              Color
+            </div>
+            <ColorPicker
+              value={color}
+              onChange={setColor}
+              label="New tag color"
+            />
           </div>
-          <Button type="button" onClick={() => void create()} loading={createTag.isPending}>
+          <Button
+            type="button"
+            onClick={() => void create()}
+            loading={createTag.isPending}
+          >
             Create
           </Button>
         </div>
@@ -120,21 +150,39 @@ export function TagManager() {
         <table className="w-full">
           <thead className="bg-secondary/50">
             <tr>
-              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Tag</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Type</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Color</th>
-              <th className="w-24 px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Actions</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Tag
+              </th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Type
+              </th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Color
+              </th>
+              <th className="w-24 px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading && (
               <tr>
-                <td colSpan={4} className="px-2 py-4 text-center text-sm text-muted-foreground">Loading tags...</td>
+                <td
+                  colSpan={4}
+                  className="px-2 py-4 text-center text-sm text-muted-foreground"
+                >
+                  Loading tags...
+                </td>
               </tr>
             )}
             {!isLoading && sortedTags.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-2 py-4 text-center text-sm text-muted-foreground">No tags yet.</td>
+                <td
+                  colSpan={4}
+                  className="px-2 py-4 text-center text-sm text-muted-foreground"
+                >
+                  No tags yet.
+                </td>
               </tr>
             )}
             {sortedTags.map((tag) => {
@@ -157,22 +205,35 @@ export function TagManager() {
                     {isEditing ? (
                       <SimpleSelect
                         value={editType}
-                        onChange={(event) => setEditType(event.target.value as TagType)}
+                        onChange={(event) =>
+                          setEditType(event.target.value as TagType)
+                        }
                         options={tagTypeOptions}
                         className="h-8 text-xs"
                       />
                     ) : (
-                      <span className="rounded bg-secondary px-1.5 py-0.5 text-xs uppercase text-muted-foreground">{tag.type}</span>
+                      <span className="rounded bg-secondary px-1.5 py-0.5 text-xs uppercase text-muted-foreground">
+                        {tag.type}
+                      </span>
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-sm">
                     {isEditing ? (
-                      <ColorPicker value={editColor} onChange={setEditColor} label={`${tag.name} color`} />
+                      <ColorPicker
+                        value={editColor}
+                        onChange={setEditColor}
+                        label={`${tag.name} color`}
+                      />
                     ) : (
                       <span
                         className="inline-block h-5 w-5 rounded border border-border"
-                        style={{ backgroundColor: resolveEntityColor(tag.id, tag.color) }}
-                        title={tag.color ?? 'Automatic color'}
+                        style={{
+                          backgroundColor: resolveEntityColor(
+                            tag.id,
+                            tag.color,
+                          ),
+                        }}
+                        title={tag.color ?? "Automatic color"}
                       />
                     )}
                   </td>
@@ -231,7 +292,11 @@ export function TagManager() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
         title="Delete Tag"
-        message={deleteTarget ? `Delete tag "${deleteTarget.name}"? It will be removed from existing transactions.` : ''}
+        message={
+          deleteTarget
+            ? `Delete tag "${deleteTarget.name}"? It will be removed from existing transactions.`
+            : ""
+        }
         isLoading={deleteTag.isPending}
       />
     </div>

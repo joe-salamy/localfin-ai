@@ -191,6 +191,7 @@ Provider docs used for the plan: Plaid Link token (`https://plaid.com/docs/api/l
 ### 4. Add encryption helpers for provider secrets
 
 1. Create `server/services/secret-encryption.ts` with these exact exported types/functions:
+
    ```ts
    export interface EncryptedSecret {
      ciphertext: string;
@@ -201,6 +202,7 @@ Provider docs used for the plan: Plaid Link token (`https://plaid.com/docs/api/l
    export function encryptSecret(plaintext: string): EncryptedSecret;
    export function decryptSecret(secret: EncryptedSecret): string;
    ```
+
 2. Implementation rules:
    - Read `process.env[ENV_KEYS.localfinProviderSecret]`.
    - If absent or shorter than 32 characters, throw `LOCALFIN_PROVIDER_SECRET not configured. Set it in .env before linking provider accounts.`
@@ -212,10 +214,15 @@ Provider docs used for the plan: Plaid Link token (`https://plaid.com/docs/api/l
 ### 5. Implement provider clients and sync orchestration
 
 1. Create `server/services/account-linking.ts` with these exported types/functions:
+
    ```ts
    export type AccountLinkProvider = "plaid" | "akoya";
    export type TargetInstitution = "us_bank" | "discover" | "fidelity";
-   export type ProviderConnectionStatus = "active" | "needs_reauth" | "error" | "revoked";
+   export type ProviderConnectionStatus =
+     | "active"
+     | "needs_reauth"
+     | "error"
+     | "revoked";
 
    export interface ProviderConnectionSummary {
      id: string;
@@ -246,8 +253,14 @@ Provider docs used for the plan: Plaid Link token (`https://plaid.com/docs/api/l
      last_balance_at: string | null;
    }
 
-   export interface PlaidLinkTokenResult { link_token: string; expiration: string | null; }
-   export interface AkoyaAuthorizationResult { authorizationUrl: string; state: string; }
+   export interface PlaidLinkTokenResult {
+     link_token: string;
+     expiration: string | null;
+   }
+   export interface AkoyaAuthorizationResult {
+     authorizationUrl: string;
+     state: string;
+   }
    export interface ProviderSyncResult {
      connectionId: string;
      provider: AccountLinkProvider;
@@ -261,13 +274,29 @@ Provider docs used for the plan: Plaid Link token (`https://plaid.com/docs/api/l
    }
 
    export function listProviderConnections(): ProviderConnectionSummary[];
-   export async function createPlaidLinkToken(targetInstitution: "us_bank" | "discover"): Promise<PlaidLinkTokenResult>;
-   export async function exchangePlaidPublicToken(input: { publicToken: string; targetInstitution: "us_bank" | "discover"; metadata: unknown }): Promise<ProviderConnectionSummary>;
-   export function createAkoyaAuthorizationUrl(targetInstitution: "fidelity"): AkoyaAuthorizationResult;
-   export async function handleAkoyaCallback(input: { code: string; state: string }): Promise<ProviderConnectionSummary>;
-   export async function syncProviderConnections(input?: { connectionId?: string }): Promise<ProviderSyncResult[]>;
-   export async function disconnectProviderConnection(connectionId: string): Promise<void>;
+   export async function createPlaidLinkToken(
+     targetInstitution: "us_bank" | "discover",
+   ): Promise<PlaidLinkTokenResult>;
+   export async function exchangePlaidPublicToken(input: {
+     publicToken: string;
+     targetInstitution: "us_bank" | "discover";
+     metadata: unknown;
+   }): Promise<ProviderConnectionSummary>;
+   export function createAkoyaAuthorizationUrl(
+     targetInstitution: "fidelity",
+   ): AkoyaAuthorizationResult;
+   export async function handleAkoyaCallback(input: {
+     code: string;
+     state: string;
+   }): Promise<ProviderConnectionSummary>;
+   export async function syncProviderConnections(input?: {
+     connectionId?: string;
+   }): Promise<ProviderSyncResult[]>;
+   export async function disconnectProviderConnection(
+     connectionId: string,
+   ): Promise<void>;
    ```
+
 2. Create `server/services/providers/plaid-client.ts` as the only module that imports from `plaid`. Export `createPlaidLinkToken`, `exchangePublicToken`, `getBalances`, `syncTransactions`, and `removeItem`; `server/services/account-linking.ts` must call this adapter so tests can mock provider behavior without mocking the Plaid SDK.
 3. Create `server/services/providers/akoya-client.ts` as the only module that performs Akoya `fetch` calls. Export `exchangeCodeForTokens`, `refreshTokens`, `getBalances`, `getTransactions`, and `revokeToken`; `server/services/account-linking.ts` must call this adapter.
 4. Plaid client behavior:
@@ -308,8 +337,15 @@ Provider docs used for the plan: Plaid Link token (`https://plaid.com/docs/api/l
 7. Transaction mapping and idempotence:
    - Add pure mapper helpers in new `server/services/provider-mappers.ts` and import them from `server/services/account-linking.ts`:
      ```ts
-     export function mapPlaidTransactionToLocal(input: { transaction: PlaidTransaction; accountType: AccountType }): ProviderTransactionDraft;
-     export function mapAkoyaTransactionToLocal(input: { transaction: AkoyaTransaction; accountType: AccountType; providerAccountId: string }): ProviderTransactionDraft;
+     export function mapPlaidTransactionToLocal(input: {
+       transaction: PlaidTransaction;
+       accountType: AccountType;
+     }): ProviderTransactionDraft;
+     export function mapAkoyaTransactionToLocal(input: {
+       transaction: AkoyaTransaction;
+       accountType: AccountType;
+       providerAccountId: string;
+     }): ProviderTransactionDraft;
      ```
    - `ProviderTransactionDraft` fields: `provider`, `provider_account_id`, `provider_transaction_id`, `provider_pending_transaction_id`, `date` (`YYYY-MM-DD`), `name`, `amount`, `kind`, `comment`.
    - Plaid sign rule: Plaid positive amounts are outflows and negative amounts are inflows. For LocalFin asset accounts, use signed amount `-plaid.amount`; for LocalFin liability accounts, use signed amount `plaid.amount`. Then infer `kind` with `inferTransactionKindForAccount` and insert/update through the same normalization rules as existing transactions.
@@ -350,6 +386,7 @@ Provider docs used for the plan: Plaid Link token (`https://plaid.com/docs/api/l
 ### 7. Add frontend types, hooks, and query keys
 
 1. In `src/types/index.ts`, add the provider types matching the backend response contract:
+
    ```ts
    export type AccountLinkProvider = "plaid" | "akoya";
    export type TargetInstitution = "us_bank" | "discover" | "fidelity";
@@ -410,6 +447,7 @@ Provider docs used for the plan: Plaid Link token (`https://plaid.com/docs/api/l
      syncedAt: string;
    }
    ```
+
 2. In `src/lib/queryKeys.ts`, add:
    ```ts
    accountLinking: {
