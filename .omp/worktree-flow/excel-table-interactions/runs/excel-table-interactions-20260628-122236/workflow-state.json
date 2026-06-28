@@ -1,0 +1,14 @@
+{
+  "audit_head_before": "1c487bdf4e2cbcfa93a16949e1264bdae67d3b5e",
+  "base": "main",
+  "completed_stage": "cleanup_complete",
+  "feature_branch": "feature/excel-table-interactions",
+  "feature_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-excel-table-interactions",
+  "integration_branch": "integration/excel-table-interactions-20260628-125709",
+  "integration_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-integrate-excel-table-interactions-20260628-125709",
+  "merge_mode": "squash",
+  "plan_path": "C:\\Users\\joesa\\Code\\localfin-ai-excel-table-interactions\\.omp\\worktree-flow\\excel-table-interactions\\plan.md",
+  "plan_title": "Excel Table Interactions",
+  "run_id": "excel-table-interactions-20260628-122236",
+  "slug": "excel-table-interactions"
+}
