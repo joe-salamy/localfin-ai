@@ -1,0 +1,14 @@
+{
+  "audit_head_before": "3fe8c24707157239ce10f4f6a336c61073b79e92",
+  "base": "main",
+  "completed_stage": "cleanup_complete",
+  "feature_branch": "feature/app-undo-redo-keyboard-support",
+  "feature_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-app-undo-redo-keyboard-support",
+  "integration_branch": "integration/app-undo-redo-keyboard-support-20260630-224744",
+  "integration_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-integrate-app-undo-redo-keyboard-support-20260630-224744",
+  "merge_mode": "squash",
+  "plan_path": "C:\\Users\\joesa\\Code\\localfin-ai-app-undo-redo-keyboard-support\\.omp\\worktree-flow\\20260630-220709-app-undo-redo-keyboard-support\\plan.md",
+  "plan_title": "App Undo Redo Keyboard Support",
+  "run_id": "20260630-220709-app-undo-redo-keyboard-support",
+  "slug": "app-undo-redo-keyboard-support"
+}
