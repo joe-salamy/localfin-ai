@@ -162,8 +162,9 @@ export function TransactionTable({
     anchor: CellCoord;
     additive: boolean;
   } | null>(null);
-  const dragUserSelectRef = useRef<string | null>(null);
   const dragBaseRangesRef = useRef<CellRange[]>([]);
+  const pointerSelectingRef = useRef(false);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
   const {
     columns,
     totalWidth,
@@ -447,21 +448,49 @@ export function TransactionTable({
 
   useEffect(() => {
     if (!dragSelection) return;
-    if (dragUserSelectRef.current === null) {
-      dragUserSelectRef.current = document.body.style.userSelect;
-      document.body.style.userSelect = "none";
-    }
 
-    const stopDrag = () => setDragSelection(null);
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+
+    const selectCellUnderPointer = (clientX: number, clientY: number) => {
+      const target = document.elementFromPoint(clientX, clientY);
+      if (!(target instanceof HTMLElement)) return;
+
+      const cellElement = target.closest<HTMLElement>(
+        "[data-row-index][data-col-index]",
+      );
+      if (!cellElement || !tableContainerRef.current?.contains(cellElement)) {
+        return;
+      }
+
+      const row = Number(cellElement.dataset.rowIndex);
+      const col = Number(cellElement.dataset.colIndex);
+      if (!Number.isInteger(row) || !Number.isInteger(col)) return;
+
+      const focus = { row, col };
+      const range = rectangleFrom(dragSelection.anchor, focus);
+      setSelectedRanges(
+        dragSelection.additive ? [...dragBaseRangesRef.current, range] : [range],
+      );
+      setActiveCell(focus);
+    };
+
+    const handlePointerMove = (event: globalThis.PointerEvent) => {
+      selectCellUnderPointer(event.clientX, event.clientY);
+    };
+    const stopDrag = () => {
+      pointerSelectingRef.current = false;
+      setDragSelection(null);
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
     document.addEventListener("pointerup", stopDrag);
     document.addEventListener("pointercancel", stopDrag);
     return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", stopDrag);
       document.removeEventListener("pointercancel", stopDrag);
-      if (dragUserSelectRef.current !== null) {
-        document.body.style.userSelect = dragUserSelectRef.current;
-        dragUserSelectRef.current = null;
-      }
+      document.body.style.userSelect = previousUserSelect;
     };
   }, [dragSelection]);
 
@@ -507,15 +536,20 @@ export function TransactionTable({
       onPointerDown: (event: PointerEvent<HTMLElement>) => {
         if (event.button !== 0) return;
         event.stopPropagation();
+
+        pointerSelectingRef.current = true;
         const cell = { row: rowIndex, col: colIndex };
         const additive = event.ctrlKey || event.metaKey;
+        const dragAnchor = event.shiftKey
+          ? (anchorCell ?? activeCell ?? cell)
+          : cell;
+        const target = event.target;
         const interactive =
-          event.target instanceof HTMLElement &&
-          ["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName);
+          target instanceof HTMLElement &&
+          ["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(target.tagName);
 
         if (event.shiftKey) {
-          const anchor = anchorCell ?? activeCell ?? cell;
-          setSelectedRanges([rectangleFrom(anchor, cell)]);
+          setSelectedRanges([rectangleFrom(dragAnchor, cell)]);
           setActiveCell(cell);
         } else if (additive) {
           toggleHistoryCell(cell);
@@ -523,26 +557,22 @@ export function TransactionTable({
           selectHistoryCell(cell);
         }
 
-        if (!interactive) {
-          event.preventDefault();
-          dragBaseRangesRef.current = additive ? selectedRanges : [];
-          setDragSelection({ anchor: cell, additive });
-        }
+        if (!interactive) event.preventDefault();
+        dragBaseRangesRef.current = additive ? selectedRanges : [];
+        setDragSelection({ anchor: dragAnchor, additive });
       },
-      onPointerEnter: () => {
-        if (!dragSelection) return;
-        const focus = { row: rowIndex, col: colIndex };
-        const range = rectangleFrom(dragSelection.anchor, focus);
-        setSelectedRanges(
-          dragSelection.additive ? [...dragBaseRangesRef.current, range] : [range],
-        );
-        setActiveCell(focus);
+      onPointerUp: () => {
+        pointerSelectingRef.current = false;
+        setDragSelection(null);
+      },
+      onPointerCancel: () => {
+        pointerSelectingRef.current = false;
+        setDragSelection(null);
       },
     }),
     [
       activeCell,
       anchorCell,
-      dragSelection,
       selectHistoryCell,
       selectedRanges,
       toggleHistoryCell,
@@ -552,6 +582,7 @@ export function TransactionTable({
   const focusHistoryCell = useCallback(
     (transactionId: string, rowIndex: number, colIndex: number) => {
       setFocusedId(transactionId);
+      if (pointerSelectingRef.current) return;
       const cell = { row: rowIndex, col: colIndex };
       setActiveCell(cell);
       if (!isCellInRanges(cell, selectedRanges)) {
@@ -967,6 +998,7 @@ export function TransactionTable({
   return (
     <>
       <div
+        ref={tableContainerRef}
         className="overflow-x-auto border border-border rounded-md"
         tabIndex={0}
         onCopy={handleHistoryCopy}

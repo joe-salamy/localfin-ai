@@ -406,6 +406,7 @@ export function MultiTransactionTable() {
   const statementAccountRef = useRef<HTMLSelectElement>(null);
   const statementTextRef = useRef<HTMLTextAreaElement>(null);
   const cellRefs = useRef<Array<HTMLElement | null>>([]);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const [gridFocused, setGridFocused] = useState(false);
   const [selectedRanges, setSelectedRanges] = useState<CellRange[]>([]);
@@ -415,8 +416,8 @@ export function MultiTransactionTable() {
     anchor: CellCoord;
     additive: boolean;
   } | null>(null);
-  const dragUserSelectRef = useRef<string | null>(null);
   const dragBaseRangesRef = useRef<CellRange[]>([]);
+  const pointerSelectingRef = useRef(false);
   const {
     columns,
     totalWidth,
@@ -541,21 +542,49 @@ export function MultiTransactionTable() {
 
   useEffect(() => {
     if (!dragSelection) return;
-    if (dragUserSelectRef.current === null) {
-      dragUserSelectRef.current = document.body.style.userSelect;
-      document.body.style.userSelect = "none";
-    }
 
-    const stopDrag = () => setDragSelection(null);
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+
+    const selectCellUnderPointer = (clientX: number, clientY: number) => {
+      const target = document.elementFromPoint(clientX, clientY);
+      if (!(target instanceof HTMLElement)) return;
+
+      const cellElement = target.closest<HTMLElement>(
+        "[data-row-index][data-col-index]",
+      );
+      if (!cellElement || !gridContainerRef.current?.contains(cellElement)) {
+        return;
+      }
+
+      const row = Number(cellElement.dataset.rowIndex);
+      const col = Number(cellElement.dataset.colIndex);
+      if (!Number.isInteger(row) || !Number.isInteger(col)) return;
+
+      const focus = { row, col };
+      const range = rectangleFrom(dragSelection.anchor, focus);
+      setSelectedRanges(
+        dragSelection.additive ? [...dragBaseRangesRef.current, range] : [range],
+      );
+      setActiveCell(focus);
+    };
+
+    const handlePointerMove = (event: globalThis.PointerEvent) => {
+      selectCellUnderPointer(event.clientX, event.clientY);
+    };
+    const stopDrag = () => {
+      pointerSelectingRef.current = false;
+      setDragSelection(null);
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
     document.addEventListener("pointerup", stopDrag);
     document.addEventListener("pointercancel", stopDrag);
     return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", stopDrag);
       document.removeEventListener("pointercancel", stopDrag);
-      if (dragUserSelectRef.current !== null) {
-        document.body.style.userSelect = dragUserSelectRef.current;
-        dragUserSelectRef.current = null;
-      }
+      document.body.style.userSelect = previousUserSelect;
     };
   }, [dragSelection]);
 
@@ -606,15 +635,19 @@ export function MultiTransactionTable() {
       onPointerDown: (event: PointerEvent<HTMLTableCellElement>) => {
         if (event.button !== 0) return;
 
+        pointerSelectingRef.current = true;
         const cell = { row: rowIndex, col: colIndex };
         const additive = event.ctrlKey || event.metaKey;
+        const dragAnchor = event.shiftKey
+          ? (anchorCell ?? activeCell ?? cell)
+          : cell;
+        const target = event.target;
         const interactive =
-          event.target instanceof HTMLElement &&
-          ["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName);
+          target instanceof HTMLElement &&
+          ["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(target.tagName);
 
         if (event.shiftKey) {
-          const anchor = anchorCell ?? activeCell ?? cell;
-          setSelectedRanges([rectangleFrom(anchor, cell)]);
+          setSelectedRanges([rectangleFrom(dragAnchor, cell)]);
           setActiveCell(cell);
         } else if (additive) {
           toggleCellSelection(cell);
@@ -625,24 +658,22 @@ export function MultiTransactionTable() {
         if (!interactive) {
           event.preventDefault();
           focusEditableCell(rowIndex, colIndex);
-          dragBaseRangesRef.current = additive ? selectedRanges : [];
-          setDragSelection({ anchor: cell, additive });
         }
+        dragBaseRangesRef.current = additive ? selectedRanges : [];
+        setDragSelection({ anchor: dragAnchor, additive });
       },
-      onPointerEnter: () => {
-        if (!dragSelection) return;
-        const focus = { row: rowIndex, col: colIndex };
-        const range = rectangleFrom(dragSelection.anchor, focus);
-        setSelectedRanges(
-          dragSelection.additive ? [...dragBaseRangesRef.current, range] : [range],
-        );
-        setActiveCell(focus);
+      onPointerUp: () => {
+        pointerSelectingRef.current = false;
+        setDragSelection(null);
+      },
+      onPointerCancel: () => {
+        pointerSelectingRef.current = false;
+        setDragSelection(null);
       },
     }),
     [
       activeCell,
       anchorCell,
-      dragSelection,
       focusEditableCell,
       selectSingleCell,
       selectedRanges,
@@ -653,6 +684,7 @@ export function MultiTransactionTable() {
   const handleCellFocus = useCallback(
     (rowId: string, rowIndex: number, colIndex: number) => {
       setFocusedRowId(rowId);
+      if (pointerSelectingRef.current) return;
       const cell = { row: rowIndex, col: colIndex };
       setActiveCell(cell);
       if (!isCellInRanges(cell, selectedRanges)) {
@@ -1282,6 +1314,7 @@ export function MultiTransactionTable() {
 
       {/* Table */}
       <div
+        ref={gridContainerRef}
         className="overflow-x-auto rounded-md border border-border"
         tabIndex={0}
         onCopy={handleGridCopy}
