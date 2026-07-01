@@ -16,9 +16,3 @@ LocalFin AI is a local-first personal finance tracker that uses LLM-powered pars
 - Before performing any edit, briefly state in chat what files or behavior you intend to change and why. Do not wait for approval.
 - Be concise by default: answer with only the decision, changed files, verification, and blockers; avoid background, step-by-step narration, repeated summaries, and optional detail unless the user asks for it.
 
-## OMP Skills
-
-- Read `skill://<skill-name>` before following a repo-specific skill workflow.
-- Prefer repo-local commands from `README.md` and `package.json`.
-- Never commit secrets, `.env`, SQLite database files, logs, `dist/`, or generated cache artifacts.
-- Periodically use `skill://optimize-repo-skills` when the repo's skill set needs review, pruning, or expansion.
