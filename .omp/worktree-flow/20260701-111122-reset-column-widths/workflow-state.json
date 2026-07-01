@@ -1,0 +1,14 @@
+{
+  "audit_head_before": "8bfa9d8cf2795ea3564f270c6c1baae503dcc434",
+  "base": "main",
+  "completed_stage": "cleanup_complete",
+  "feature_branch": "feature/reset-column-widths",
+  "feature_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-reset-column-widths",
+  "integration_branch": "integration/reset-column-widths-20260701-112057",
+  "integration_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-integrate-reset-column-widths-20260701-112057",
+  "merge_mode": "squash",
+  "plan_path": "C:\\Users\\joesa\\Code\\localfin-ai-reset-column-widths\\.omp\\worktree-flow\\20260701-111122-reset-column-widths\\plan.md",
+  "plan_title": "Reset Column Widths",
+  "run_id": "20260701-111122-reset-column-widths",
+  "slug": "reset-column-widths"
+}
