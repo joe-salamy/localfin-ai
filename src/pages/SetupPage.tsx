@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { usePlaidLink } from "react-plaid-link";
 import type {
@@ -42,6 +42,7 @@ import {
   useResizableColumns,
   type ResizableColumnDef,
 } from "@/features/table-layout/useResizableColumns";
+import { handleEnterSave } from "@/lib/enterSave";
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -690,6 +691,16 @@ function AccountsSection() {
       void handleUpdate(editId);
     }
   });
+
+  function handleAccountEditRowKeyDown(
+    event: KeyboardEvent<HTMLTableRowElement>,
+    accountId: string,
+  ) {
+    if (saving) return;
+    handleEnterSave(event, () => {
+      void handleUpdate(accountId);
+    });
+  }
   useShortcut("setup.accounts.cancel", cancelAccountForm, {
     enabled: showAdd || editId !== null,
   });
@@ -1020,6 +1031,11 @@ function AccountsSection() {
               key={a.id}
               tabIndex={0}
               onFocus={() => setFocusedId(a.id)}
+              onKeyDown={
+                editId === a.id
+                  ? (event) => handleAccountEditRowKeyDown(event, a.id)
+                  : undefined
+              }
               className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
                 focusedId === a.id ? "bg-secondary/20" : ""
               }`}
@@ -1563,6 +1579,16 @@ function CategoriesSection() {
       void handleUpdate(editId);
     }
   });
+
+  function handleCategoryEditRowKeyDown(
+    event: KeyboardEvent<HTMLTableRowElement>,
+    categoryId: string,
+  ) {
+    if (saving) return;
+    handleEnterSave(event, () => {
+      void handleUpdate(categoryId);
+    });
+  }
   useShortcut("setup.categories.cancel", cancelCategoryForm, {
     enabled: showAdd || editId !== null,
   });
@@ -1717,6 +1743,11 @@ function CategoriesSection() {
             <tr
               key={c.id}
               tabIndex={0}
+              onKeyDown={
+                editId === c.id
+                  ? (event) => handleCategoryEditRowKeyDown(event, c.id)
+                  : undefined
+              }
               onFocus={() => setFocusedId(c.id)}
               className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
                 focusedId === c.id ? "bg-secondary/20" : ""
@@ -2148,6 +2179,16 @@ function SubcategoriesSection() {
       void handleUpdate(editId);
     }
   });
+
+  function handleSubcategoryEditRowKeyDown(
+    event: KeyboardEvent<HTMLTableRowElement>,
+    subcategoryId: string,
+  ) {
+    if (saving) return;
+    handleEnterSave(event, () => {
+      void handleUpdate(subcategoryId);
+    });
+  }
   useShortcut("setup.subcategories.cancel", cancelSubcategoryForm, {
     enabled: showAdd || editId !== null,
   });
@@ -2329,6 +2370,11 @@ function SubcategoriesSection() {
                 key={s.id}
                 tabIndex={0}
                 onFocus={() => setFocusedId(s.id)}
+                onKeyDown={
+                  editId === s.id
+                    ? (event) => handleSubcategoryEditRowKeyDown(event, s.id)
+                    : undefined
+                }
                 className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
                   focusedId === s.id ? "bg-secondary/20" : ""
                 }`}

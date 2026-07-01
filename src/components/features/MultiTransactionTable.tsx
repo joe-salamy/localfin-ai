@@ -61,6 +61,7 @@ import {
   formatCategoryLabel,
   formatSubcategoryLabel,
 } from "@/lib/categoryLabels";
+import { handleEnterSave } from "@/lib/enterSave";
 
 // ── Row type ──────────────────────────────────────────────────────────
 
@@ -1152,6 +1153,20 @@ export function MultiTransactionTable() {
     bulkCreateTransactions,
   ]);
 
+  const handleGridContainerKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (!saving) {
+        const saved = handleEnterSave(event, () => {
+          void handleSave();
+        });
+        if (saved) return;
+      }
+
+      handleGridKeyDown(event);
+    },
+    [handleGridKeyDown, handleSave, saving],
+  );
+
   useShortcut("transactionInput.addRow", addRow);
   useShortcut(
     "transactionInput.aiCategorize",
@@ -1320,7 +1335,7 @@ export function MultiTransactionTable() {
         onCopy={handleGridCopy}
         onCut={handleGridCut}
         onPaste={handleGridPaste}
-        onKeyDown={handleGridKeyDown}
+        onKeyDown={handleGridContainerKeyDown}
         onFocus={() => setGridFocused(true)}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) {

@@ -59,6 +59,7 @@ import {
   scaleValueColorClass,
   transactionAmountScaleValue,
 } from "@/lib/financialColorScale";
+import { handleEnterSave } from "@/lib/enterSave";
 
 interface TransactionTableProps {
   transactions: TransactionWithDetails[];
@@ -307,6 +308,13 @@ export function TransactionTable({
       setSaving(false);
     }
   }, [editState, editingId, onEdit]);
+
+  function handleEditRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>) {
+    if (saving) return;
+    handleEnterSave(event, () => {
+      void saveEdit();
+    });
+  }
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -1081,6 +1089,7 @@ export function TransactionTable({
                         ? `Flagged words: ${flaggedWords.join(", ")}`
                         : undefined
                   }
+                  onKeyDown={isEditing ? handleEditRowKeyDown : undefined}
                   className={cn(
                     "outline-none hover:bg-secondary/30 focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring",
                     selectedIds.has(t.id) && "bg-secondary/20",

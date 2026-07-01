@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { Pencil, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +9,7 @@ import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
 import { TagChip } from "@/components/features/TagPicker";
 import { useTags } from "@/hooks/useTags";
 import { resolveEntityColor } from "@/lib/colors";
+import { handleEnterSave } from "@/lib/enterSave";
 import type { Tag, TagType } from "@/types";
 import {
   useResizableColumns,
@@ -109,6 +111,16 @@ export function TagManager() {
       toast.error(err instanceof Error ? err.message : "Failed to update tag");
     }
   };
+
+  function handleEditRowKeyDown(
+    event: KeyboardEvent<HTMLTableRowElement>,
+    tagId: string,
+  ) {
+    if (updateTag.isPending) return;
+    handleEnterSave(event, () => {
+      void saveEdit(tagId);
+    });
+  }
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -243,7 +255,15 @@ export function TagManager() {
             {sortedTags.map((tag) => {
               const isEditing = editId === tag.id;
               return (
-                <tr key={tag.id} className="hover:bg-secondary/20">
+                <tr
+                  key={tag.id}
+                  onKeyDown={
+                    isEditing
+                      ? (event) => handleEditRowKeyDown(event, tag.id)
+                      : undefined
+                  }
+                  className="hover:bg-secondary/20"
+                >
                   <td className="px-2 py-1.5 text-sm">
                     {isEditing ? (
                       <input
