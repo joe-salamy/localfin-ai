@@ -1,0 +1,14 @@
+{
+  "audit_head_before": "51316be58ba5684caa74aafc0ddfb3446f8cd3d2",
+  "base": "main",
+  "completed_stage": "cleanup_complete",
+  "feature_branch": "feature/confirmation-popups-setting",
+  "feature_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-confirmation-popups-setting",
+  "integration_branch": "integration/confirmation-popups-setting-20260630-222747",
+  "integration_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-integrate-confirmation-popups-setting-20260630-222747",
+  "merge_mode": "squash",
+  "plan_path": "C:\\Users\\joesa\\Code\\localfin-ai-confirmation-popups-setting\\.omp\\worktree-flow\\20260630-221214-confirmation-popups-setting\\plan.md",
+  "plan_title": "Confirmation Popups Setting",
+  "run_id": "20260630-221214-confirmation-popups-setting",
+  "slug": "confirmation-popups-setting"
+}
