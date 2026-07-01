@@ -50,34 +50,28 @@ If local `main` is unavailable, inspect branches and use the repository default 
 
 4. Audit the full diff against `main`:
    - Check correctness, regressions, missing edge cases, missing tests, and incomplete plan items.
-   - Check this repo's architecture rules from `AGENTS.md`, especially CLI/web behavioral alignment, `EssayPipeline.run_step()`, index-to-text replacement, `_metadata.input_messages`, Supabase RLS/storage rules, prompt/schema pairing, and callback/usage tracking for LLM calls.
+   - Check this repo's architecture rules from `AGENTS.md`, especially TypeScript throughout, React/TanStack Query frontend cache invalidation, Express route/service separation, SQLite soft-delete and migration behavior, provider secret handling, and AI prompt/schema pairing.
    - Check that new behavior is represented in focused tests or explain why tests are not feasible.
    - Inspect relevant existing code paths, not only changed lines, when needed to validate behavior.
 
-5. Load project skills as necessary based on the changed files and risk areas. Read the relevant `.agent-harness/skills/<skill-name>/SKILL.md` files directly, then follow their audit guidance. Common mappings:
-   - FastAPI routes, middleware, ARQ worker APIs: `api-review`
-   - SSE or HITL streaming: `sse-audit`
-   - Supabase migrations, RLS, storage, auth, SQL: `supabase`, `supabase-schema`, `supabase-postgres-best-practices`
-   - Python async, typing, pipeline code: `python-pro`
-   - Next.js, React, TypeScript, shadcn, frontend hooks: `ts-pro`, `audit-ts`, `vercel-react-best-practices`, `nextjs-shadcn`
-   - Pydantic schemas or generated frontend types: `cross-stack-types`
-   - Prompt templates or structured-output schemas: `prompt-schema-conventions`
-   - Docker or deployment files: `docker-review`
-   - Broad code quality/security review: `code-reviewer`
+5. Load project skills as necessary based on the changed files and risk areas. Read the relevant `.omp/skills/<skill-name>/SKILL.md` files directly, then follow their audit guidance. Common mappings:
+   - React components, hooks, query keys, Vite client behavior: `localfin-react-query-ui`
+   - OMP skill curation: `optimize-repo-skills`
+   - Worktree implementation handoff behavior: `implement-worktree`
+   - Merge conflict behavior: `merge-conflict-resolver`
 
-6. Create a concise issue list before editing. Prioritize bugs, security issues, data loss, broken contracts, missing migrations/RLS, missing callback/usage tracking, CLI/web drift, and test gaps.
+6. Create a concise issue list before editing. Prioritize bugs, security issues, data loss, broken API contracts, missing SQLite migrations, missing cache invalidation, provider secret exposure, and test gaps.
 
 7. Fix all confirmed issues in the current worktree. Keep edits scoped to the audit findings. Do not make unrelated refactors.
 
-8. Re-run focused verification appropriate to the final diff. If the implementation worktree does not have its own `venv`, run Python/test commands from the worktree but activate the original checkout's virtualenv path:
+8. Re-run focused verification appropriate to the final diff:
 
 ```powershell
-& <primary-checkout>\venv\Scripts\Activate.ps1
+npm run typecheck
+npm run lint
 ```
 
-Keep all file operations in the implementation worktree.
-
-For frontend changes, prefer the existing package scripts from `frontend/package.json`. If generated frontend types are affected, run the documented generation flow only when the API server requirement can be satisfied; otherwise report the skipped generation clearly.
+For server behavior, prefer the focused test file first, then `npm test` when the change can affect multiple server services. For frontend behavior, run the focused `src/**/*.test.ts` file when available, then `npm run test:frontend` for broader frontend coverage.
 
 9. Commit all intended audit fixes on the current branch if changes were made:
 

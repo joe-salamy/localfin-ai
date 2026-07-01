@@ -1,7 +1,7 @@
 {
   "servers": {
     "typescript-language-server": {
-      "command": "typescript-language-server.cmd",
+      "command": "node_modules/.bin/typescript-language-server.cmd",
       "args": ["--stdio"],
       "fileTypes": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
       "rootMarkers": ["tsconfig.json", "package.json"]
