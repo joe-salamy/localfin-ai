@@ -16,6 +16,7 @@ import {
   toShortcutOverrides,
   writeShortcutSettings,
 } from "./storage";
+import { shouldSkipShortcutDispatch } from "./dispatch";
 import type { ShortcutOverrides } from "./storage";
 
 interface RegisteredHandler {
@@ -28,6 +29,7 @@ interface RegisteredHandler {
 
 let nextHandlerId = 1;
 let nextScopeId = 1;
+const EMPTY_SHORTCUTS: readonly ShortcutBinding[] = [];
 
 function scopesOverlap(left: CommandScope, right: CommandScope): boolean {
   return left === right || left === "global" || right === "global";
@@ -40,32 +42,6 @@ function isScopeActive(
   return scope === "global" || activeScopes.includes(scope);
 }
 
-function isNativeInteractiveTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    Boolean(
-      target.closest(
-        'button, a, input, textarea, select, [role="button"], [role="link"], [contenteditable="true"]',
-      ),
-    )
-  );
-}
-
-function isUnmodifiedNativeControlKey(binding: ShortcutBinding): boolean {
-  return [
-    "Enter",
-    "Space",
-    "Delete",
-    "Backspace",
-    "ArrowUp",
-    "ArrowDown",
-    "ArrowLeft",
-    "ArrowRight",
-    "Home",
-    "End",
-    "Escape",
-  ].includes(binding.key);
-}
 
 export function ShortcutProvider({ children }: { children: ReactNode }) {
   const initialSettings = useMemo(() => readShortcutSettings(), []);
@@ -81,12 +57,16 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
   const scopesRef = useRef<Array<{ id: number; scope: CommandScope }>>([]);
 
   const shortcuts = useMemo(() => {
-    const resolved = new Map<CommandId, ShortcutBinding | null>();
+    const resolved = new Map<CommandId, readonly ShortcutBinding[]>();
     for (const command of DEFAULT_COMMANDS) {
       const override = overrides[command.id];
-      const binding =
-        override === undefined ? command.defaultBinding : override;
-      resolved.set(command.id, binding ?? null);
+      const bindings =
+        override === undefined
+          ? command.defaultBindings
+          : override
+            ? [override]
+            : EMPTY_SHORTCUTS;
+      resolved.set(command.id, bindings);
     }
     return resolved;
   }, [overrides]);
@@ -104,9 +84,14 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const getShortcut = useCallback(
-    (commandId: CommandId) => shortcuts.get(commandId) ?? null,
+  const getShortcuts = useCallback(
+    (commandId: CommandId) => shortcuts.get(commandId) ?? EMPTY_SHORTCUTS,
     [shortcuts],
+  );
+
+  const getShortcut = useCallback(
+    (commandId: CommandId) => getShortcuts(commandId)[0] ?? null,
+    [getShortcuts],
   );
 
   const setShortcut = useCallback(
@@ -156,16 +141,21 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
   );
 
   const getConflicts = useCallback(
-    (commandId: CommandId, binding: ShortcutBinding | null) => {
-      if (!binding) return [];
+    (commandId: CommandId, bindings: readonly ShortcutBinding[]) => {
+      if (bindings.length === 0) return [];
       const command = getCommandDefinition(commandId);
       return DEFAULT_COMMANDS.flatMap((candidate) => {
         if (candidate.id === commandId) return [];
-        const candidateBinding = shortcuts.get(candidate.id);
-        if (!candidateBinding || candidateBinding.key !== binding.key)
-          return [];
         if (!scopesOverlap(command.scope, candidate.scope)) return [];
-        return [{ command: candidate, binding: candidateBinding }];
+
+        return (shortcuts.get(candidate.id) ?? EMPTY_SHORTCUTS)
+          .filter((candidateBinding) =>
+            bindings.some((binding) => binding.key === candidateBinding.key),
+          )
+          .map((candidateBinding) => ({
+            command: candidate,
+            binding: candidateBinding,
+          }));
       });
     },
     [shortcuts],
@@ -204,16 +194,15 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     const onKeyDown = (event: KeyboardEvent) => {
       const binding = normalizeKeyboardEvent(event);
       if (!binding) return;
-      if (
-        isNativeInteractiveTarget(event.target) &&
-        isUnmodifiedNativeControlKey(binding)
-      )
-        return;
+      if (shouldSkipShortcutDispatch(event, binding)) return;
 
       const activeScopes = scopesRef.current.map((item) => item.scope);
       const matchingCommands = DEFAULT_COMMANDS.filter((command) => {
-        const commandBinding = shortcuts.get(command.id);
-        if (!commandBinding || commandBinding.key !== binding.key) return false;
+        const commandBindings = shortcuts.get(command.id) ?? EMPTY_SHORTCUTS;
+        const commandBinding = commandBindings.find(
+          (candidate) => candidate.key === binding.key,
+        );
+        if (!commandBinding) return false;
         if (
           disableSingleKeyShortcuts &&
           isSingleCharacterShortcut(commandBinding)
@@ -254,6 +243,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     () => ({
       commands: DEFAULT_COMMANDS,
       getShortcut,
+      getShortcuts,
       setShortcut,
       resetShortcut,
       resetAllShortcuts,
@@ -269,6 +259,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       disableSingleKeyShortcuts,
       getConflicts,
       getShortcut,
+      getShortcuts,
       pushScope,
       registerShortcutHandler,
       resetAllShortcuts,

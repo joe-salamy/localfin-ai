@@ -2,7 +2,7 @@ import { useContext, useEffect } from "react";
 import type { CommandId, CommandScope } from "./commands";
 import { ShortcutContext } from "./ShortcutContext";
 import type { ShortcutContextValue } from "./ShortcutContext";
-import { ariaKeyShortcut, displayShortcut } from "./normalize";
+import { ariaKeyShortcutList, displayShortcutList } from "./normalize";
 
 export function useShortcuts(): ShortcutContextValue {
   const context = useContext(ShortcutContext);
@@ -39,10 +39,10 @@ export function useShortcutMetadata(commandId: CommandId): {
   label: string;
   ariaKeyShortcuts: string | undefined;
 } {
-  const { getShortcut } = useShortcuts();
-  const binding = getShortcut(commandId);
+  const { getShortcuts } = useShortcuts();
+  const bindings = getShortcuts(commandId);
   return {
-    label: displayShortcut(binding),
-    ariaKeyShortcuts: ariaKeyShortcut(binding),
+    label: displayShortcutList(bindings),
+    ariaKeyShortcuts: ariaKeyShortcutList(bindings),
   };
 }

@@ -22,6 +22,7 @@ import {
 import { toast } from "sonner";
 import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
 import { TagChip, TagPicker } from "@/components/features/TagPicker";
+import type { TagPickerCreateOptions } from "@/components/features/TagPicker";
 import { EntityLabel } from "@/components/ui/EntityLabel";
 import { formatCurrency, cn } from "@/lib/utils";
 import { DISPLAY_DATE_FORMAT } from "@/config/constants";
@@ -68,12 +69,20 @@ interface TransactionTableProps {
   sortColumn: string;
   sortDirection: "asc" | "desc";
   onSort: (column: string) => void;
-  onEdit: (id: string, updates: UpdateTransactionData, options?: { silent?: boolean }) => Promise<boolean>;
+  onEdit: (
+    id: string,
+    updates: UpdateTransactionData,
+    options?: { silent?: boolean },
+  ) => Promise<boolean>;
+  onEditMany: (
+    changes: Array<{ id: string; updates: UpdateTransactionData }>,
+    options?: { silent?: boolean; label?: string },
+  ) => Promise<boolean>;
   onDelete: (id: string) => Promise<void>;
   categories: Category[];
   subcategories: Subcategory[];
   tags: Tag[];
-  onCreateTag: (data: CreateTagData) => Promise<Tag>;
+  onCreateTag: (data: CreateTagData, options?: TagPickerCreateOptions) => Promise<Tag>;
   suspectFindings?: SuspectTransactionFinding[];
 }
 
@@ -131,6 +140,7 @@ export function TransactionTable({
   sortDirection,
   onSort,
   onEdit,
+  onEditMany,
   onDelete,
   categories,
   subcategories,
@@ -449,9 +459,28 @@ export function TransactionTable({
               subcategoryId: resolvedIds[index],
             }));
 
-    for (const update of updates) {
-      if (!update.subcategoryId) continue;
-      await onEdit(update.item.id, { subcategory_id: update.subcategoryId });
+    const changes = updates.flatMap((update) =>
+      update.subcategoryId
+        ? [
+            {
+              id: update.item.id,
+              updates: { subcategory_id: update.subcategoryId },
+            },
+          ]
+        : [],
+    );
+    if (changes.length === 0) return;
+
+    const ok = await onEditMany(changes, {
+      silent: true,
+      label: "Paste transaction subcategories",
+    });
+    if (ok) {
+      successToast(
+        `Updated ${changes.length} transaction${changes.length === 1 ? "" : "s"}.`,
+      );
+    } else {
+      toast.warning("Pasted subcategory update failed.");
     }
   };
 
@@ -777,31 +806,38 @@ export function TransactionTable({
         if (existing.cells > 0) updatesById.set(transaction.id, existing);
       }
 
-      let updatedRows = 0;
-      let updatedCells = 0;
-      let failedRows = 0;
-      for (const [id, entry] of updatesById) {
-        const ok = await onEdit(id, entry.updates, { silent: true });
-        if (ok) {
-          updatedRows++;
-          updatedCells += entry.cells;
-        } else {
-          failedRows++;
-        }
-      }
+      const changes = Array.from(updatesById, ([id, entry]) => ({
+        id,
+        updates: entry.updates,
+      }));
+      const updatedCells = Array.from(updatesById.values()).reduce(
+        (total, entry) => total + entry.cells,
+        0,
+      );
+      const updatedRows = changes.length;
+      const ok =
+        changes.length === 0
+          ? true
+          : await onEditMany(changes, {
+              silent: true,
+              label:
+                mode === "clear"
+                  ? "Clear transaction cells"
+                  : "Paste transaction cells",
+            });
 
-      if (updatedRows > 0) {
+      if (ok && updatedRows > 0) {
         successToast(
           `Updated ${updatedCells} cell(s) across ${updatedRows} row(s).`,
         );
       }
-      if (skipped > 0 || failedRows > 0) {
+      if (skipped > 0 || !ok) {
         toast.warning(
-          `Skipped ${skipped} invalid cell(s); ${failedRows} row update(s) failed.`,
+          `Skipped ${skipped} invalid cell(s); ${ok ? 0 : 1} row update(s) failed.`,
         );
       }
     },
-    [onEdit, parseHistoryCellValue, successToast, transactions],
+    [onEditMany, parseHistoryCellValue, successToast, transactions],
   );
 
   const clearSelectedHistoryCells = useCallback(
@@ -835,29 +871,33 @@ export function TransactionTable({
         updatesById.set(transaction.id, existing);
       }
 
-      let updatedRows = 0;
-      let updatedCells = 0;
-      let failedRows = 0;
-      for (const [id, entry] of updatesById) {
-        const ok = await onEdit(id, entry.updates, { silent: true });
-        if (ok) {
-          updatedRows++;
-          updatedCells += entry.cells;
-        } else {
-          failedRows++;
-        }
-      }
+      const changes = Array.from(updatesById, ([id, entry]) => ({
+        id,
+        updates: entry.updates,
+      }));
+      const updatedCells = Array.from(updatesById.values()).reduce(
+        (total, entry) => total + entry.cells,
+        0,
+      );
+      const updatedRows = changes.length;
+      const ok =
+        changes.length === 0
+          ? true
+          : await onEditMany(changes, {
+              silent: true,
+              label: "Clear transaction cells",
+            });
 
-      if (updatedRows > 0) {
+      if (ok && updatedRows > 0) {
         successToast(
           `Cleared ${updatedCells} cell(s) across ${updatedRows} row(s).`,
         );
       }
-      if (failedRows > 0) {
-        toast.warning(`${failedRows} row update(s) failed.`);
+      if (!ok) {
+        toast.warning("1 row update(s) failed.");
       }
     },
-    [onEdit, parseHistoryCellValue, successToast, transactions],
+    [onEditMany, parseHistoryCellValue, successToast, transactions],
   );
 
   const handleHistoryCopy = useCallback(

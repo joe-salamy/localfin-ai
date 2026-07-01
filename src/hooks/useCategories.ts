@@ -52,6 +52,12 @@ export function useCategories() {
     onSuccess: () => invalidateRelated(),
   });
 
+  const restoreCategory = useMutation({
+    mutationFn: (id: string) =>
+      apiPost<Category>(`/categories/${id}/restore`, {}),
+    onSuccess: () => invalidateRelated(),
+  });
+
   const createSubcategory = useMutation({
     mutationFn: (data: CreateSubcategoryData) =>
       apiPost<Subcategory>("/subcategories", data),
@@ -72,6 +78,12 @@ export function useCategories() {
     onSuccess: () => invalidateRelated(),
   });
 
+  const restoreSubcategory = useMutation({
+    mutationFn: (id: string) =>
+      apiPost<Subcategory>(`/subcategories/${id}/restore`, {}),
+    onSuccess: () => invalidateRelated(),
+  });
+
   return {
     categories: categoriesQuery.data ?? [],
     subcategories: subcategoriesQuery.data ?? [],
@@ -79,8 +91,10 @@ export function useCategories() {
     createCategory,
     updateCategory,
     deleteCategory,
+    restoreCategory,
     createSubcategory,
     updateSubcategory,
     deleteSubcategory,
+    restoreSubcategory,
   };
 }

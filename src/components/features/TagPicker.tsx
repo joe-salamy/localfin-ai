@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/Button";
 import { SimpleSelect } from "@/components/ui/SimpleSelect";
 import { cn } from "@/lib/utils";
 import { resolveEntityColor } from "@/lib/colors";
+import { createTagWithControlledSelection } from "./tagPickerCreateSelection";
+import type { TagPickerCreateOptions } from "./tagPickerCreateSelection";
+export type { TagPickerCreateOptions } from "./tagPickerCreateSelection";
 
 const TAG_TYPES: TagType[] = [
   "custom",
@@ -20,7 +23,7 @@ interface TagPickerProps {
   value: string[];
   onChange: (tagIds: string[]) => void;
   tags: Tag[];
-  onCreateTag: (data: CreateTagData) => Promise<Tag>;
+  onCreateTag: (data: CreateTagData, options?: TagPickerCreateOptions) => Promise<Tag>;
   className?: string;
   disabled?: boolean;
   placeholder?: string;
@@ -140,9 +143,12 @@ export const TagPicker = forwardRef<HTMLButtonElement, TagPickerProps>(
 
       setCreating(true);
       try {
-        const tag = await onCreateTag({ name, type: newType });
-        const latestValue = valueRef.current;
-        if (!latestValue.includes(tag.id)) onChange([...latestValue, tag.id]);
+        await createTagWithControlledSelection({
+          data: { name, type: newType },
+          valueRef,
+          onChange,
+          onCreateTag,
+        });
         setNewName("");
       } catch {
         // Parent wrappers own toast/error messaging for failed tag creation.

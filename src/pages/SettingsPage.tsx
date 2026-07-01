@@ -18,6 +18,7 @@ import {
 } from "@/features/shortcuts/hooks";
 import {
   displayShortcut,
+  displayShortcutList,
   isSingleCharacterShortcut,
   normalizeKeyboardEvent,
   validateShortcut,
@@ -51,7 +52,7 @@ export function SettingsPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const {
     commands,
-    getShortcut,
+    getShortcuts,
     setShortcut,
     resetShortcut,
     resetAllShortcuts,
@@ -95,16 +96,16 @@ export function SettingsPage() {
     if (!normalized) return commands;
 
     return commands.filter((command) => {
-      const binding = getShortcut(command.id);
+      const bindings = getShortcuts(command.id);
       return [
         command.label,
         command.description,
         command.category,
         command.scope,
-        displayShortcut(binding),
+        displayShortcutList(bindings),
       ].some((value) => value.toLowerCase().includes(normalized));
     });
-  }, [commands, getShortcut, query]);
+  }, [commands, getShortcuts, query]);
 
   const selectedCommand =
     commands.find((command) => command.id === selectedCommandId) ?? commands[0];
@@ -202,7 +203,7 @@ export function SettingsPage() {
       return;
     }
 
-    const conflicts = getConflicts(commandId, binding);
+    const conflicts = getConflicts(commandId, binding ? [binding] : []);
     if (conflicts.length > 0) {
       setMessage(
         `${displayShortcut(binding)} already belongs to ${conflicts.map((conflict) => conflict.command.label).join(", ")}.`,
@@ -605,7 +606,7 @@ export function SettingsPage() {
                     </th>
                   </tr>
                   {group.commands.map((command) => {
-                    const current = getShortcut(command.id);
+                    const current = getShortcuts(command.id);
                     const conflicts = getConflicts(command.id, current);
                     const isCapturing = capturingCommandId === command.id;
 
@@ -635,7 +636,7 @@ export function SettingsPage() {
                                 .join(", ")}
                             </div>
                           )}
-                          {current && isSingleCharacterShortcut(current) && (
+                          {current.some(isSingleCharacterShortcut) && (
                             <div className="mt-1 text-xs text-muted-foreground">
                               Single-key scoped shortcut
                             </div>
@@ -645,7 +646,7 @@ export function SettingsPage() {
                           {command.scope}
                         </td>
                         <td className="px-3 py-2 font-mono text-xs">
-                          {displayShortcut(command.defaultBinding)}
+                          {displayShortcutList(command.defaultBindings)}
                         </td>
                         <td className="px-3 py-2 font-mono text-xs">
                           {isCapturing ? (
@@ -669,7 +670,7 @@ export function SettingsPage() {
                               Press keys...
                             </button>
                           ) : (
-                            displayShortcut(current)
+                            displayShortcutList(current)
                           )}
                         </td>
                         <td className="px-3 py-2">

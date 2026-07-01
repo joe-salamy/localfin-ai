@@ -8,6 +8,7 @@ import {
   updateAccount,
   reconcileAccount,
   deleteAccount,
+  restoreAccount,
   getAccountTransactionCount,
 } from "../services/accounts.js";
 import {
@@ -105,6 +106,18 @@ router.post("/:id/reconcile", (req: Request, res: Response) => {
     if (!params || !body) return;
     const data = reconcileAccount(params.id, body);
     res.status(data.transaction ? 201 : 200).json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.post("/:id/restore", (req: Request, res: Response) => {
+  try {
+    const params = parseRequest(idParamSchema, req.params, res);
+    if (!params) return;
+    const data = restoreAccount(params.id);
+    res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     res.status(400).json({ success: false, error: message });

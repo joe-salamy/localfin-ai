@@ -29,6 +29,7 @@ import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAccountLinking } from "@/hooks/useAccountLinking";
 import { useCategories } from "@/hooks/useCategories";
+import { useTransactions } from "@/hooks/useTransactions";
 import type {
   AccountWithBalance,
   Category,
@@ -38,6 +39,7 @@ import type {
 } from "@/types";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
+import { useUndoRedo } from "@/features/undo-redo/hooks";
 import {
   useResizableColumns,
   type ResizableColumnDef,
@@ -396,7 +398,6 @@ function CollapsibleSection({
 }
 
 // ─── Accounts Section ─────────────────────────────────────
-
 function AccountsSection() {
   const {
     accounts,
@@ -405,6 +406,7 @@ function AccountsSection() {
     updateAccount,
     reconcileAccount,
     deleteAccount,
+    restoreAccount,
   } = useAccounts();
   const {
     connections,
@@ -416,6 +418,8 @@ function AccountsSection() {
     disconnectProviderConnection,
   } = useAccountLinking();
   const successToast = useSuccessToast();
+  const { execute } = useUndoRedo();
+  const { deleteTransaction, restoreTransaction } = useTransactions();
   type AccountSortKey = "name" | "type" | "balance";
 
   const [showAdd, setShowAdd] = useState(false);
@@ -492,22 +496,41 @@ function AccountsSection() {
 
   async function submitAddAccount() {
     if (!name.trim()) return;
+    const payload = {
+      name: name.trim(),
+      type,
+      initial_balance: balance ? parseFloat(balance) : 0,
+      color,
+    };
+    let createdId: string | null = null;
     setSaving(true);
     try {
-      await createAccount.mutateAsync({
-        name: name.trim(),
-        type,
-        initial_balance: balance ? parseFloat(balance) : 0,
-        color,
+      await execute({
+        id: crypto.randomUUID(),
+        label: "Create account",
+        apply: async () => {
+          try {
+            const result = await createAccount.mutateAsync(payload);
+            createdId = result.data?.id ?? null;
+            if (!createdId) throw new Error("Account creation returned no account.");
+            successToast("Account created");
+            setName("");
+            setBalance("");
+            setColor(null);
+            setType("asset");
+            setShowAdd(false);
+          } catch {
+            toast.error("Failed to create account");
+            throw new Error("Failed to create account");
+          }
+        },
+        undo: async () => {
+          if (createdId) await deleteAccount.mutateAsync(createdId);
+        },
+        redo: async () => {
+          if (createdId) await restoreAccount.mutateAsync(createdId);
+        },
       });
-      successToast("Account created");
-      setName("");
-      setBalance("");
-      setColor(null);
-      setType("asset");
-      setShowAdd(false);
-    } catch {
-      toast.error("Failed to create account");
     } finally {
       setSaving(false);
     }
@@ -520,17 +543,39 @@ function AccountsSection() {
 
   async function handleUpdate(id: string) {
     if (!editName.trim()) return;
+    const before = accounts.find((account) => account.id === id);
+    const updates = {
+      name: editName.trim(),
+      type: editType,
+      initial_balance: editInitialBalance ? parseFloat(editInitialBalance) : 0,
+      color: editColor,
+    };
     setSaving(true);
     try {
-      await updateAccount.mutateAsync({
-        id,
-        name: editName.trim(),
-        type: editType,
-        initial_balance: editInitialBalance
-          ? parseFloat(editInitialBalance)
-          : 0,
-        color: editColor,
-      });
+      if (!before) {
+        await updateAccount.mutateAsync({ id, ...updates });
+      } else {
+        const applied = await execute({
+          id: crypto.randomUUID(),
+          label: "Update account",
+          apply: async () => {
+            await updateAccount.mutateAsync({ id, ...updates });
+          },
+          undo: async () => {
+            await updateAccount.mutateAsync({
+              id,
+              name: before.name,
+              type: before.type,
+              initial_balance: before.initial_balance,
+              color: before.color,
+            });
+          },
+          redo: async () => {
+            await updateAccount.mutateAsync({ id, ...updates });
+          },
+        });
+        if (!applied) throw new Error("Failed to update account");
+      }
       successToast("Account updated");
       setEditId(null);
     } catch {
@@ -542,13 +587,27 @@ function AccountsSection() {
 
   async function handleDelete() {
     if (!deleteTarget) return;
+    const target = deleteTarget;
     setDeleting(true);
     try {
-      await deleteAccount.mutateAsync(deleteTarget.id);
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Delete account",
+        apply: async () => {
+          await deleteAccount.mutateAsync(target.id);
+        },
+        undo: async () => {
+          await restoreAccount.mutateAsync(target.id);
+        },
+        redo: async () => {
+          await deleteAccount.mutateAsync(target.id);
+        },
+      });
+      if (!applied) throw new Error("Failed to delete account");
       successToast("Account deleted");
       setSelectedIds((current) => {
         const next = new Set(current);
-        next.delete(deleteTarget.id);
+        next.delete(target.id);
         return next;
       });
       setDeleteTarget(null);
@@ -562,32 +621,38 @@ function AccountsSection() {
   async function handleBulkDelete() {
     if (selectedIds.size === 0) return;
     setDeleting(true);
-    const ids = Array.from(selectedIds);
+    const snapshots = accounts.filter((account) => selectedIds.has(account.id));
+    const ids = snapshots.map((account) => account.id);
     try {
-      const results = await Promise.allSettled(
-        ids.map((id) => deleteAccount.mutateAsync(id)),
-      );
-      const deletedIds = new Set(
-        ids.filter((_, index) => results[index]?.status === "fulfilled"),
-      );
-
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Delete accounts",
+        apply: async () => {
+          for (const id of ids) {
+            await deleteAccount.mutateAsync(id);
+          }
+        },
+        undo: async () => {
+          for (const id of ids) {
+            await restoreAccount.mutateAsync(id);
+          }
+        },
+        redo: async () => {
+          for (const id of ids) {
+            await deleteAccount.mutateAsync(id);
+          }
+        },
+      });
+      if (!applied) throw new Error("Failed to delete selected accounts");
       setSelectedIds((current) => {
         const next = new Set(current);
-        deletedIds.forEach((id) => next.delete(id));
+        ids.forEach((id) => next.delete(id));
         return next;
       });
-
-      if (deletedIds.size === ids.length) {
-        successToast(`${deletedIds.size} accounts deleted`);
-        setShowBulkDelete(false);
-      } else if (deletedIds.size > 0) {
-        toast.warning(
-          `${deletedIds.size} accounts deleted; ${ids.length - deletedIds.size} failed`,
-        );
-        setShowBulkDelete(false);
-      } else {
-        toast.error("Failed to delete selected accounts");
-      }
+      successToast(`${ids.length} accounts deleted`);
+      setShowBulkDelete(false);
+    } catch {
+      toast.error("Failed to delete selected accounts");
     } finally {
       setDeleting(false);
     }
@@ -645,6 +710,64 @@ function AccountsSection() {
     } finally {
       setDisconnectingProvider(false);
     }
+  }
+
+  async function updateAccountColor(
+    account: AccountWithBalance,
+    nextColor: string | null,
+  ) {
+    await execute({
+      id: crypto.randomUUID(),
+      label: "Update account",
+      apply: async () => {
+        await updateAccount.mutateAsync({ id: account.id, color: nextColor });
+      },
+      undo: async () => {
+        await updateAccount.mutateAsync({
+          id: account.id,
+          name: account.name,
+          type: account.type,
+          initial_balance: account.initial_balance,
+          color: account.color,
+        });
+      },
+      redo: async () => {
+        await updateAccount.mutateAsync({ id: account.id, color: nextColor });
+      },
+    });
+  }
+
+  async function handleReconcileSubmit(data: {
+    date: string;
+    target_balance: number;
+    name?: string;
+  }) {
+    if (!reconcileTarget) return;
+    const result = await reconcileAccount.mutateAsync({
+      id: reconcileTarget.id,
+      ...data,
+    });
+    const adjustment = result.data?.adjustment_amount ?? 0;
+    const transactionId = result.data?.transaction?.id ?? null;
+    if (adjustment === 0) {
+      successToast("Account already matches that value");
+    } else {
+      successToast(`Adjustment created: ${formatCurrency(adjustment)}`);
+    }
+    setReconcileTarget(null);
+    if (!transactionId) return;
+
+    await execute({
+      id: crypto.randomUUID(),
+      label: "Reconcile account",
+      apply: () => undefined,
+      undo: async () => {
+        await deleteTransaction.mutateAsync(transactionId);
+      },
+      redo: async () => {
+        await restoreTransaction.mutateAsync(transactionId);
+      },
+    });
   }
 
   function startEdit(a: AccountWithBalance) {
@@ -1126,12 +1249,9 @@ function AccountsSection() {
                   <td className="py-1.5">
                     <ColorPicker
                       value={a.color}
-                      onChange={(nextColor) =>
-                        void updateAccount.mutateAsync({
-                          id: a.id,
-                          color: nextColor,
-                        })
-                      }
+                      onChange={(nextColor) => {
+                        void updateAccountColor(a, nextColor);
+                      }}
                       label={`${a.name} color`}
                     />
                   </td>
@@ -1252,21 +1372,7 @@ function AccountsSection() {
         <ReconcileAccountModal
           account={reconcileTarget}
           onClose={() => setReconcileTarget(null)}
-          onSubmit={async (data) => {
-            const result = await reconcileAccount.mutateAsync({
-              id: reconcileTarget.id,
-              ...data,
-            });
-            const adjustment = result.data?.adjustment_amount ?? 0;
-            if (adjustment === 0) {
-              successToast("Account already matches that value");
-            } else {
-              successToast(
-                `Adjustment created: ${formatCurrency(adjustment)}`,
-              );
-            }
-            setReconcileTarget(null);
-          }}
+          onSubmit={handleReconcileSubmit}
           isLoading={reconcileAccount.isPending}
         />
       )}
@@ -1382,8 +1488,10 @@ function CategoriesSection() {
     createCategory,
     updateCategory,
     deleteCategory,
+    restoreCategory,
   } = useCategories();
   const successToast = useSuccessToast();
+  const { execute } = useUndoRedo();
   type CategorySortKey = "name" | "type";
 
   const [showAdd, setShowAdd] = useState(false);
@@ -1445,16 +1553,35 @@ function CategoriesSection() {
 
   async function submitAddCategory() {
     if (!name.trim()) return;
+    const payload = { name: name.trim(), type, color };
+    let createdId: string | null = null;
     setSaving(true);
     try {
-      await createCategory.mutateAsync({ name: name.trim(), type, color });
-      successToast("Category created");
-      setName("");
-      setColor(null);
-      setType("expense");
-      setShowAdd(false);
-    } catch {
-      toast.error("Failed to create category");
+      await execute({
+        id: crypto.randomUUID(),
+        label: "Create category",
+        apply: async () => {
+          try {
+            const result = await createCategory.mutateAsync(payload);
+            createdId = result.data?.id ?? null;
+            if (!createdId) throw new Error("Category creation returned no category.");
+            successToast("Category created");
+            setName("");
+            setColor(null);
+            setType("expense");
+            setShowAdd(false);
+          } catch {
+            toast.error("Failed to create category");
+            throw new Error("Failed to create category");
+          }
+        },
+        undo: async () => {
+          if (createdId) await deleteCategory.mutateAsync(createdId);
+        },
+        redo: async () => {
+          if (createdId) await restoreCategory.mutateAsync(createdId);
+        },
+      });
     } finally {
       setSaving(false);
     }
@@ -1467,14 +1594,33 @@ function CategoriesSection() {
 
   async function handleUpdate(id: string) {
     if (!editName.trim()) return;
+    const before = categories.find((category) => category.id === id);
+    const updates = { name: editName.trim(), type: editType, color: editColor };
     setSaving(true);
     try {
-      await updateCategory.mutateAsync({
-        id,
-        name: editName.trim(),
-        type: editType,
-        color: editColor,
-      });
+      if (!before) {
+        await updateCategory.mutateAsync({ id, ...updates });
+      } else {
+        const applied = await execute({
+          id: crypto.randomUUID(),
+          label: "Update category",
+          apply: async () => {
+            await updateCategory.mutateAsync({ id, ...updates });
+          },
+          undo: async () => {
+            await updateCategory.mutateAsync({
+              id,
+              name: before.name,
+              type: before.type,
+              color: before.color,
+            });
+          },
+          redo: async () => {
+            await updateCategory.mutateAsync({ id, ...updates });
+          },
+        });
+        if (!applied) throw new Error("Failed to update category");
+      }
       successToast("Category updated");
       setEditId(null);
     } catch {
@@ -1486,13 +1632,27 @@ function CategoriesSection() {
 
   async function handleDelete() {
     if (!deleteTarget) return;
+    const target = deleteTarget;
     setDeleting(true);
     try {
-      await deleteCategory.mutateAsync(deleteTarget.id);
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Delete category",
+        apply: async () => {
+          await deleteCategory.mutateAsync(target.id);
+        },
+        undo: async () => {
+          await restoreCategory.mutateAsync(target.id);
+        },
+        redo: async () => {
+          await deleteCategory.mutateAsync(target.id);
+        },
+      });
+      if (!applied) throw new Error("Failed to delete category");
       successToast("Category deleted");
       setSelectedIds((current) => {
         const next = new Set(current);
-        next.delete(deleteTarget.id);
+        next.delete(target.id);
         return next;
       });
       setDeleteTarget(null);
@@ -1506,32 +1666,39 @@ function CategoriesSection() {
   async function handleBulkDelete() {
     if (selectedIds.size === 0) return;
     setDeleting(true);
-    const ids = Array.from(selectedIds);
+    const ids = sortedCategories
+      .filter((category) => selectedIds.has(category.id) && !category.is_system)
+      .map((category) => category.id);
     try {
-      const results = await Promise.allSettled(
-        ids.map((id) => deleteCategory.mutateAsync(id)),
-      );
-      const deletedIds = new Set(
-        ids.filter((_, index) => results[index]?.status === "fulfilled"),
-      );
-
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Delete categories",
+        apply: async () => {
+          for (const id of ids) {
+            await deleteCategory.mutateAsync(id);
+          }
+        },
+        undo: async () => {
+          for (const id of ids) {
+            await restoreCategory.mutateAsync(id);
+          }
+        },
+        redo: async () => {
+          for (const id of ids) {
+            await deleteCategory.mutateAsync(id);
+          }
+        },
+      });
+      if (!applied) throw new Error("Failed to delete selected categories");
       setSelectedIds((current) => {
         const next = new Set(current);
-        deletedIds.forEach((id) => next.delete(id));
+        ids.forEach((id) => next.delete(id));
         return next;
       });
-
-      if (deletedIds.size === ids.length) {
-        successToast(`${deletedIds.size} categories deleted`);
-        setShowBulkDelete(false);
-      } else if (deletedIds.size > 0) {
-        toast.warning(
-          `${deletedIds.size} categories deleted; ${ids.length - deletedIds.size} failed`,
-        );
-        setShowBulkDelete(false);
-      } else {
-        toast.error("Failed to delete selected categories");
-      }
+      successToast(`${ids.length} categories deleted`);
+      setShowBulkDelete(false);
+    } catch {
+      toast.error("Failed to delete selected categories");
     } finally {
       setDeleting(false);
     }
@@ -1542,6 +1709,30 @@ function CategoriesSection() {
     setEditName(c.name);
     setEditType(c.type);
     setEditColor(c.color);
+  }
+
+  async function updateCategoryColor(
+    category: Category,
+    nextColor: string | null,
+  ) {
+    await execute({
+      id: crypto.randomUUID(),
+      label: "Update category",
+      apply: async () => {
+        await updateCategory.mutateAsync({ id: category.id, color: nextColor });
+      },
+      undo: async () => {
+        await updateCategory.mutateAsync({
+          id: category.id,
+          name: category.name,
+          type: category.type,
+          color: category.color,
+        });
+      },
+      redo: async () => {
+        await updateCategory.mutateAsync({ id: category.id, color: nextColor });
+      },
+    });
   }
 
   function toggleSelected(id: string) {
@@ -1836,12 +2027,9 @@ function CategoriesSection() {
                   <td className="py-1.5">
                     <ColorPicker
                       value={c.color}
-                      onChange={(nextColor) =>
-                        void updateCategory.mutateAsync({
-                          id: c.id,
-                          color: nextColor,
-                        })
-                      }
+                      onChange={(nextColor) => {
+                        void updateCategoryColor(c, nextColor);
+                      }}
                       label={`${c.name} color`}
                     />
                   </td>
@@ -1950,8 +2138,10 @@ function SubcategoriesSection() {
     createSubcategory,
     updateSubcategory,
     deleteSubcategory,
+    restoreSubcategory,
   } = useCategories();
   const successToast = useSuccessToast();
+  const { execute } = useUndoRedo();
   type SubcategorySortKey = "name" | "category" | "monthlyGoal";
 
   const categoryMap = useMemo(
@@ -2038,22 +2228,43 @@ function SubcategoriesSection() {
 
   async function submitAddSubcategory() {
     if (!name.trim() || !categoryId) return;
+    const payload = {
+      name: name.trim(),
+      category_id: categoryId,
+      monthly_goal: goal ? parseFloat(goal) : null,
+      color,
+    };
+    let createdId: string | null = null;
     setSaving(true);
     try {
-      await createSubcategory.mutateAsync({
-        name: name.trim(),
-        category_id: categoryId,
-        monthly_goal: goal ? parseFloat(goal) : null,
-        color,
+      await execute({
+        id: crypto.randomUUID(),
+        label: "Create subcategory",
+        apply: async () => {
+          try {
+            const result = await createSubcategory.mutateAsync(payload);
+            createdId = result.data?.id ?? null;
+            if (!createdId) {
+              throw new Error("Subcategory creation returned no subcategory.");
+            }
+            successToast("Subcategory created");
+            setName("");
+            setCategoryId("");
+            setGoal("");
+            setColor(null);
+            setShowAdd(false);
+          } catch {
+            toast.error("Failed to create subcategory");
+            throw new Error("Failed to create subcategory");
+          }
+        },
+        undo: async () => {
+          if (createdId) await deleteSubcategory.mutateAsync(createdId);
+        },
+        redo: async () => {
+          if (createdId) await restoreSubcategory.mutateAsync(createdId);
+        },
       });
-      successToast("Subcategory created");
-      setName("");
-      setCategoryId("");
-      setGoal("");
-      setColor(null);
-      setShowAdd(false);
-    } catch {
-      toast.error("Failed to create subcategory");
     } finally {
       setSaving(false);
     }
@@ -2066,15 +2277,39 @@ function SubcategoriesSection() {
 
   async function handleUpdate(id: string) {
     if (!editName.trim() || !editCategoryId) return;
+    const before = subcategories.find((subcategory) => subcategory.id === id);
+    const updates = {
+      name: editName.trim(),
+      category_id: editCategoryId,
+      monthly_goal: editGoal ? parseFloat(editGoal) : null,
+      color: editColor,
+    };
     setSaving(true);
     try {
-      await updateSubcategory.mutateAsync({
-        id,
-        name: editName.trim(),
-        category_id: editCategoryId,
-        monthly_goal: editGoal ? parseFloat(editGoal) : null,
-        color: editColor,
-      });
+      if (!before) {
+        await updateSubcategory.mutateAsync({ id, ...updates });
+      } else {
+        const applied = await execute({
+          id: crypto.randomUUID(),
+          label: "Update subcategory",
+          apply: async () => {
+            await updateSubcategory.mutateAsync({ id, ...updates });
+          },
+          undo: async () => {
+            await updateSubcategory.mutateAsync({
+              id,
+              name: before.name,
+              category_id: before.category_id,
+              monthly_goal: before.monthly_goal,
+              color: before.color,
+            });
+          },
+          redo: async () => {
+            await updateSubcategory.mutateAsync({ id, ...updates });
+          },
+        });
+        if (!applied) throw new Error("Failed to update subcategory");
+      }
       successToast("Subcategory updated");
       setEditId(null);
     } catch {
@@ -2086,13 +2321,27 @@ function SubcategoriesSection() {
 
   async function handleDelete() {
     if (!deleteTarget) return;
+    const target = deleteTarget;
     setDeleting(true);
     try {
-      await deleteSubcategory.mutateAsync(deleteTarget.id);
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Delete subcategory",
+        apply: async () => {
+          await deleteSubcategory.mutateAsync(target.id);
+        },
+        undo: async () => {
+          await restoreSubcategory.mutateAsync(target.id);
+        },
+        redo: async () => {
+          await deleteSubcategory.mutateAsync(target.id);
+        },
+      });
+      if (!applied) throw new Error("Failed to delete subcategory");
       successToast("Subcategory deleted");
       setSelectedIds((current) => {
         const next = new Set(current);
-        next.delete(deleteTarget.id);
+        next.delete(target.id);
         return next;
       });
       setDeleteTarget(null);
@@ -2106,32 +2355,42 @@ function SubcategoriesSection() {
   async function handleBulkDelete() {
     if (selectedIds.size === 0) return;
     setDeleting(true);
-    const ids = Array.from(selectedIds);
+    const ids = sortedSubcategories
+      .filter(
+        (subcategory) =>
+          selectedIds.has(subcategory.id) && !subcategory.is_system,
+      )
+      .map((subcategory) => subcategory.id);
     try {
-      const results = await Promise.allSettled(
-        ids.map((id) => deleteSubcategory.mutateAsync(id)),
-      );
-      const deletedIds = new Set(
-        ids.filter((_, index) => results[index]?.status === "fulfilled"),
-      );
-
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Delete subcategories",
+        apply: async () => {
+          for (const id of ids) {
+            await deleteSubcategory.mutateAsync(id);
+          }
+        },
+        undo: async () => {
+          for (const id of ids) {
+            await restoreSubcategory.mutateAsync(id);
+          }
+        },
+        redo: async () => {
+          for (const id of ids) {
+            await deleteSubcategory.mutateAsync(id);
+          }
+        },
+      });
+      if (!applied) throw new Error("Failed to delete selected subcategories");
       setSelectedIds((current) => {
         const next = new Set(current);
-        deletedIds.forEach((id) => next.delete(id));
+        ids.forEach((id) => next.delete(id));
         return next;
       });
-
-      if (deletedIds.size === ids.length) {
-        successToast(`${deletedIds.size} subcategories deleted`);
-        setShowBulkDelete(false);
-      } else if (deletedIds.size > 0) {
-        toast.warning(
-          `${deletedIds.size} subcategories deleted; ${ids.length - deletedIds.size} failed`,
-        );
-        setShowBulkDelete(false);
-      } else {
-        toast.error("Failed to delete selected subcategories");
-      }
+      successToast(`${ids.length} subcategories deleted`);
+      setShowBulkDelete(false);
+    } catch {
+      toast.error("Failed to delete selected subcategories");
     } finally {
       setDeleting(false);
     }
@@ -2143,6 +2402,37 @@ function SubcategoriesSection() {
     setEditCategoryId(s.category_id);
     setEditGoal(s.monthly_goal != null ? String(s.monthly_goal) : "");
     setEditColor(s.color);
+  }
+
+  async function updateSubcategoryColor(
+    subcategory: Subcategory,
+    nextColor: string | null,
+  ) {
+    await execute({
+      id: crypto.randomUUID(),
+      label: "Update subcategory",
+      apply: async () => {
+        await updateSubcategory.mutateAsync({
+          id: subcategory.id,
+          color: nextColor,
+        });
+      },
+      undo: async () => {
+        await updateSubcategory.mutateAsync({
+          id: subcategory.id,
+          name: subcategory.name,
+          category_id: subcategory.category_id,
+          monthly_goal: subcategory.monthly_goal,
+          color: subcategory.color,
+        });
+      },
+      redo: async () => {
+        await updateSubcategory.mutateAsync({
+          id: subcategory.id,
+          color: nextColor,
+        });
+      },
+    });
   }
 
   function toggleSelected(id: string) {
@@ -2486,12 +2776,9 @@ function SubcategoriesSection() {
                     <td className="py-1.5">
                       <ColorPicker
                         value={s.color}
-                        onChange={(nextColor) =>
-                          void updateSubcategory.mutateAsync({
-                            id: s.id,
-                            color: nextColor,
-                          })
-                        }
+                        onChange={(nextColor) => {
+                          void updateSubcategoryColor(s, nextColor);
+                        }}
                         label={`${s.name} color`}
                       />
                     </td>

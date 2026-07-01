@@ -10,6 +10,8 @@ import {
   bulkUpdateTransactions,
   deleteTransaction,
   bulkDeleteTransactions,
+  restoreTransaction,
+  bulkRestoreTransactions,
   bulkCreateTransactions,
   checkDuplicates,
   checkTransferMatch,
@@ -103,6 +105,9 @@ const bulkUpdateSchema = z.object({
     ),
 });
 const bulkDeleteSchema = z.object({
+  ids: z.array(nonEmptyString).min(1).max(500),
+});
+const bulkRestoreSchema = z.object({
   ids: z.array(nonEmptyString).min(1).max(500),
 });
 const duplicateCheckSchema = z.object({
@@ -206,6 +211,18 @@ router.delete("/bulk", (req: Request, res: Response) => {
     if (!body) return;
     bulkDeleteTransactions(body.ids);
     res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.post("/bulk/restore", (req: Request, res: Response) => {
+  try {
+    const body = parseRequest(bulkRestoreSchema, req.body, res);
+    if (!body) return;
+    const data = bulkRestoreTransactions(body.ids);
+    res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     res.status(400).json({ success: false, error: message });
@@ -317,6 +334,18 @@ router.put("/:id", (req: Request, res: Response) => {
     const body = parseRequest(updateTransactionSchema, req.body, res);
     if (!params || !body) return;
     const data = updateTransaction(params.id, body);
+    res.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+router.post("/:id/restore", (req: Request, res: Response) => {
+  try {
+    const params = parseRequest(idParamSchema, req.params, res);
+    if (!params) return;
+    const data = restoreTransaction(params.id);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

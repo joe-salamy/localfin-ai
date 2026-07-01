@@ -5,6 +5,7 @@ import type {
   Tag,
   TransactionFilters,
   TransactionKind,
+  TransactionWithDetails,
   UpdateTransactionData,
 } from "@/types";
 import { format, subDays } from "date-fns";
@@ -32,6 +33,9 @@ import { useFlaggedWords } from "@/features/flagged-words/hooks";
 import { useSuccessToast } from "@/features/display-settings/hooks";
 import type { CommandId } from "@/features/shortcuts/commands";
 import { AlertTriangle, CheckCircle2, EyeOff, ScanSearch } from "lucide-react";
+import { useUndoRedo } from "@/features/undo-redo/hooks";
+import { transactionSnapshotToUpdate } from "@/features/undo-redo/financeSnapshots";
+import type { TagPickerCreateOptions } from "@/components/features/TagPicker";
 
 const today = format(new Date(), DATE_FORMAT);
 const defaultStart = format(
@@ -82,14 +86,17 @@ export function TransactionHistoryPage() {
     error,
     updateTransaction,
     deleteTransaction,
+    restoreTransaction,
     bulkUpdateTransactions,
     bulkDeleteTransactions,
+    bulkRestoreTransactions,
   } = useTransactions(appliedFilters);
   const suspectReview = useSuspectTransactionFindings({ status: "open" });
   const flaggedWords = useFlaggedWords();
   const { accounts } = useAccounts();
   const { categories, subcategories } = useCategories();
-  const { tags, createTag } = useTags();
+  const { tags, createTag, deleteTag, restoreTag } = useTags();
+  const { execute } = useUndoRedo();
   const successToast = useSuccessToast();
 
   const applyFilters = useCallback(() => {
@@ -185,59 +192,283 @@ export function TransactionHistoryPage() {
       updates: UpdateTransactionData,
       options?: { silent?: boolean },
     ) => {
-      try {
-        await updateTransaction.mutateAsync({ id, ...updates });
-        if (!options?.silent) successToast("Transaction updated");
-        return true;
-      } catch {
-        if (!options?.silent) toast.error("Failed to update transaction");
-        return false;
+      const before = transactions.find((transaction) => transaction.id === id);
+      if (!before) {
+        try {
+          await updateTransaction.mutateAsync({ id, ...updates });
+          if (!options?.silent) successToast("Transaction updated");
+          return true;
+        } catch {
+          if (!options?.silent) toast.error("Failed to update transaction");
+          return false;
+        }
       }
+
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Edit transaction",
+        apply: async () => {
+          try {
+            await updateTransaction.mutateAsync({ id, ...updates });
+            if (!options?.silent) successToast("Transaction updated");
+          } catch {
+            if (!options?.silent) toast.error("Failed to update transaction");
+            throw new Error("Failed to update transaction");
+          }
+        },
+        undo: async () => {
+          await updateTransaction.mutateAsync({
+            id,
+            ...transactionSnapshotToUpdate(before),
+          });
+        },
+        redo: async () => {
+          await updateTransaction.mutateAsync({ id, ...updates });
+        },
+      });
+      return applied;
     },
-    [successToast, updateTransaction],
+    [execute, successToast, transactions, updateTransaction],
+  );
+
+  const handleEditMany = useCallback(
+    async (
+      changes: Array<{ id: string; updates: UpdateTransactionData }>,
+      options?: { silent?: boolean; label?: string },
+    ) => {
+      const snapshots: TransactionWithDetails[] = [];
+      for (const change of changes) {
+        const before = transactions.find(
+          (transaction) => transaction.id === change.id,
+        );
+        if (!before) {
+          try {
+            for (const fallbackChange of changes) {
+              await updateTransaction.mutateAsync({
+                id: fallbackChange.id,
+                ...fallbackChange.updates,
+              });
+            }
+            return true;
+          } catch {
+            if (!options?.silent) toast.error("Failed to update transactions");
+            return false;
+          }
+        }
+        snapshots.push(before);
+      }
+
+      return execute({
+        id: crypto.randomUUID(),
+        label: options?.label ?? "Edit transactions",
+        apply: async () => {
+          try {
+            for (const change of changes) {
+              await updateTransaction.mutateAsync({
+                id: change.id,
+                ...change.updates,
+              });
+            }
+          } catch {
+            if (!options?.silent) toast.error("Failed to update transactions");
+            throw new Error("Failed to update transactions");
+          }
+        },
+        undo: async () => {
+          for (const snapshot of snapshots) {
+            await updateTransaction.mutateAsync({
+              id: snapshot.id,
+              ...transactionSnapshotToUpdate(snapshot),
+            });
+          }
+        },
+        redo: async () => {
+          for (const change of changes) {
+            await updateTransaction.mutateAsync({
+              id: change.id,
+              ...change.updates,
+            });
+          }
+        },
+      });
+    },
+    [execute, transactions, updateTransaction],
   );
 
   const handleDelete = useCallback(
     async (id: string) => {
-      try {
-        await deleteTransaction.mutateAsync(id);
-        selectedIds.delete(id);
-        setSelectedIds(new Set(selectedIds));
-        successToast("Transaction deleted");
-      } catch {
-        toast.error("Failed to delete transaction");
+      const before = transactions.find((transaction) => transaction.id === id);
+      if (!before) {
+        try {
+          await deleteTransaction.mutateAsync(id);
+          selectedIds.delete(id);
+          setSelectedIds(new Set(selectedIds));
+          successToast("Transaction deleted");
+        } catch {
+          toast.error("Failed to delete transaction");
+        }
+        return;
       }
+
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Delete transaction",
+        apply: async () => {
+          try {
+            await deleteTransaction.mutateAsync(id);
+          } catch {
+            toast.error("Failed to delete transaction");
+            throw new Error("Failed to delete transaction");
+          }
+        },
+        undo: async () => {
+          await restoreTransaction.mutateAsync(id);
+        },
+        redo: async () => {
+          await deleteTransaction.mutateAsync(id);
+        },
+      });
+      if (!applied) return;
+      selectedIds.delete(id);
+      setSelectedIds(new Set(selectedIds));
+      successToast("Transaction deleted");
     },
-    [deleteTransaction, selectedIds, successToast],
+    [
+      deleteTransaction,
+      execute,
+      restoreTransaction,
+      selectedIds,
+      successToast,
+      transactions,
+    ],
   );
 
   const handleBulkEdit = useCallback(
     async (updates: BulkTransactionUpdateData) => {
-      try {
-        await bulkUpdateTransactions.mutateAsync({
-          ids: Array.from(selectedIds),
-          updates,
-        });
-        successToast(`Updated ${selectedIds.size} transactions`);
-        setSelectedIds(new Set());
-        setBulkEditOpen(false);
-      } catch {
-        toast.error("Failed to bulk update");
+      const selectedIdList = Array.from(selectedIds);
+      if (selectedIdList.length === 0) return;
+
+      const transactionById = new Map(
+        sortedTransactions.map((transaction) => [transaction.id, transaction]),
+      );
+      const snapshots = selectedIdList.flatMap((id) => {
+        const transaction = transactionById.get(id);
+        return transaction ? [transaction] : [];
+      });
+
+      if (snapshots.length !== selectedIdList.length) {
+        try {
+          await bulkUpdateTransactions.mutateAsync({
+            ids: selectedIdList,
+            updates,
+          });
+          successToast(`Updated ${selectedIdList.length} transactions`);
+          setSelectedIds(new Set());
+          setBulkEditOpen(false);
+        } catch {
+          toast.error("Failed to bulk update");
+        }
+        return;
       }
+
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Bulk edit transactions",
+        apply: async () => {
+          try {
+            await bulkUpdateTransactions.mutateAsync({
+              ids: selectedIdList,
+              updates,
+            });
+          } catch {
+            toast.error("Failed to bulk update");
+            throw new Error("Failed to bulk update");
+          }
+        },
+        undo: async () => {
+          for (const snapshot of snapshots) {
+            await updateTransaction.mutateAsync({
+              id: snapshot.id,
+              ...transactionSnapshotToUpdate(snapshot),
+            });
+          }
+        },
+        redo: async () => {
+          await bulkUpdateTransactions.mutateAsync({
+            ids: selectedIdList,
+            updates,
+          });
+        },
+      });
+      if (!applied) return;
+      successToast(`Updated ${selectedIdList.length} transactions`);
+      setSelectedIds(new Set());
+      setBulkEditOpen(false);
     },
-    [bulkUpdateTransactions, selectedIds, successToast],
+    [
+      bulkUpdateTransactions,
+      execute,
+      selectedIds,
+      sortedTransactions,
+      successToast,
+      updateTransaction,
+    ],
   );
 
   const handleBulkDelete = useCallback(async () => {
-    try {
-      await bulkDeleteTransactions.mutateAsync(Array.from(selectedIds));
-      successToast(`Deleted ${selectedIds.size} transactions`);
-      setSelectedIds(new Set());
-      setBulkDeleteOpen(false);
-    } catch {
-      toast.error("Failed to bulk delete");
+    const selectedIdList = Array.from(selectedIds);
+    if (selectedIdList.length === 0) return;
+
+    const transactionById = new Map(
+      sortedTransactions.map((transaction) => [transaction.id, transaction]),
+    );
+    const snapshots = selectedIdList.flatMap((id) => {
+      const transaction = transactionById.get(id);
+      return transaction ? [transaction] : [];
+    });
+
+    if (snapshots.length !== selectedIdList.length) {
+      try {
+        await bulkDeleteTransactions.mutateAsync(selectedIdList);
+        successToast(`Deleted ${selectedIdList.length} transactions`);
+        setSelectedIds(new Set());
+        setBulkDeleteOpen(false);
+      } catch {
+        toast.error("Failed to bulk delete");
+      }
+      return;
     }
-  }, [bulkDeleteTransactions, selectedIds, successToast]);
+
+    const applied = await execute({
+      id: crypto.randomUUID(),
+      label: "Delete transactions",
+      apply: async () => {
+        try {
+          await bulkDeleteTransactions.mutateAsync(selectedIdList);
+        } catch {
+          toast.error("Failed to bulk delete");
+          throw new Error("Failed to bulk delete");
+        }
+      },
+      undo: async () => {
+        await bulkRestoreTransactions.mutateAsync(selectedIdList);
+      },
+      redo: async () => {
+        await bulkDeleteTransactions.mutateAsync(selectedIdList);
+      },
+    });
+    if (!applied) return;
+    successToast(`Deleted ${selectedIdList.length} transactions`);
+    setSelectedIds(new Set());
+    setBulkDeleteOpen(false);
+  }, [
+    bulkDeleteTransactions,
+    bulkRestoreTransactions,
+    execute,
+    selectedIds,
+    sortedTransactions,
+    successToast,
+  ]);
 
   const handleCategoryIdsChange = useCallback(
     (nextCategoryIds: string[]) => {
@@ -262,20 +493,45 @@ export function TransactionHistoryPage() {
   const tagOptions = tags.map((tag) => ({ value: tag.id, label: tag.name }));
 
   const createTagForPicker = useCallback(
-    async (data: CreateTagData): Promise<Tag> => {
-      try {
-        const result = await createTag.mutateAsync(data);
-        successToast("Tag created");
-        if (!result.data) throw new Error("Tag creation returned no tag.");
-        return result.data;
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Failed to create tag",
-        );
-        throw err;
-      }
+    async (data: CreateTagData, options?: TagPickerCreateOptions): Promise<Tag> => {
+      let createdTag: Tag | null = null;
+      let applyError: unknown = null;
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Create tag",
+        apply: async () => {
+          try {
+            const result = await createTag.mutateAsync(data);
+            if (!result.data) throw new Error("Tag creation returned no tag.");
+            createdTag = result.data;
+            successToast("Tag created");
+          } catch (err) {
+            applyError = err;
+            toast.error(
+              err instanceof Error ? err.message : "Failed to create tag",
+            );
+            throw err;
+          }
+        },
+        undo: async () => {
+          if (createdTag) {
+            await deleteTag.mutateAsync(createdTag.id);
+            options?.onUndo?.(createdTag);
+          }
+        },
+        redo: async () => {
+          if (createdTag) {
+            await restoreTag.mutateAsync(createdTag.id);
+            options?.onRedo?.(createdTag);
+          }
+        },
+      });
+      if (applied && createdTag) return createdTag;
+      throw applyError instanceof Error
+        ? applyError
+        : new Error("Failed to create tag");
     },
-    [createTag, successToast],
+    [createTag, deleteTag, execute, restoreTag, successToast],
   );
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
@@ -688,6 +944,7 @@ export function TransactionHistoryPage() {
           sortDirection={sortDirection}
           onSort={handleSort}
           onEdit={handleEdit}
+          onEditMany={handleEditMany}
           onDelete={handleDelete}
           categories={categories}
           subcategories={subcategories}

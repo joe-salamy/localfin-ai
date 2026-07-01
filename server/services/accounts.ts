@@ -313,6 +313,38 @@ export function deleteAccount(id: string): void {
   db.prepare("UPDATE accounts SET deleted_at = ? WHERE id = ?").run(now, id);
 }
 
+export function restoreAccount(id: string): Account {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  const existing = db
+    .prepare("SELECT * FROM accounts WHERE id = ?")
+    .get(id) as AccountRow | undefined;
+  if (!existing || existing.deleted_at === null) {
+    throw new Error(`Account with id "${id}" not found`);
+  }
+
+  const conflict = db
+    .prepare(
+      "SELECT 1 FROM accounts WHERE name = ? AND deleted_at IS NULL AND id != ?",
+    )
+    .get(existing.name, id);
+  if (conflict) {
+    throw new Error(
+      `An account with the name "${existing.name}" already exists`,
+    );
+  }
+
+  db.prepare(
+    "UPDATE accounts SET deleted_at = NULL, updated_at = ? WHERE id = ?",
+  ).run(now, id);
+
+  const row = db
+    .prepare("SELECT * FROM accounts WHERE id = ?")
+    .get(id) as AccountRow;
+  return rowToAccount(row);
+}
+
 export function getAccountTransactionCount(accountId: string): number {
   const db = getDb();
   const row = db

@@ -1,7 +1,13 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { createTag, deleteTag, getTags, updateTag } from "../services/tags.js";
+import {
+  createTag,
+  deleteTag,
+  getTags,
+  restoreTag,
+  updateTag,
+} from "../services/tags.js";
 import { idParamSchema, nonEmptyString, parseRequest } from "./validation.js";
 
 export const tagRouter = Router();
@@ -62,6 +68,18 @@ tagRouter.put("/:id", (req: Request, res: Response) => {
     const body = parseRequest(updateTagSchema, req.body, res);
     if (!params || !body) return;
     const data = updateTag(params.id, body);
+    res.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+tagRouter.post("/:id/restore", (req: Request, res: Response) => {
+  try {
+    const params = parseRequest(idParamSchema, req.params, res);
+    if (!params) return;
+    const data = restoreTag(params.id);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

@@ -20,6 +20,7 @@ import { useCategories } from "@/hooks/useCategories";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useTags } from "@/hooks/useTags";
 import { TagPicker } from "@/components/features/TagPicker";
+import type { TagPickerCreateOptions } from "@/components/features/TagPicker";
 import { cn, formatDateInput } from "@/lib/utils";
 import { normalizeTransactionAmount } from "@/lib/transactionAmounts";
 import type {
@@ -34,6 +35,7 @@ import type {
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import { useSuccessToast } from "@/features/display-settings/hooks";
+import { useUndoRedo } from "@/features/undo-redo/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
 import type { FlaggedWordMatch } from "@/features/flagged-words/storage";
 import { useResizableColumns } from "@/features/table-layout/useResizableColumns";
@@ -82,6 +84,14 @@ interface TransactionRow {
   aiSuggestedSubcategoryId: string | null;
 }
 
+interface DraftSnapshot {
+  rows: TransactionRow[];
+  duplicatesChecked: boolean;
+  parseSummary: string | null;
+  statementText: string;
+  statementAccountId: string;
+}
+
 
 function emptyRow(): TransactionRow {
   return {
@@ -103,6 +113,10 @@ function emptyRow(): TransactionRow {
 
 function initialRows(count = 5): TransactionRow[] {
   return Array.from({ length: count }, () => emptyRow());
+}
+
+function cloneRows(rows: TransactionRow[]): TransactionRow[] {
+  return rows.map((row) => ({ ...row, tag_ids: [...row.tag_ids] }));
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -390,11 +404,17 @@ const manualTransactionColumns: readonly ResizableColumnDef[] = [
 export function MultiTransactionTable() {
   const { accounts } = useAccounts();
   const { categories, subcategories } = useCategories();
-  const { tags, createTag } = useTags();
-  const { bulkCreateTransactions, checkDuplicates } = useTransactions();
+  const { tags, createTag, deleteTag, restoreTag } = useTags();
+  const {
+    bulkCreateTransactions,
+    bulkDeleteTransactions,
+    bulkRestoreTransactions,
+    checkDuplicates,
+  } = useTransactions();
   const { categorize, parseStatement } = useAI();
   const { findTransactionMatches } = useFlaggedWords();
   const successToast = useSuccessToast();
+  const { execute } = useUndoRedo();
 
   const [rows, setRows] = useState<TransactionRow[]>(initialRows);
   const [saving, setSaving] = useState(false);
@@ -432,6 +452,48 @@ export function MultiTransactionTable() {
     manualTransactionColumns,
   );
 
+  const captureDraftSnapshot = useCallback(
+    (overrides?: Partial<DraftSnapshot>): DraftSnapshot => ({
+      rows: cloneRows(overrides?.rows ?? rows),
+      duplicatesChecked: overrides?.duplicatesChecked ?? duplicatesChecked,
+      parseSummary:
+        overrides && "parseSummary" in overrides
+          ? (overrides.parseSummary ?? null)
+          : parseSummary,
+      statementText: overrides?.statementText ?? statementText,
+      statementAccountId: overrides?.statementAccountId ?? statementAccountId,
+    }),
+    [duplicatesChecked, parseSummary, rows, statementAccountId, statementText],
+  );
+
+  const restoreDraftSnapshot = useCallback((snapshot: DraftSnapshot) => {
+    setRows(cloneRows(snapshot.rows));
+    setDuplicatesChecked(snapshot.duplicatesChecked);
+    setParseSummary(snapshot.parseSummary);
+    setStatementText(snapshot.statementText);
+    setStatementAccountId(snapshot.statementAccountId);
+  }, []);
+
+  const executeDraftSnapshotAction = useCallback(
+    (
+      label: string,
+      before: DraftSnapshot,
+      after: DraftSnapshot,
+      onInitialApply?: () => void,
+    ) =>
+      execute({
+        id: crypto.randomUUID(),
+        label,
+        apply: () => {
+          restoreDraftSnapshot(after);
+          onInitialApply?.();
+        },
+        undo: () => restoreDraftSnapshot(before),
+        redo: () => restoreDraftSnapshot(after),
+      }),
+    [execute, restoreDraftSnapshot],
+  );
+
   useShortcutScope("transactionInput");
   useShortcutScope("transactionInputGrid", gridFocused);
 
@@ -454,8 +516,12 @@ export function MultiTransactionTable() {
   );
 
   const addRow = useCallback(() => {
-    setRows((prev) => [...prev, emptyRow()]);
-  }, []);
+    const before = captureDraftSnapshot();
+    const after = captureDraftSnapshot({
+      rows: [...cloneRows(rows), emptyRow()],
+    });
+    void executeDraftSnapshotAction("Add transaction row", before, after);
+  }, [captureDraftSnapshot, executeDraftSnapshotAction, rows]);
 
   const handleSubcategoryChange = useCallback(
     (row: TransactionRow, value: string) => {
@@ -503,18 +569,28 @@ export function MultiTransactionTable() {
     [accounts],
   );
 
-  const removeRow = useCallback((id: string) => {
-    setRows((prev) => {
-      if (prev.length <= 1) return [emptyRow()];
-      return prev.filter((r) => r.id !== id);
-    });
-    setDuplicatesChecked(false);
-  }, []);
+  const removeRow = useCallback(
+    (id: string) => {
+      const before = captureDraftSnapshot();
+      const nextRows =
+        rows.length <= 1 ? [emptyRow()] : rows.filter((row) => row.id !== id);
+      const after = captureDraftSnapshot({
+        rows: nextRows,
+        duplicatesChecked: false,
+      });
+      void executeDraftSnapshotAction("Remove transaction row", before, after);
+    },
+    [captureDraftSnapshot, executeDraftSnapshotAction, rows],
+  );
 
   const clearAll = useCallback(() => {
-    setRows(initialRows());
-    setDuplicatesChecked(false);
-  }, []);
+    const before = captureDraftSnapshot();
+    const after = captureDraftSnapshot({
+      rows: initialRows(),
+      duplicatesChecked: false,
+    });
+    void executeDraftSnapshotAction("Clear transactions", before, after);
+  }, [captureDraftSnapshot, executeDraftSnapshotAction]);
 
   const focusCell = useCallback((index: number) => {
     const cells = cellRefs.current.filter(
@@ -771,40 +847,69 @@ export function MultiTransactionTable() {
       startCol: number,
       mode: CellApplyMode,
     ) => {
+      const next = cloneRows(rows);
       let changed = false;
       let skipped = 0;
-      setRows((prev) => {
-        const next = [...prev];
-        for (let rowOffset = 0; rowOffset < matrix.length; rowOffset++) {
-          const targetRow = startRow + rowOffset;
-          while (targetRow >= next.length) next.push(emptyRow());
-          let row = { ...next[targetRow] };
-          const values = matrix[rowOffset] ?? [];
-          for (let colOffset = 0; colOffset < values.length; colOffset++) {
-            const field = addTransactionCellFields[startCol + colOffset];
-            if (!field) break;
-            const result = applyCellValue(
-              row,
-              field,
-              values[colOffset] ?? "",
-              accounts,
-              categories,
-              subcategories,
-              tags,
-              mode,
-            );
-            row = result.row;
-            changed ||= result.applied;
-            if (!result.applied && mode === "paste") skipped++;
-          }
-          next[targetRow] = changed ? { ...row, isDuplicate: false } : row;
+
+      for (let rowOffset = 0; rowOffset < matrix.length; rowOffset++) {
+        const targetRow = startRow + rowOffset;
+        while (targetRow >= next.length) next.push(emptyRow());
+        let row = { ...next[targetRow], tag_ids: [...next[targetRow].tag_ids] };
+        let rowChanged = false;
+        const values = matrix[rowOffset] ?? [];
+        for (let colOffset = 0; colOffset < values.length; colOffset++) {
+          const field = addTransactionCellFields[startCol + colOffset];
+          if (!field) break;
+          const result = applyCellValue(
+            row,
+            field,
+            values[colOffset] ?? "",
+            accounts,
+            categories,
+            subcategories,
+            tags,
+            mode,
+          );
+          row = result.row;
+          rowChanged ||= result.applied;
+          changed ||= result.applied;
+          if (!result.applied && mode === "paste") skipped++;
         }
-        return next;
+        next[targetRow] = rowChanged ? { ...row, isDuplicate: false } : row;
+      }
+
+      if (!changed) {
+        if (skipped > 0) {
+          toast.warning(`Skipped ${skipped} invalid pasted cell(s).`);
+        }
+        return;
+      }
+
+      const before = captureDraftSnapshot();
+      const after = captureDraftSnapshot({
+        rows: next,
+        duplicatesChecked: false,
       });
-      if (changed) setDuplicatesChecked(false);
-      if (skipped > 0) toast.warning(`Skipped ${skipped} invalid pasted cell(s).`);
+      void executeDraftSnapshotAction(
+        mode === "clear" ? "Clear transaction cells" : "Paste transaction cells",
+        before,
+        after,
+        () => {
+          if (skipped > 0) {
+            toast.warning(`Skipped ${skipped} invalid pasted cell(s).`);
+          }
+        },
+      );
     },
-    [accounts, categories, subcategories, tags],
+    [
+      accounts,
+      captureDraftSnapshot,
+      categories,
+      executeDraftSnapshotAction,
+      rows,
+      subcategories,
+      tags,
+    ],
   );
 
   const handlePaste = useCallback(
@@ -860,36 +965,47 @@ export function MultiTransactionTable() {
       const selectedCells = expandSelectedCells();
       if (selectedCells.length === 0) return;
 
-      setRows((prev) => {
-        const next = [...prev];
-        let changed = false;
-        for (const cell of selectedCells) {
-          const field = addTransactionCellFields[cell.col];
-          const row = next[cell.row];
-          if (!field || !row) continue;
-          const result = applyCellValue(
-            { ...row },
-            field,
-            "",
-            accounts,
-            categories,
-            subcategories,
-            tags,
-            "clear",
-          );
-          next[cell.row] = result.applied
-            ? { ...result.row, isDuplicate: false }
-            : result.row;
-          changed ||= result.applied;
-        }
-        if (changed) setDuplicatesChecked(false);
-        return next;
+      const next = cloneRows(rows);
+      let changed = false;
+      for (const cell of selectedCells) {
+        const field = addTransactionCellFields[cell.col];
+        const row = next[cell.row];
+        if (!field || !row) continue;
+        const result = applyCellValue(
+          { ...row, tag_ids: [...row.tag_ids] },
+          field,
+          "",
+          accounts,
+          categories,
+          subcategories,
+          tags,
+          "clear",
+        );
+        next[cell.row] = result.applied
+          ? { ...result.row, isDuplicate: false }
+          : result.row;
+        changed ||= result.applied;
+      }
+      if (!changed) return;
+
+      const before = captureDraftSnapshot();
+      const after = captureDraftSnapshot({
+        rows: next,
+        duplicatesChecked: false,
       });
+      void executeDraftSnapshotAction(
+        "Cut transaction cells",
+        before,
+        after,
+      );
     },
     [
       accounts,
+      captureDraftSnapshot,
       categories,
+      executeDraftSnapshotAction,
       expandSelectedCells,
+      rows,
       subcategories,
       tags,
       writeSelectedCellsToClipboard,
@@ -991,32 +1107,45 @@ export function MultiTransactionTable() {
         })),
       });
       const data = result.data ?? [];
-      setRows((prev) => {
-        const byId = new Map(
-          eligibleRows.map((row, index) => [row.id, data[index]]),
-        );
-        return prev.map((row) => {
-          const cat = byId.get(row.id);
-          if (!cat) return row;
-          return {
-            ...row,
-            kind: cat.kind,
-            subcategory_id: kindHasSubcategory(cat.kind)
-              ? (cat.subcategory_id ?? row.subcategory_id)
-              : "",
-            categorizationSource: cat.source,
-            aiSuggestedSubcategoryId:
-              cat.source === "ai" ? cat.subcategory_id : null,
-          };
-        });
+      const byId = new Map(
+        eligibleRows.map((row, index) => [row.id, data[index]]),
+      );
+      const nextRows = rows.map((row) => {
+        const cat = byId.get(row.id);
+        if (!cat) return row;
+        return {
+          ...row,
+          kind: cat.kind,
+          subcategory_id: kindHasSubcategory(cat.kind)
+            ? (cat.subcategory_id ?? row.subcategory_id)
+            : "",
+          categorizationSource: cat.source,
+          aiSuggestedSubcategoryId:
+            cat.source === "ai" ? cat.subcategory_id : null,
+        };
       });
-      successToast(`Categorized ${data.length} row(s).`);
+      const before = captureDraftSnapshot();
+      const after = captureDraftSnapshot({ rows: nextRows });
+      await executeDraftSnapshotAction(
+        "Categorize transactions",
+        before,
+        after,
+        () => successToast(`Categorized ${data.length} row(s).`),
+      );
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "AI categorization failed.",
       );
     }
-  }, [accounts, categorize, filledRows, successToast]);
+  }, [
+    accounts,
+    captureDraftSnapshot,
+    categorize,
+    executeDraftSnapshotAction,
+    filledRows,
+    rows,
+    successToast,
+  ]);
 
   const handleParseStatement = useCallback(async () => {
     if (!statementText.trim() || !statementAccountId) {
@@ -1032,37 +1161,50 @@ export function MultiTransactionTable() {
       const data = result.data;
       if (!data) return;
 
-      setRows(
-        data.transactions.map((tx) => ({
-          id: crypto.randomUUID(),
-          date: formatDateInput(tx.date),
-          name: tx.name,
-          amount: String(tx.amount.toFixed(2)),
-          kind: tx.kind,
-          account_id: statementAccountId,
-          subcategory_id: tx.subcategory_id ?? "",
-          comment: tx.needsReview ? "Needs review" : "",
-          isDuplicate: tx.isDuplicate,
-          transferMatch: null,
-          categorizationSource: tx.categorizationSource,
-          aiSuggestedSubcategoryId:
-            tx.categorizationSource === "ai" ? tx.subcategory_id : null,
-          tag_ids: [],
-        })),
+      const summary = `${data.summary.total} parsed, ${data.summary.duplicates} duplicate(s), ${data.summary.uncategorized} uncategorized, ${Math.round(data.parseSuccessRate * 100)}% success`;
+      const nextRows = data.transactions.map((tx) => ({
+        id: crypto.randomUUID(),
+        date: formatDateInput(tx.date),
+        name: tx.name,
+        amount: String(tx.amount.toFixed(2)),
+        kind: tx.kind,
+        account_id: statementAccountId,
+        subcategory_id: tx.subcategory_id ?? "",
+        comment: tx.needsReview ? "Needs review" : "",
+        isDuplicate: tx.isDuplicate,
+        transferMatch: null,
+        categorizationSource: tx.categorizationSource,
+        aiSuggestedSubcategoryId:
+          tx.categorizationSource === "ai" ? tx.subcategory_id : null,
+        tag_ids: [],
+      }));
+      const before = captureDraftSnapshot();
+      const after = captureDraftSnapshot({
+        rows: nextRows,
+        duplicatesChecked: data.summary.duplicates > 0,
+        parseSummary: summary,
+        statementText: "",
+        statementAccountId: "",
+      });
+      await executeDraftSnapshotAction(
+        "Parse statement",
+        before,
+        after,
+        () => successToast(`Parsed ${data.summary.total} transaction(s).`),
       );
-      setDuplicatesChecked(data.summary.duplicates > 0);
-      setParseSummary(
-        `${data.summary.total} parsed, ${data.summary.duplicates} duplicate(s), ${data.summary.uncategorized} uncategorized, ${Math.round(data.parseSuccessRate * 100)}% success`,
-      );
-      setStatementText("");
-      setStatementAccountId("");
-      successToast(`Parsed ${data.summary.total} transaction(s).`);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Statement parsing failed.",
       );
     }
-  }, [parseStatement, statementAccountId, statementText, successToast]);
+  }, [
+    captureDraftSnapshot,
+    executeDraftSnapshotAction,
+    parseStatement,
+    statementAccountId,
+    statementText,
+    successToast,
+  ]);
 
   const handleSave = useCallback(async () => {
     // Validate
@@ -1098,23 +1240,27 @@ export function MultiTransactionTable() {
         const hasDuplicates = dupData.some(Boolean);
 
         if (hasDuplicates) {
-          // Mark duplicate rows
-          setRows((prev) => {
-            const filledIds = filledRows.map((r) => r.id);
-            let filledIdx = 0;
-            return prev.map((r) => {
-              if (filledIds.includes(r.id)) {
-                const isDup = dupData[filledIdx] ?? false;
-                filledIdx++;
-                return { ...r, isDuplicate: isDup };
-              }
-              return r;
-            });
+          const filledIds = filledRows.map((r) => r.id);
+          let filledIdx = 0;
+          const nextRows = rows.map((row) => {
+            if (!filledIds.includes(row.id)) return row;
+            const isDuplicate = dupData[filledIdx] ?? false;
+            filledIdx++;
+            return { ...row, isDuplicate };
           });
-          setDuplicatesChecked(true);
-          setSaving(false);
-          toast.warning(
-            "Some transactions may be duplicates. Remove them or click Save All again to confirm.",
+          const before = captureDraftSnapshot();
+          const after = captureDraftSnapshot({
+            rows: nextRows,
+            duplicatesChecked: true,
+          });
+          await executeDraftSnapshotAction(
+            "Mark duplicate transactions",
+            before,
+            after,
+            () =>
+              toast.warning(
+                "Some transactions may be duplicates. Remove them or click Save All again to confirm.",
+              ),
           );
           return;
         }
@@ -1135,24 +1281,51 @@ export function MultiTransactionTable() {
         tag_ids: r.tag_ids,
       }));
 
-      await bulkCreateTransactions.mutateAsync(payload);
-      successToast(`${payload.length} transaction(s) saved.`);
-      setRows(initialRows());
-      setDuplicatesChecked(false);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to save transactions.",
-      );
+      let createdIds: string[] = [];
+      await execute({
+        id: crypto.randomUUID(),
+        label: "Save transactions",
+        apply: async () => {
+          try {
+            const result = await bulkCreateTransactions.mutateAsync(payload);
+            createdIds = (result.data ?? []).map((transaction) => transaction.id);
+            successToast(`${payload.length} transaction(s) saved.`);
+            setRows(initialRows());
+            setDuplicatesChecked(false);
+          } catch (err) {
+            toast.error(
+              err instanceof Error ? err.message : "Failed to save transactions.",
+            );
+            throw err;
+          }
+        },
+        undo: async () => {
+          if (createdIds.length > 0) {
+            await bulkDeleteTransactions.mutateAsync(createdIds);
+          }
+        },
+        redo: async () => {
+          if (createdIds.length > 0) {
+            await bulkRestoreTransactions.mutateAsync(createdIds);
+          }
+        },
+      });
     } finally {
       setSaving(false);
     }
   }, [
     accounts,
+    bulkCreateTransactions,
+    bulkDeleteTransactions,
+    bulkRestoreTransactions,
+    captureDraftSnapshot,
+    checkDuplicates,
+    duplicatesChecked,
+    execute,
+    executeDraftSnapshotAction,
     filledRows,
     findTransactionMatches,
-    duplicatesChecked,
-    checkDuplicates,
-    bulkCreateTransactions,
+    rows,
     successToast,
   ]);
 
@@ -1229,20 +1402,45 @@ export function MultiTransactionTable() {
   );
 
   const createTagForPicker = useCallback(
-    async (data: CreateTagData): Promise<Tag> => {
-      try {
-        const result = await createTag.mutateAsync(data);
-        successToast("Tag created");
-        if (!result.data) throw new Error("Tag creation returned no tag.");
-        return result.data;
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Failed to create tag.",
-        );
-        throw err;
-      }
+    async (data: CreateTagData, options?: TagPickerCreateOptions): Promise<Tag> => {
+      let createdTag: Tag | null = null;
+      let applyError: unknown = null;
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Create tag",
+        apply: async () => {
+          try {
+            const result = await createTag.mutateAsync(data);
+            if (!result.data) throw new Error("Tag creation returned no tag.");
+            createdTag = result.data;
+            successToast("Tag created");
+          } catch (err) {
+            applyError = err;
+            toast.error(
+              err instanceof Error ? err.message : "Failed to create tag.",
+            );
+            throw err;
+          }
+        },
+        undo: async () => {
+          if (createdTag) {
+            await deleteTag.mutateAsync(createdTag.id);
+            options?.onUndo?.(createdTag);
+          }
+        },
+        redo: async () => {
+          if (createdTag) {
+            await restoreTag.mutateAsync(createdTag.id);
+            options?.onRedo?.(createdTag);
+          }
+        },
+      });
+      if (applied && createdTag) return createdTag;
+      throw applyError instanceof Error
+        ? applyError
+        : new Error("Failed to create tag.");
     },
-    [createTag, successToast],
+    [createTag, deleteTag, execute, restoreTag, successToast],
   );
 
   return (

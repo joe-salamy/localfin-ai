@@ -36,11 +36,17 @@ export function useTags() {
     onSuccess: () => invalidateRelated(),
   });
 
+  const restoreTag = useMutation({
+    mutationFn: (id: string) => apiPost<Tag>(`/tags/${id}/restore`, {}),
+    onSuccess: () => invalidateRelated(),
+  });
+
   return {
     tags: tagsQuery.data ?? [],
     isLoading: tagsQuery.isLoading,
     createTag,
     updateTag,
     deleteTag,
+    restoreTag,
   };
 }

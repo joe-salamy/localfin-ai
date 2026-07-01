@@ -211,11 +211,28 @@ export function displayShortcut(binding: ShortcutBinding | null): string {
     .join(isMac ? "" : "+");
 }
 
+export function displayShortcutList(
+  bindings: readonly ShortcutBinding[],
+): string {
+  if (bindings.length === 0) return "Unassigned";
+  return bindings.map((binding) => displayShortcut(binding)).join(" / ");
+}
+
 export function ariaKeyShortcut(
   binding: ShortcutBinding | null,
 ): string | undefined {
   if (!binding) return undefined;
   return binding.key.replace(/Ctrl/g, "Control");
+}
+
+export function ariaKeyShortcutList(
+  bindings: readonly ShortcutBinding[],
+): string | undefined {
+  if (bindings.length === 0) return undefined;
+  return bindings
+    .map((binding) => ariaKeyShortcut(binding))
+    .filter((value): value is string => value !== undefined)
+    .join(" ");
 }
 
 export function isNavigationKey(binding: ShortcutBinding): boolean {

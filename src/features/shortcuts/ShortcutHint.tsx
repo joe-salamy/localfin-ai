@@ -1,6 +1,6 @@
 import type { CommandId } from "./commands";
 import { useShortcuts } from "./hooks";
-import { displayShortcut } from "./normalize";
+import { displayShortcutList } from "./normalize";
 import { cn } from "@/lib/utils";
 
 export function ShortcutHint({
@@ -10,11 +10,11 @@ export function ShortcutHint({
   commandId: CommandId;
   className?: string;
 }) {
-  const { getShortcut, showShortcutHints } = useShortcuts();
+  const { getShortcuts, showShortcutHints } = useShortcuts();
   if (!showShortcutHints) return null;
 
-  const binding = getShortcut(commandId);
-  if (!binding) return null;
+  const bindings = getShortcuts(commandId);
+  if (bindings.length === 0) return null;
 
   return (
     <kbd
@@ -23,7 +23,7 @@ export function ShortcutHint({
         className,
       )}
     >
-      {displayShortcut(binding)}
+      {displayShortcutList(bindings)}
     </kbd>
   );
 }

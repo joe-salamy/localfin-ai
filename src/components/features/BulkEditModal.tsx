@@ -8,6 +8,7 @@ import {
   formatSubcategoryLabel,
 } from "@/lib/categoryLabels";
 import { TagPicker } from "@/components/features/TagPicker";
+import type { TagPickerCreateOptions } from "@/components/features/TagPicker";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import type { Category } from "@/types";
@@ -25,7 +26,7 @@ interface BulkEditModalProps {
   categories: Category[];
   subcategories: Subcategory[];
   tags: Tag[];
-  onCreateTag: (data: CreateTagData) => Promise<Tag>;
+  onCreateTag: (data: CreateTagData, options?: TagPickerCreateOptions) => Promise<Tag>;
   isLoading?: boolean;
 }
 

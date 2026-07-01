@@ -8,6 +8,7 @@ import { SimpleSelect } from "@/components/ui/SimpleSelect";
 import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
 import { TagChip } from "@/components/features/TagPicker";
 import { useTags } from "@/hooks/useTags";
+import { useUndoRedo } from "@/features/undo-redo/hooks";
 import { resolveEntityColor } from "@/lib/colors";
 import { handleEnterSave } from "@/lib/enterSave";
 import type { Tag, TagType } from "@/types";
@@ -38,7 +39,8 @@ const TAG_COLUMNS: ResizableColumnDef[] = [
 ];
 
 export function TagManager() {
-  const { tags, isLoading, createTag, updateTag, deleteTag } = useTags();
+  const { tags, isLoading, createTag, updateTag, deleteTag, restoreTag } = useTags();
+  const { execute } = useUndoRedo();
   const successToast = useSuccessToast();
   const [name, setName] = useState("");
   const [type, setType] = useState<TagType>("custom");
@@ -82,12 +84,39 @@ export function TagManager() {
       return;
     }
 
+    let createdId: string | null = null;
     try {
-      await createTag.mutateAsync({ name: nextName, type, color });
-      successToast("Tag created");
-      setName("");
-      setType("custom");
-      setColor(null);
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Create tag",
+        apply: async () => {
+          try {
+            const result = await createTag.mutateAsync({
+              name: nextName,
+              type,
+              color,
+            });
+            createdId = result.data?.id ?? null;
+            if (!createdId) throw new Error("Tag creation returned no tag.");
+            successToast("Tag created");
+            setName("");
+            setType("custom");
+            setColor(null);
+          } catch (err) {
+            toast.error(
+              err instanceof Error ? err.message : "Failed to create tag",
+            );
+            throw err;
+          }
+        },
+        undo: async () => {
+          if (createdId) await deleteTag.mutateAsync(createdId);
+        },
+        redo: async () => {
+          if (createdId) await restoreTag.mutateAsync(createdId);
+        },
+      });
+      if (!applied) return;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create tag");
     }
@@ -100,13 +129,32 @@ export function TagManager() {
       return;
     }
 
+    const before = tags.find((tag) => tag.id === id);
+    const updates = { name: nextName, type: editType, color: editColor };
     try {
-      await updateTag.mutateAsync({
-        id,
-        name: nextName,
-        type: editType,
-        color: editColor,
-      });
+      if (!before) {
+        await updateTag.mutateAsync({ id, ...updates });
+      } else {
+        const applied = await execute({
+          id: crypto.randomUUID(),
+          label: "Update tag",
+          apply: async () => {
+            await updateTag.mutateAsync({ id, ...updates });
+          },
+          undo: async () => {
+            await updateTag.mutateAsync({
+              id,
+              name: before.name,
+              type: before.type,
+              color: before.color,
+            });
+          },
+          redo: async () => {
+            await updateTag.mutateAsync({ id, ...updates });
+          },
+        });
+        if (!applied) throw new Error("Failed to update tag");
+      }
       successToast("Tag updated");
       setEditId(null);
     } catch (err) {
@@ -128,10 +176,24 @@ export function TagManager() {
     if (!deleteTarget) return;
 
     try {
-      await deleteTag.mutateAsync(deleteTarget.id);
+      const target = deleteTarget;
+      const applied = await execute({
+        id: crypto.randomUUID(),
+        label: "Delete tag",
+        apply: async () => {
+          await deleteTag.mutateAsync(target.id);
+        },
+        undo: async () => {
+          await restoreTag.mutateAsync(target.id);
+        },
+        redo: async () => {
+          await deleteTag.mutateAsync(target.id);
+        },
+      });
+      if (!applied) throw new Error("Failed to delete tag");
       successToast("Tag deleted");
       setDeleteTarget(null);
-      if (editId === deleteTarget.id) setEditId(null);
+      if (editId === target.id) setEditId(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete tag");
     }

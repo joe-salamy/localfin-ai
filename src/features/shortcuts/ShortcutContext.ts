@@ -14,12 +14,13 @@ export interface ShortcutConflict {
 export interface ShortcutContextValue {
   commands: readonly CommandDefinition[];
   getShortcut: (commandId: CommandId) => ShortcutBinding | null;
+  getShortcuts: (commandId: CommandId) => readonly ShortcutBinding[];
   setShortcut: (commandId: CommandId, binding: ShortcutBinding | null) => void;
   resetShortcut: (commandId: CommandId) => void;
   resetAllShortcuts: () => void;
   getConflicts: (
     commandId: CommandId,
-    binding: ShortcutBinding | null,
+    bindings: readonly ShortcutBinding[],
   ) => ShortcutConflict[];
   registerShortcutHandler: (
     commandId: CommandId,

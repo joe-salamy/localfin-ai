@@ -5,16 +5,35 @@ import path from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
 import { closeDbForTests, getDb } from "./db/index.js";
-import { createAccount } from "./services/accounts.js";
-import { createCategory, createSubcategory } from "./services/categories.js";
 import {
+  createAccount,
+  deleteAccount,
+  getAccountById,
+  restoreAccount,
+} from "./services/accounts.js";
+import {
+  createCategory,
+  createSubcategory,
+  deleteCategory,
+  deleteSubcategory,
+  getCategoryById,
+  getSubcategoryById,
+  restoreCategory,
+  restoreSubcategory,
+} from "./services/categories.js";
+import {
+  bulkCreateTransactions,
+  bulkDeleteTransactions,
+  bulkRestoreTransactions,
   bulkUpdateTransactions,
   createTransaction,
+  deleteTransaction,
   getTransactionById,
   getTransactionsWithDetails,
+  restoreTransaction,
   updateTransaction,
 } from "./services/transactions.js";
-import { createTag, deleteTag } from "./services/tags.js";
+import { createTag, deleteTag, getTagById, restoreTag } from "./services/tags.js";
 import { getTagSummary } from "./services/dashboard.js";
 import {
   getSuspectTransactionFindings,
@@ -64,6 +83,17 @@ function createSubcategoryFixture(): {
     liabilityAccountId: liability.id,
     subcategoryId: subcategory.id,
   };
+}
+
+function deletedAtFor(
+  table: "accounts" | "categories" | "subcategories" | "tags",
+  id: string,
+): string | null {
+  const row = getDb()
+    .prepare(`SELECT deleted_at FROM ${table} WHERE id = ?`)
+    .get(id) as { deleted_at: string | null } | undefined;
+  assert.ok(row, `expected ${table} row ${id} to exist`);
+  return row.deleted_at;
 }
 
 test("tag migration preserves transaction_tags foreign key after transaction rebuild", async (t) => {
@@ -747,4 +777,188 @@ test("suspect scan carries dismissed findings forward on later scans", async (t)
 
   assert.equal(repeatedFinding?.status, "dismissed");
   assert.equal(getSuspectTransactionFindings({ status: "open" }).length, 0);
+});
+
+test("transaction restore preserves ids, tag associations, and bulk request order", async (t) => {
+  await useTempDatabase(t, "localfin-transaction-restore-test-");
+  const { assetAccountId, subcategoryId } = createSubcategoryFixture();
+  const project = createTag({ name: "Restore Project" });
+  const tagged = createTransaction({
+    account_id: assetAccountId,
+    date: "2026-06-10",
+    name: "Tagged Transaction",
+    amount: 42,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+    tag_ids: [project.id],
+  });
+
+  deleteTransaction(tagged.id);
+  assert.equal(getTransactionById(tagged.id), null);
+
+  const restored = restoreTransaction(tagged.id);
+  assert.equal(restored.id, tagged.id);
+  assert.deepEqual(
+    restored.tags.map((tag) => tag.id),
+    [project.id],
+  );
+
+  const bulkCreated = bulkCreateTransactions([
+    {
+      account_id: assetAccountId,
+      date: "2026-06-11",
+      name: "Bulk Restore First",
+      amount: 12,
+      kind: "expense",
+      subcategory_id: subcategoryId,
+      tag_ids: [project.id],
+    },
+    {
+      account_id: assetAccountId,
+      date: "2026-06-12",
+      name: "Bulk Restore Second",
+      amount: 34,
+      kind: "expense",
+      subcategory_id: subcategoryId,
+    },
+  ]);
+  const first = bulkCreated.find(
+    (transaction) => transaction.name === "Bulk Restore First",
+  );
+  const second = bulkCreated.find(
+    (transaction) => transaction.name === "Bulk Restore Second",
+  );
+  assert.ok(first);
+  assert.ok(second);
+
+  bulkDeleteTransactions([first.id, second.id]);
+  assert.equal(getTransactionById(first.id), null);
+  assert.equal(getTransactionById(second.id), null);
+
+  const requestedOrder = [second.id, first.id];
+  const restoredBulk = bulkRestoreTransactions(requestedOrder);
+
+  assert.deepEqual(
+    restoredBulk.map((transaction) => transaction.id),
+    requestedOrder,
+  );
+  assert.deepEqual(
+    getTransactionById(first.id)?.tags.map((tag) => tag.id),
+    [project.id],
+  );
+});
+
+test("entity restores preserve ids and retained tag associations", async (t) => {
+  await useTempDatabase(t, "localfin-entity-restore-test-");
+
+  const account = createAccount({ name: "Restorable Account", type: "asset" });
+  deleteAccount(account.id);
+  assert.equal(getAccountById(account.id), undefined);
+  const restoredAccount = restoreAccount(account.id);
+  assert.equal(restoredAccount.id, account.id);
+
+  const category = createCategory({
+    name: "Restorable Category",
+    type: "expense",
+  });
+  deleteCategory(category.id);
+  assert.equal(getCategoryById(category.id), undefined);
+  const restoredCategory = restoreCategory(category.id);
+  assert.equal(restoredCategory.id, category.id);
+
+  const parentCategory = createCategory({
+    name: "Restorable Parent Category",
+    type: "expense",
+  });
+  const subcategory = createSubcategory({
+    name: "Restorable Subcategory",
+    category_id: parentCategory.id,
+  });
+  deleteSubcategory(subcategory.id);
+  assert.equal(getSubcategoryById(subcategory.id), undefined);
+  const restoredSubcategory = restoreSubcategory(subcategory.id);
+  assert.equal(restoredSubcategory.id, subcategory.id);
+  assert.equal(restoredSubcategory.category_id, parentCategory.id);
+
+  const tag = createTag({ name: "Restorable Tag" });
+  const tagged = createTransaction({
+    account_id: restoredAccount.id,
+    date: "2026-06-13",
+    name: "Tagged Before Tag Delete",
+    amount: 19,
+    kind: "expense",
+    subcategory_id: restoredSubcategory.id,
+    tag_ids: [tag.id],
+  });
+
+  deleteTag(tag.id);
+  assert.equal(getTagById(tag.id), undefined);
+  assert.deepEqual(getTransactionById(tagged.id)?.tags, []);
+
+  const restoredTag = restoreTag(tag.id);
+  assert.equal(restoredTag.id, tag.id);
+  assert.deepEqual(
+    getTransactionById(tagged.id)?.tags.map((transactionTag) => transactionTag.id),
+    [tag.id],
+  );
+});
+
+test("same-key restore conflicts leave deleted rows deleted", async (t) => {
+  await useTempDatabase(t, "localfin-restore-conflict-test-");
+
+  const deletedAccount = createAccount({
+    name: "Conflict Restore Account",
+    type: "asset",
+  });
+  deleteAccount(deletedAccount.id);
+  createAccount({ name: deletedAccount.name, type: "liability" });
+  assert.throws(
+    () => restoreAccount(deletedAccount.id),
+    /An account with the name "Conflict Restore Account" already exists/,
+  );
+  assert.equal(getAccountById(deletedAccount.id), undefined);
+  assert.ok(deletedAtFor("accounts", deletedAccount.id));
+
+  const deletedCategory = createCategory({
+    name: "Conflict Restore Category",
+    type: "expense",
+  });
+  deleteCategory(deletedCategory.id);
+  createCategory({ name: deletedCategory.name, type: "expense" });
+  assert.throws(
+    () => restoreCategory(deletedCategory.id),
+    /A category with the name "Conflict Restore Category" and type "expense" already exists/,
+  );
+  assert.equal(getCategoryById(deletedCategory.id), undefined);
+  assert.ok(deletedAtFor("categories", deletedCategory.id));
+
+  const parentCategory = createCategory({
+    name: "Conflict Restore Parent",
+    type: "expense",
+  });
+  const deletedSubcategory = createSubcategory({
+    name: "Conflict Restore Subcategory",
+    category_id: parentCategory.id,
+  });
+  deleteSubcategory(deletedSubcategory.id);
+  createSubcategory({
+    name: deletedSubcategory.name,
+    category_id: parentCategory.id,
+  });
+  assert.throws(
+    () => restoreSubcategory(deletedSubcategory.id),
+    /A subcategory with the name "Conflict Restore Subcategory" already exists/,
+  );
+  assert.equal(getSubcategoryById(deletedSubcategory.id), undefined);
+  assert.ok(deletedAtFor("subcategories", deletedSubcategory.id));
+
+  const deletedTag = createTag({ name: "Conflict Restore Tag", type: "trip" });
+  deleteTag(deletedTag.id);
+  createTag({ name: deletedTag.name, type: deletedTag.type });
+  assert.throws(
+    () => restoreTag(deletedTag.id),
+    /A tag with the name "Conflict Restore Tag" and type "trip" already exists/,
+  );
+  assert.equal(getTagById(deletedTag.id), undefined);
+  assert.ok(deletedAtFor("tags", deletedTag.id));
 });

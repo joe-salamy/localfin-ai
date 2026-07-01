@@ -69,6 +69,12 @@ export function useTransactions(filters?: TransactionFilters) {
     onSuccess: () => invalidateRelated(),
   });
 
+  const restoreTransaction = useMutation({
+    mutationFn: (id: string) =>
+      apiPost<TransactionWithDetails>(`/transactions/${id}/restore`, {}),
+    onSuccess: () => invalidateRelated(),
+  });
+
   const bulkUpdateTransactions = useMutation({
     mutationFn: (data: { ids: string[]; updates: BulkTransactionUpdateData }) =>
       apiPut<void>("/transactions/bulk", data),
@@ -78,6 +84,12 @@ export function useTransactions(filters?: TransactionFilters) {
   const bulkDeleteTransactions = useMutation({
     mutationFn: (ids: string[]) =>
       apiDelete<void>("/transactions/bulk", { ids }),
+    onSuccess: () => invalidateRelated(),
+  });
+
+  const bulkRestoreTransactions = useMutation({
+    mutationFn: (ids: string[]) =>
+      apiPost<TransactionWithDetails[]>("/transactions/bulk/restore", { ids }),
     onSuccess: () => invalidateRelated(),
   });
 
@@ -110,8 +122,10 @@ export function useTransactions(filters?: TransactionFilters) {
     createTransaction,
     updateTransaction,
     deleteTransaction,
+    restoreTransaction,
     bulkUpdateTransactions,
     bulkDeleteTransactions,
+    bulkRestoreTransactions,
     bulkCreateTransactions,
     checkDuplicates,
     checkTransferMatch,

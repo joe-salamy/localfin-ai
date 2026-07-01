@@ -6,11 +6,13 @@ import {
   getCategories,
   updateCategory,
   deleteCategory,
+  restoreCategory,
   createSubcategory,
   getSubcategories,
   getSubcategoriesByCategory,
   updateSubcategory,
   deleteSubcategory,
+  restoreSubcategory,
 } from "../services/categories.js";
 import {
   finiteNumber,
@@ -97,6 +99,18 @@ categoryRouter.put("/:id", (req: Request, res: Response) => {
   }
 });
 
+categoryRouter.post("/:id/restore", (req: Request, res: Response) => {
+  try {
+    const params = parseRequest(idParamSchema, req.params, res);
+    if (!params) return;
+    const data = restoreCategory(params.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
 categoryRouter.delete("/:id", (req: Request, res: Response) => {
   try {
     const params = parseRequest(idParamSchema, req.params, res);
@@ -154,6 +168,18 @@ subcategoryRouter.put("/:id", (req: Request, res: Response) => {
     const body = parseRequest(updateSubcategorySchema, req.body, res);
     if (!params || !body) return;
     const data = updateSubcategory(params.id, body);
+    res.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+subcategoryRouter.post("/:id/restore", (req: Request, res: Response) => {
+  try {
+    const params = parseRequest(idParamSchema, req.params, res);
+    if (!params) return;
+    const data = restoreSubcategory(params.id);
     res.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

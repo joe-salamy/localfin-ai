@@ -227,6 +227,43 @@ export function deleteCategory(id: string): void {
   db.prepare("UPDATE categories SET deleted_at = ? WHERE id = ?").run(now, id);
 }
 
+export function restoreCategory(id: string): Category {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  const existing = db
+    .prepare("SELECT * FROM categories WHERE id = ?")
+    .get(id) as CategoryRow | undefined;
+  if (!existing || existing.deleted_at === null) {
+    throw new Error(`Category with id "${id}" not found`);
+  }
+
+  const conflict = db
+    .prepare(
+      `SELECT 1
+       FROM categories
+       WHERE name = ?
+         AND type = ?
+         AND deleted_at IS NULL
+         AND id != ?`,
+    )
+    .get(existing.name, existing.type, id);
+  if (conflict) {
+    throw new Error(
+      `A category with the name "${existing.name}" and type "${existing.type}" already exists`,
+    );
+  }
+
+  db.prepare(
+    "UPDATE categories SET deleted_at = NULL, updated_at = ? WHERE id = ?",
+  ).run(now, id);
+
+  const row = db
+    .prepare("SELECT * FROM categories WHERE id = ?")
+    .get(id) as CategoryRow;
+  return rowToCategory(row);
+}
+
 // === SUBCATEGORIES ===
 
 export function createSubcategory(data: {
@@ -373,4 +410,48 @@ export function deleteSubcategory(id: string): void {
     now,
     id,
   );
+}
+
+export function restoreSubcategory(id: string): Subcategory {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  const existing = db
+    .prepare("SELECT * FROM subcategories WHERE id = ?")
+    .get(id) as SubcategoryRow | undefined;
+  if (!existing || existing.deleted_at === null) {
+    throw new Error(`Subcategory with id "${id}" not found`);
+  }
+
+  const parent = db
+    .prepare("SELECT 1 FROM categories WHERE id = ? AND deleted_at IS NULL")
+    .get(existing.category_id);
+  if (!parent) {
+    throw new Error(`Category with id "${existing.category_id}" not found`);
+  }
+
+  const conflict = db
+    .prepare(
+      `SELECT 1
+       FROM subcategories
+       WHERE name = ?
+         AND category_id = ?
+         AND deleted_at IS NULL
+         AND id != ?`,
+    )
+    .get(existing.name, existing.category_id, id);
+  if (conflict) {
+    throw new Error(
+      `A subcategory with the name "${existing.name}" already exists in this category`,
+    );
+  }
+
+  db.prepare(
+    "UPDATE subcategories SET deleted_at = NULL, updated_at = ? WHERE id = ?",
+  ).run(now, id);
+
+  const row = db
+    .prepare("SELECT * FROM subcategories WHERE id = ?")
+    .get(id) as SubcategoryRow;
+  return rowToSubcategory(row);
 }

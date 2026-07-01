@@ -171,21 +171,37 @@ export function updateTag(
 export function deleteTag(id: string): void {
   const db = getDb();
   const now = new Date().toISOString();
-  const deleteTagTransaction = db.transaction(() => {
-    const result = db
-      .prepare(
-        "UPDATE tags SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
-      )
-      .run(now, now, id);
 
-    if (result.changes === 0) {
-      throw new Error(`Tag with id "${id}" not found`);
-    }
+  const result = db
+    .prepare(
+      "UPDATE tags SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+    )
+    .run(now, now, id);
 
-    db.prepare("DELETE FROM transaction_tags WHERE tag_id = ?").run(id);
-  });
+  if (result.changes === 0) {
+    throw new Error(`Tag with id "${id}" not found`);
+  }
+}
 
-  deleteTagTransaction();
+export function restoreTag(id: string): Tag {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  const existing = db
+    .prepare("SELECT * FROM tags WHERE id = ?")
+    .get(id) as TagRow | undefined;
+  if (!existing || existing.deleted_at === null) {
+    throw new Error(`Tag with id "${id}" not found`);
+  }
+
+  checkTagUniqueness(existing.name, existing.type as TagType, id);
+
+  db.prepare(
+    "UPDATE tags SET deleted_at = NULL, updated_at = ? WHERE id = ?",
+  ).run(now, id);
+
+  const row = db.prepare("SELECT * FROM tags WHERE id = ?").get(id) as TagRow;
+  return rowToTag(row);
 }
 
 export function assertActiveTags(tagIds: string[]): string[] {

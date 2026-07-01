@@ -34,6 +34,8 @@ export type CommandId =
   | "global.toggleAssistant"
   | "global.focusAssistant"
   | "global.close"
+  | "global.undo"
+  | "global.redo"
   | "assistant.send"
   | "dashboard.applyDateRange"
   | "dashboard.focusStartDate"
@@ -136,7 +138,7 @@ export interface CommandDefinition {
   description: string;
   category: CommandCategory;
   scope: CommandScope;
-  defaultBinding: ShortcutBinding | null;
+  defaultBindings: readonly ShortcutBinding[];
   inputSafe?: boolean;
   preventDefault?: boolean;
 }
@@ -147,16 +149,17 @@ function command(
   description: string,
   category: CommandCategory,
   scope: CommandScope,
-  key: string | null,
+  key: string | readonly string[] | null,
   options: Pick<CommandDefinition, "inputSafe" | "preventDefault"> = {},
 ): CommandDefinition {
+  const defaultKeys = key === null ? [] : Array.isArray(key) ? key : [key];
   return {
     id,
     label,
     description,
     category,
     scope,
-    defaultBinding: key ? { key } : null,
+    defaultBindings: defaultKeys.map((defaultKey) => ({ key: defaultKey })),
     preventDefault: true,
     ...options,
   };
@@ -235,6 +238,22 @@ export const DEFAULT_COMMANDS = [
     "Global",
     "assistant",
     "Escape",
+  ),
+  command(
+    "global.undo",
+    "Undo",
+    "Undo the last app action.",
+    "Global",
+    "global",
+    ["Ctrl+Z", "Meta+Z"],
+  ),
+  command(
+    "global.redo",
+    "Redo",
+    "Redo the last undone app action.",
+    "Global",
+    "global",
+    ["Ctrl+Shift+Z", "Ctrl+Y", "Shift+Meta+Z"],
   ),
   command(
     "assistant.send",
