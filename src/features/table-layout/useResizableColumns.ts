@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, HTMLAttributes, PointerEvent as ReactPointerEvent } from "react";
 import {
+  subscribeToTableColumnWidthReset,
   readTableColumnWidths,
   writeTableColumnWidths,
 } from "@/features/table-layout/storage";
@@ -65,7 +66,9 @@ export function useResizableColumns(
   );
 
   useEffect(() => {
-    setWidths(readTableColumnWidths(tableId));
+    const refreshWidths = () => setWidths(readTableColumnWidths(tableId));
+    refreshWidths();
+    return subscribeToTableColumnWidthReset(refreshWidths);
   }, [tableId]);
 
   const columns = useMemo(

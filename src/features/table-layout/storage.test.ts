@@ -3,9 +3,11 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import {
+  resetAllTableColumnWidths,
   readAllTableColumnWidths,
   readTableColumnWidths,
   writeTableColumnWidths,
+  subscribeToTableColumnWidthReset,
 } from "./storage";
 
 const STORAGE_KEY = "localfin.table-column-widths.v1";
@@ -20,6 +22,10 @@ class MemoryStorage {
   setItem(key: string, value: string): void {
     this.items[key] = value;
   }
+
+  removeItem(key: string): void {
+    delete this.items[key];
+  }
 }
 
 class ThrowingStorage extends MemoryStorage {
@@ -28,6 +34,10 @@ class ThrowingStorage extends MemoryStorage {
   }
 
   setItem(): void {
+    throw new Error("storage unavailable");
+  }
+
+  removeItem(): void {
     throw new Error("storage unavailable");
   }
 }
@@ -63,6 +73,50 @@ test("unavailable storage operations fall back without throwing", () => {
 
   assert.deepEqual(readAllTableColumnWidths().tables, {});
   assert.doesNotThrow(() => writeTableColumnWidths("manual", { name: 176 }));
+  assert.doesNotThrow(() => resetAllTableColumnWidths());
+});
+
+test("resets all persisted widths and notifies subscribers", () => {
+  writeTableColumnWidths("first", { name: 180 });
+  writeTableColumnWidths("second", { date: 112 });
+
+  let resetCount = 0;
+  const unsubscribe = subscribeToTableColumnWidthReset(() => {
+    resetCount += 1;
+  });
+
+  resetAllTableColumnWidths();
+
+  assert.deepEqual(readAllTableColumnWidths().tables, {});
+  assert.equal(storage.getItem(STORAGE_KEY), null);
+  assert.equal(resetCount, 1);
+
+  unsubscribe();
+  resetAllTableColumnWidths();
+  assert.equal(resetCount, 1);
+});
+
+test("reset falls back to an empty width payload when removeItem is unavailable", () => {
+  const items: Record<string, string> = {};
+  const storageWithoutRemoveItem = {
+    getItem(key: string): string | null {
+      return items[key] ?? null;
+    },
+    setItem(key: string, value: string): void {
+      items[key] = value;
+    },
+  };
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storageWithoutRemoveItem,
+  });
+
+  writeTableColumnWidths("manual", { name: 176 });
+  resetAllTableColumnWidths();
+
+  const payload = JSON.parse(storageWithoutRemoveItem.getItem(STORAGE_KEY) ?? "");
+  assert.deepEqual(payload.tables, {});
+  assert.equal(payload.version, 1);
 });
 
 test("persists widths per table without overwriting siblings", () => {

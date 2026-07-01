@@ -38,6 +38,7 @@ import {
   useResizableColumns,
   type ResizableColumnDef,
 } from "@/features/table-layout/useResizableColumns";
+import { resetAllTableColumnWidths } from "@/features/table-layout/storage";
 
 const SHORTCUT_COLUMNS: ResizableColumnDef[] = [
   { id: "command", defaultWidth: 320 },
@@ -76,6 +77,7 @@ export function SettingsPage() {
     flaggedWords.words.join("\n"),
   );
   const [flaggedWordsMessage, setFlaggedWordsMessage] = useState("");
+  const [tableLayoutMessage, setTableLayoutMessage] = useState("");
   const [shortcutsTableFocused, setShortcutsTableFocused] = useState(false);
   const {
     columns,
@@ -152,6 +154,11 @@ export function SettingsPage() {
     setFlaggedWordsDraft(defaultWords.join("\n"));
     setFlaggedWordsMessage("Flagged transaction words reset to defaults.");
   }, [flaggedWords]);
+
+  const resetColumnWidths = useCallback(() => {
+    resetAllTableColumnWidths();
+    setTableLayoutMessage("Column widths reset to defaults.");
+  }, []);
 
   const clearSelected = useCallback(() => {
     if (!selectedCommand) return;
@@ -268,6 +275,32 @@ export function SettingsPage() {
             When off, successful save/create/update/delete popups are hidden.
             Errors, warnings, and destructive confirmations still appear.
           </p>
+          <div className="space-y-2 rounded-md border border-border bg-secondary/20 px-3 py-2">
+            <div>
+              <div className="text-sm font-medium text-foreground">
+                Table column widths
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Restore all resizable tables to their default column widths.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={resetColumnWidths}
+            >
+              <RotateCcw className="mr-1 h-3.5 w-3.5" />
+              Reset Column Widths
+            </Button>
+          </div>
+          {tableLayoutMessage && (
+            <p
+              className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground"
+              aria-live="polite"
+            >
+              {tableLayoutMessage}
+            </p>
+          )}
         </CardContent>
       </Card>
 

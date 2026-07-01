@@ -2,9 +2,12 @@ const STORAGE_KEY = "localfin.table-column-widths.v1";
 const STORAGE_VERSION = 1;
 const MIN_STORED_COLUMN_WIDTH_PX = 48;
 
+const resetSubscribers = new Set<() => void>();
+
 interface BrowserStorage {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
+  removeItem?: (key: string) => void;
 }
 
 export interface StoredTableColumnWidths {
@@ -18,6 +21,15 @@ export function defaultTableColumnWidths(): StoredTableColumnWidths {
     version: STORAGE_VERSION,
     updatedAt: new Date().toISOString(),
     tables: {},
+  };
+}
+
+export function subscribeToTableColumnWidthReset(
+  listener: () => void,
+): () => void {
+  resetSubscribers.add(listener);
+  return () => {
+    resetSubscribers.delete(listener);
   };
 }
 
@@ -123,5 +135,24 @@ export function writeTableColumnWidths(
     );
   } catch {
     // Storage can be unavailable even when the API object exists.
+  }
+}
+
+export function resetAllTableColumnWidths(): void {
+  const storage = getTableColumnWidthStorage();
+  try {
+    if (storage) {
+      if (typeof storage.removeItem === "function") {
+        storage.removeItem(STORAGE_KEY);
+      } else {
+        storage.setItem(STORAGE_KEY, JSON.stringify(defaultTableColumnWidths()));
+      }
+    }
+  } catch {
+    // Storage can be unavailable even when the API object exists.
+  }
+
+  for (const listener of resetSubscribers) {
+    listener();
   }
 }
