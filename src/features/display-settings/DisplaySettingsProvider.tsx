@@ -25,6 +25,15 @@ export function DisplaySettingsProvider({ children }: { children: ReactNode }) {
     },
     [settings, updateSettings],
   );
+  const setSuccessConfirmationPopupsEnabled = useCallback(
+    (enabled: boolean) => {
+      updateSettings({
+        ...settings,
+        successConfirmationPopupsEnabled: enabled,
+      });
+    },
+    [settings, updateSettings],
+  );
 
   const setGradientColor = useCallback(
     (
@@ -40,20 +49,31 @@ export function DisplaySettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const resetAmountGradientSettings = useCallback(() => {
-    updateSettings(defaultDisplaySettings());
-  }, [updateSettings]);
+    const defaults = defaultDisplaySettings();
+    updateSettings({
+      ...settings,
+      amountGradientEnabled: defaults.amountGradientEnabled,
+      negativeColor: defaults.negativeColor,
+      neutralColor: defaults.neutralColor,
+      positiveColor: defaults.positiveColor,
+      successConfirmationPopupsEnabled:
+        settings.successConfirmationPopupsEnabled,
+    });
+  }, [settings, updateSettings]);
 
   const value = useMemo(
     () => ({
       ...settings,
       setAmountGradientEnabled,
       setGradientColor,
+      setSuccessConfirmationPopupsEnabled,
       resetAmountGradientSettings,
     }),
     [
       resetAmountGradientSettings,
       setAmountGradientEnabled,
       setGradientColor,
+      setSuccessConfirmationPopupsEnabled,
       settings,
     ],
   );

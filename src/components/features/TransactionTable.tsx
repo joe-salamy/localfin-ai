@@ -32,7 +32,7 @@ import {
 } from "@/lib/categoryLabels";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
-import { useAmountGradient } from "@/features/display-settings/hooks";
+import { useAmountGradient, useSuccessToast } from "@/features/display-settings/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
 import type { Category } from "@/types";
 import { useResizableColumns } from "@/features/table-layout/useResizableColumns";
@@ -187,6 +187,7 @@ export function TransactionTable({
     }),
   );
   const { findMatches } = useFlaggedWords();
+  const successToast = useSuccessToast();
   const categoryLookup = buildCategoryLookup(categories);
   const suspectFindingsByTransaction = useMemo(() => {
     const groups = new Map<string, SuspectTransactionFinding[]>();
@@ -790,7 +791,9 @@ export function TransactionTable({
       }
 
       if (updatedRows > 0) {
-        toast.success(`Updated ${updatedCells} cell(s) across ${updatedRows} row(s).`);
+        successToast(
+          `Updated ${updatedCells} cell(s) across ${updatedRows} row(s).`,
+        );
       }
       if (skipped > 0 || failedRows > 0) {
         toast.warning(
@@ -798,7 +801,7 @@ export function TransactionTable({
         );
       }
     },
-    [onEdit, parseHistoryCellValue, transactions],
+    [onEdit, parseHistoryCellValue, successToast, transactions],
   );
 
   const clearSelectedHistoryCells = useCallback(
@@ -846,13 +849,15 @@ export function TransactionTable({
       }
 
       if (updatedRows > 0) {
-        toast.success(`Cleared ${updatedCells} cell(s) across ${updatedRows} row(s).`);
+        successToast(
+          `Cleared ${updatedCells} cell(s) across ${updatedRows} row(s).`,
+        );
       }
       if (failedRows > 0) {
         toast.warning(`${failedRows} row update(s) failed.`);
       }
     },
-    [onEdit, parseHistoryCellValue, transactions],
+    [onEdit, parseHistoryCellValue, successToast, transactions],
   );
 
   const handleHistoryCopy = useCallback(

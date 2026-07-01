@@ -5,10 +5,12 @@ import { RecentAccountTransactionsTable } from "@/components/features/RecentAcco
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAccountLinking } from "@/hooks/useAccountLinking";
+import { useSuccessToast } from "@/features/display-settings/hooks";
 
 export function TransactionInputPage() {
   const { connections, isLoading, syncProviderConnections } =
     useAccountLinking();
+  const successToast = useSuccessToast();
   const activeConnections = connections.filter(
     (connection) => connection.status === "active",
   );
@@ -26,7 +28,7 @@ export function TransactionInputPage() {
         { accounts: 0, added: 0, updated: 0, removed: 0 },
       );
 
-      toast.success(
+      successToast(
         `Synced ${totals.accounts} account(s), added ${totals.added} transaction(s), updated ${totals.updated}, removed ${totals.removed}.`,
       );
     } catch (error) {

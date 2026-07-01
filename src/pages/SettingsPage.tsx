@@ -247,6 +247,31 @@ export function SettingsPage() {
 
       <Card>
         <CardHeader className="mb-2">
+          <CardTitle>Interface</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={displaySettings.successConfirmationPopupsEnabled}
+              onChange={(event) =>
+                displaySettings.setSuccessConfirmationPopupsEnabled(
+                  event.target.checked,
+                )
+              }
+              className="h-4 w-4 rounded border-border bg-background"
+            />
+            Show success confirmation popups
+          </label>
+          <p className="text-sm text-muted-foreground">
+            When off, successful save/create/update/delete popups are hidden.
+            Errors, warnings, and destructive confirmations still appear.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="mb-2">
           <CardTitle>Assistant</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">

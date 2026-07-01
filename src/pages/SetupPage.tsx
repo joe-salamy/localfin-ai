@@ -43,6 +43,7 @@ import {
   type ResizableColumnDef,
 } from "@/features/table-layout/useResizableColumns";
 import { handleEnterSave } from "@/lib/enterSave";
+import { useSuccessToast } from "@/features/display-settings/hooks";
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -212,6 +213,7 @@ function PlaidConnectButton({
   exchangePublicToken,
   loading,
 }: PlaidConnectButtonProps) {
+  const successToast = useSuccessToast();
   const [linkToken, setLinkToken] = useState<string | null>(() =>
     readStoredPlaidOAuthLinkToken(targetInstitution),
   );
@@ -234,7 +236,7 @@ function PlaidConnectButton({
         metadata,
       })
         .then(() => {
-          toast.success("Plaid account connected");
+          successToast("Plaid account connected");
         })
         .catch((error: unknown) => {
           toast.error(
@@ -413,6 +415,7 @@ function AccountsSection() {
     syncProviderConnections,
     disconnectProviderConnection,
   } = useAccountLinking();
+  const successToast = useSuccessToast();
   type AccountSortKey = "name" | "type" | "balance";
 
   const [showAdd, setShowAdd] = useState(false);
@@ -497,7 +500,7 @@ function AccountsSection() {
         initial_balance: balance ? parseFloat(balance) : 0,
         color,
       });
-      toast.success("Account created");
+      successToast("Account created");
       setName("");
       setBalance("");
       setColor(null);
@@ -528,7 +531,7 @@ function AccountsSection() {
           : 0,
         color: editColor,
       });
-      toast.success("Account updated");
+      successToast("Account updated");
       setEditId(null);
     } catch {
       toast.error("Failed to update account");
@@ -542,7 +545,7 @@ function AccountsSection() {
     setDeleting(true);
     try {
       await deleteAccount.mutateAsync(deleteTarget.id);
-      toast.success("Account deleted");
+      successToast("Account deleted");
       setSelectedIds((current) => {
         const next = new Set(current);
         next.delete(deleteTarget.id);
@@ -575,7 +578,7 @@ function AccountsSection() {
       });
 
       if (deletedIds.size === ids.length) {
-        toast.success(`${deletedIds.size} accounts deleted`);
+        successToast(`${deletedIds.size} accounts deleted`);
         setShowBulkDelete(false);
       } else if (deletedIds.size > 0) {
         toast.warning(
@@ -618,7 +621,7 @@ function AccountsSection() {
       const result = await syncProviderConnections.mutateAsync({
         connectionId: connection.id,
       });
-      toast.success(summarizeProviderSync(result.data ?? []));
+      successToast(summarizeProviderSync(result.data ?? []));
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to sync provider",
@@ -631,7 +634,7 @@ function AccountsSection() {
     setDisconnectingProvider(true);
     try {
       await disconnectProviderConnection.mutateAsync(disconnectTarget.id);
-      toast.success("Provider disconnected");
+      successToast("Provider disconnected");
       setDisconnectTarget(null);
     } catch (error) {
       toast.error(
@@ -1256,9 +1259,9 @@ function AccountsSection() {
             });
             const adjustment = result.data?.adjustment_amount ?? 0;
             if (adjustment === 0) {
-              toast.success("Account already matches that value");
+              successToast("Account already matches that value");
             } else {
-              toast.success(
+              successToast(
                 `Adjustment created: ${formatCurrency(adjustment)}`,
               );
             }
@@ -1380,6 +1383,7 @@ function CategoriesSection() {
     updateCategory,
     deleteCategory,
   } = useCategories();
+  const successToast = useSuccessToast();
   type CategorySortKey = "name" | "type";
 
   const [showAdd, setShowAdd] = useState(false);
@@ -1444,7 +1448,7 @@ function CategoriesSection() {
     setSaving(true);
     try {
       await createCategory.mutateAsync({ name: name.trim(), type, color });
-      toast.success("Category created");
+      successToast("Category created");
       setName("");
       setColor(null);
       setType("expense");
@@ -1471,7 +1475,7 @@ function CategoriesSection() {
         type: editType,
         color: editColor,
       });
-      toast.success("Category updated");
+      successToast("Category updated");
       setEditId(null);
     } catch {
       toast.error("Failed to update category");
@@ -1485,7 +1489,7 @@ function CategoriesSection() {
     setDeleting(true);
     try {
       await deleteCategory.mutateAsync(deleteTarget.id);
-      toast.success("Category deleted");
+      successToast("Category deleted");
       setSelectedIds((current) => {
         const next = new Set(current);
         next.delete(deleteTarget.id);
@@ -1518,7 +1522,7 @@ function CategoriesSection() {
       });
 
       if (deletedIds.size === ids.length) {
-        toast.success(`${deletedIds.size} categories deleted`);
+        successToast(`${deletedIds.size} categories deleted`);
         setShowBulkDelete(false);
       } else if (deletedIds.size > 0) {
         toast.warning(
@@ -1947,6 +1951,7 @@ function SubcategoriesSection() {
     updateSubcategory,
     deleteSubcategory,
   } = useCategories();
+  const successToast = useSuccessToast();
   type SubcategorySortKey = "name" | "category" | "monthlyGoal";
 
   const categoryMap = useMemo(
@@ -2041,7 +2046,7 @@ function SubcategoriesSection() {
         monthly_goal: goal ? parseFloat(goal) : null,
         color,
       });
-      toast.success("Subcategory created");
+      successToast("Subcategory created");
       setName("");
       setCategoryId("");
       setGoal("");
@@ -2070,7 +2075,7 @@ function SubcategoriesSection() {
         monthly_goal: editGoal ? parseFloat(editGoal) : null,
         color: editColor,
       });
-      toast.success("Subcategory updated");
+      successToast("Subcategory updated");
       setEditId(null);
     } catch {
       toast.error("Failed to update subcategory");
@@ -2084,7 +2089,7 @@ function SubcategoriesSection() {
     setDeleting(true);
     try {
       await deleteSubcategory.mutateAsync(deleteTarget.id);
-      toast.success("Subcategory deleted");
+      successToast("Subcategory deleted");
       setSelectedIds((current) => {
         const next = new Set(current);
         next.delete(deleteTarget.id);
@@ -2117,7 +2122,7 @@ function SubcategoriesSection() {
       });
 
       if (deletedIds.size === ids.length) {
-        toast.success(`${deletedIds.size} subcategories deleted`);
+        successToast(`${deletedIds.size} subcategories deleted`);
         setShowBulkDelete(false);
       } else if (deletedIds.size > 0) {
         toast.warning(
@@ -2600,6 +2605,7 @@ export function SetupPage() {
   const [accountsOpen, setAccountsOpen] = useState(true);
   const [categoriesOpen, setCategoriesOpen] = useState(true);
   const [subcategoriesOpen, setSubcategoriesOpen] = useState(true);
+  const successToast = useSuccessToast();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -2607,13 +2613,13 @@ export function SetupPage() {
 
     const status = params.get("status");
     if (status === "connected") {
-      toast.success("Akoya account connected");
+      successToast("Akoya account connected");
     } else if (status === "error") {
       toast.error(params.get("message") || "Akoya connection failed");
     }
 
     window.history.replaceState(null, "", "/setup");
-  }, []);
+  }, [successToast]);
   useShortcutScope("setup");
   useShortcut(
     "setup.toggleAccounts",

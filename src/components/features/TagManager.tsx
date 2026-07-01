@@ -15,6 +15,7 @@ import {
   useResizableColumns,
   type ResizableColumnDef,
 } from "@/features/table-layout/useResizableColumns";
+import { useSuccessToast } from "@/features/display-settings/hooks";
 
 const TAG_TYPES: TagType[] = [
   "custom",
@@ -38,6 +39,7 @@ const TAG_COLUMNS: ResizableColumnDef[] = [
 
 export function TagManager() {
   const { tags, isLoading, createTag, updateTag, deleteTag } = useTags();
+  const successToast = useSuccessToast();
   const [name, setName] = useState("");
   const [type, setType] = useState<TagType>("custom");
   const [color, setColor] = useState<string | null>(null);
@@ -82,7 +84,7 @@ export function TagManager() {
 
     try {
       await createTag.mutateAsync({ name: nextName, type, color });
-      toast.success("Tag created");
+      successToast("Tag created");
       setName("");
       setType("custom");
       setColor(null);
@@ -105,7 +107,7 @@ export function TagManager() {
         type: editType,
         color: editColor,
       });
-      toast.success("Tag updated");
+      successToast("Tag updated");
       setEditId(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update tag");
@@ -127,7 +129,7 @@ export function TagManager() {
 
     try {
       await deleteTag.mutateAsync(deleteTarget.id);
-      toast.success("Tag deleted");
+      successToast("Tag deleted");
       setDeleteTarget(null);
       if (editId === deleteTarget.id) setEditId(null);
     } catch (err) {

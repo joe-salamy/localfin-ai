@@ -3,6 +3,7 @@ import type { DisplaySettings } from "./storage";
 
 export interface DisplaySettingsContextValue extends DisplaySettings {
   setAmountGradientEnabled: (enabled: boolean) => void;
+  setSuccessConfirmationPopupsEnabled: (enabled: boolean) => void;
   setGradientColor: (
     key: "negativeColor" | "neutralColor" | "positiveColor",
     color: string,

@@ -1,7 +1,10 @@
-import { useContext } from "react";
+import { useCallback, useContext } from "react";
 import type { CSSProperties } from "react";
+import { toast } from "sonner";
 import { amountGradientColor } from "@/lib/colors";
 import { DisplaySettingsContext } from "./DisplaySettingsContext";
+
+export type SuccessToast = (message: string) => string | number | undefined;
 
 export function useDisplaySettings() {
   const value = useContext(DisplaySettingsContext);
@@ -11,6 +14,18 @@ export function useDisplaySettings() {
     );
   }
   return value;
+}
+
+export function useSuccessToast(): SuccessToast {
+  const { successConfirmationPopupsEnabled } = useDisplaySettings();
+
+  return useCallback<SuccessToast>(
+    (message) => {
+      if (!successConfirmationPopupsEnabled) return undefined;
+      return toast.success(message);
+    },
+    [successConfirmationPopupsEnabled],
+  );
 }
 
 export function useAmountGradient(amounts: number[]) {

@@ -33,6 +33,7 @@ import type {
 } from "@/types";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
+import { useSuccessToast } from "@/features/display-settings/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
 import type { FlaggedWordMatch } from "@/features/flagged-words/storage";
 import { useResizableColumns } from "@/features/table-layout/useResizableColumns";
@@ -393,6 +394,7 @@ export function MultiTransactionTable() {
   const { bulkCreateTransactions, checkDuplicates } = useTransactions();
   const { categorize, parseStatement } = useAI();
   const { findTransactionMatches } = useFlaggedWords();
+  const successToast = useSuccessToast();
 
   const [rows, setRows] = useState<TransactionRow[]>(initialRows);
   const [saving, setSaving] = useState(false);
@@ -1008,13 +1010,13 @@ export function MultiTransactionTable() {
           };
         });
       });
-      toast.success(`Categorized ${data.length} row(s).`);
+      successToast(`Categorized ${data.length} row(s).`);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "AI categorization failed.",
       );
     }
-  }, [accounts, categorize, filledRows]);
+  }, [accounts, categorize, filledRows, successToast]);
 
   const handleParseStatement = useCallback(async () => {
     if (!statementText.trim() || !statementAccountId) {
@@ -1054,13 +1056,13 @@ export function MultiTransactionTable() {
       );
       setStatementText("");
       setStatementAccountId("");
-      toast.success(`Parsed ${data.summary.total} transaction(s).`);
+      successToast(`Parsed ${data.summary.total} transaction(s).`);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Statement parsing failed.",
       );
     }
-  }, [parseStatement, statementAccountId, statementText]);
+  }, [parseStatement, statementAccountId, statementText, successToast]);
 
   const handleSave = useCallback(async () => {
     // Validate
@@ -1134,7 +1136,7 @@ export function MultiTransactionTable() {
       }));
 
       await bulkCreateTransactions.mutateAsync(payload);
-      toast.success(`${payload.length} transaction(s) saved.`);
+      successToast(`${payload.length} transaction(s) saved.`);
       setRows(initialRows());
       setDuplicatesChecked(false);
     } catch (err) {
@@ -1151,6 +1153,7 @@ export function MultiTransactionTable() {
     duplicatesChecked,
     checkDuplicates,
     bulkCreateTransactions,
+    successToast,
   ]);
 
   const handleGridContainerKeyDown = useCallback(
@@ -1229,7 +1232,7 @@ export function MultiTransactionTable() {
     async (data: CreateTagData): Promise<Tag> => {
       try {
         const result = await createTag.mutateAsync(data);
-        toast.success("Tag created");
+        successToast("Tag created");
         if (!result.data) throw new Error("Tag creation returned no tag.");
         return result.data;
       } catch (err) {
@@ -1239,7 +1242,7 @@ export function MultiTransactionTable() {
         throw err;
       }
     },
-    [createTag],
+    [createTag, successToast],
   );
 
   return (

@@ -1,4 +1,4 @@
-import { DEFAULT_AMOUNT_GRADIENT_SETTINGS, normalizeColor } from "@/lib/colors";
+import { DEFAULT_AMOUNT_GRADIENT_SETTINGS, normalizeColor } from "../../lib/colors";
 
 const STORAGE_KEY = "localfin.display.v1";
 const STORAGE_VERSION = 1;
@@ -7,6 +7,7 @@ export interface DisplaySettings {
   version: number;
   updatedAt: string;
   amountGradientEnabled: boolean;
+  successConfirmationPopupsEnabled: boolean;
   negativeColor: string;
   neutralColor: string;
   positiveColor: string;
@@ -17,6 +18,7 @@ export function defaultDisplaySettings(): DisplaySettings {
     version: STORAGE_VERSION,
     updatedAt: new Date().toISOString(),
     ...DEFAULT_AMOUNT_GRADIENT_SETTINGS,
+    successConfirmationPopupsEnabled: true,
   };
 }
 
@@ -35,6 +37,8 @@ export function readDisplaySettings(): DisplaySettings {
           ? parsed.updatedAt
           : defaults.updatedAt,
       amountGradientEnabled: Boolean(parsed.amountGradientEnabled),
+      successConfirmationPopupsEnabled:
+        parsed.successConfirmationPopupsEnabled !== false,
       negativeColor:
         normalizeColor(parsed.negativeColor) ?? defaults.negativeColor,
       neutralColor:

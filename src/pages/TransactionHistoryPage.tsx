@@ -29,6 +29,7 @@ import { formatCurrency } from "@/lib/utils";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
+import { useSuccessToast } from "@/features/display-settings/hooks";
 import type { CommandId } from "@/features/shortcuts/commands";
 import { AlertTriangle, CheckCircle2, EyeOff, ScanSearch } from "lucide-react";
 
@@ -89,6 +90,7 @@ export function TransactionHistoryPage() {
   const { accounts } = useAccounts();
   const { categories, subcategories } = useCategories();
   const { tags, createTag } = useTags();
+  const successToast = useSuccessToast();
 
   const applyFilters = useCallback(() => {
     setSelectedIds(new Set());
@@ -185,14 +187,14 @@ export function TransactionHistoryPage() {
     ) => {
       try {
         await updateTransaction.mutateAsync({ id, ...updates });
-        if (!options?.silent) toast.success("Transaction updated");
+        if (!options?.silent) successToast("Transaction updated");
         return true;
       } catch {
         if (!options?.silent) toast.error("Failed to update transaction");
         return false;
       }
     },
-    [updateTransaction],
+    [successToast, updateTransaction],
   );
 
   const handleDelete = useCallback(
@@ -201,12 +203,12 @@ export function TransactionHistoryPage() {
         await deleteTransaction.mutateAsync(id);
         selectedIds.delete(id);
         setSelectedIds(new Set(selectedIds));
-        toast.success("Transaction deleted");
+        successToast("Transaction deleted");
       } catch {
         toast.error("Failed to delete transaction");
       }
     },
-    [deleteTransaction, selectedIds],
+    [deleteTransaction, selectedIds, successToast],
   );
 
   const handleBulkEdit = useCallback(
@@ -216,26 +218,26 @@ export function TransactionHistoryPage() {
           ids: Array.from(selectedIds),
           updates,
         });
-        toast.success(`Updated ${selectedIds.size} transactions`);
+        successToast(`Updated ${selectedIds.size} transactions`);
         setSelectedIds(new Set());
         setBulkEditOpen(false);
       } catch {
         toast.error("Failed to bulk update");
       }
     },
-    [bulkUpdateTransactions, selectedIds],
+    [bulkUpdateTransactions, selectedIds, successToast],
   );
 
   const handleBulkDelete = useCallback(async () => {
     try {
       await bulkDeleteTransactions.mutateAsync(Array.from(selectedIds));
-      toast.success(`Deleted ${selectedIds.size} transactions`);
+      successToast(`Deleted ${selectedIds.size} transactions`);
       setSelectedIds(new Set());
       setBulkDeleteOpen(false);
     } catch {
       toast.error("Failed to bulk delete");
     }
-  }, [bulkDeleteTransactions, selectedIds]);
+  }, [bulkDeleteTransactions, selectedIds, successToast]);
 
   const handleCategoryIdsChange = useCallback(
     (nextCategoryIds: string[]) => {
@@ -263,7 +265,7 @@ export function TransactionHistoryPage() {
     async (data: CreateTagData): Promise<Tag> => {
       try {
         const result = await createTag.mutateAsync(data);
-        toast.success("Tag created");
+        successToast("Tag created");
         if (!result.data) throw new Error("Tag creation returned no tag.");
         return result.data;
       } catch (err) {
@@ -273,7 +275,7 @@ export function TransactionHistoryPage() {
         throw err;
       }
     },
-    [createTag],
+    [createTag, successToast],
   );
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
@@ -325,24 +327,29 @@ export function TransactionHistoryPage() {
         flaggedWords: flaggedWords.words,
       });
       const count = result.data?.findings.length ?? 0;
-      toast.success(`Scan complete: ${count} finding${count === 1 ? "" : "s"}`);
+      successToast(`Scan complete: ${count} finding${count === 1 ? "" : "s"}`);
     } catch {
       toast.error("Failed to scan suspect transactions");
     }
-  }, [appliedFilters, flaggedWords.words, suspectReview.runSuspectScan]);
+  }, [
+    appliedFilters,
+    flaggedWords.words,
+    successToast,
+    suspectReview.runSuspectScan,
+  ]);
 
   const updateFindingStatus = useCallback(
     async (id: string, status: "dismissed" | "resolved") => {
       try {
         await suspectReview.updateFindingStatus.mutateAsync({ id, status });
-        toast.success(
+        successToast(
           status === "dismissed" ? "Finding dismissed" : "Finding resolved",
         );
       } catch {
         toast.error("Failed to update finding");
       }
     },
-    [suspectReview.updateFindingStatus],
+    [successToast, suspectReview.updateFindingStatus],
   );
 
   const applyPreset1 = useCallback(
