@@ -7,6 +7,7 @@ Implemented and committed the approved plan.
 - `.omp/handoff/` remains untracked, per requirement.
 
 Changed behavior:
+
 - Added global app undo/redo keyboard commands:
   - Undo: `Ctrl+Z`, `Meta+Z`
   - Redo: `Ctrl+Shift+Z`, `Ctrl+Y`, `Shift+Meta+Z`
@@ -25,15 +26,18 @@ Changed behavior:
 - Left settings-local preferences, provider OAuth/sync/disconnect, and opaque AI chat mutations non-undoable.
 
 Verification run:
+
 - `npm run test:frontend` â€” passed, 22 tests.
 - `npm test` â€” passed, 51 tests.
 - `npm run typecheck` â€” passed.
 - `npm run lint` â€” passed.
 
 Skipped:
+
 - Manual browser smoke test was not run. `data/budget.db` was absent when checked, so there was no prepared local dataset for the planâ€™s transaction-history/setup browser scenarios. Automated frontend/server tests, typecheck, and lint passed.
 
 Final worktree status:
+
 - No staged or unstaged implementation changes.
 - Untracked workflow artifacts remain:
   - `.omp/handoff/`

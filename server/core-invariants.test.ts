@@ -33,7 +33,12 @@ import {
   restoreTransaction,
   updateTransaction,
 } from "./services/transactions.js";
-import { createTag, deleteTag, getTagById, restoreTag } from "./services/tags.js";
+import {
+  createTag,
+  deleteTag,
+  getTagById,
+  restoreTag,
+} from "./services/tags.js";
 import { getTagSummary } from "./services/dashboard.js";
 import {
   getSuspectTransactionFindings,
@@ -898,7 +903,9 @@ test("entity restores preserve ids and retained tag associations", async (t) => 
   const restoredTag = restoreTag(tag.id);
   assert.equal(restoredTag.id, tag.id);
   assert.deepEqual(
-    getTransactionById(tagged.id)?.tags.map((transactionTag) => transactionTag.id),
+    getTransactionById(tagged.id)?.tags.map(
+      (transactionTag) => transactionTag.id,
+    ),
     [tag.id],
   );
 });

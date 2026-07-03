@@ -512,7 +512,8 @@ function AccountsSection() {
           try {
             const result = await createAccount.mutateAsync(payload);
             createdId = result.data?.id ?? null;
-            if (!createdId) throw new Error("Account creation returned no account.");
+            if (!createdId)
+              throw new Error("Account creation returned no account.");
             successToast("Account created");
             setName("");
             setBalance("");
@@ -1153,144 +1154,144 @@ function AccountsSection() {
           </thead>
           <tbody>
             {sortedAccounts.map((a) => (
-            <tr
-              key={a.id}
-              tabIndex={0}
-              onFocus={() => setFocusedId(a.id)}
-              onKeyDown={
-                editId === a.id
-                  ? (event) => handleAccountEditRowKeyDown(event, a.id)
-                  : undefined
-              }
-              className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
-                focusedId === a.id ? "bg-secondary/20" : ""
-              }`}
-            >
-              {editId === a.id ? (
-                <>
-                  <td className="py-1.5" />
-                  <td className="py-1.5 pr-2">
-                    <Input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="h-7 text-sm"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <SimpleSelect
-                      value={editType}
-                      onChange={(e) =>
-                        setEditType(e.target.value as "asset" | "liability")
-                      }
-                      options={[
-                        { value: "asset", label: "Asset" },
-                        { value: "liability", label: "Liability" },
-                      ]}
-                      className="h-7 text-sm"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <ColorPicker
-                      value={editColor}
-                      onChange={setEditColor}
-                      label={`${a.name} color`}
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editInitialBalance}
-                      onChange={(e) => setEditInitialBalance(e.target.value)}
-                      className="h-7 text-right text-sm"
-                    />
-                  </td>
-                  <td className="py-1.5 text-right">
-                    {formatCurrency(a.current_balance)}
-                  </td>
-                  <td className="py-1.5 text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => handleUpdate(a.id)}
-                        loading={saving}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => setEditId(null)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </td>
-                </>
-              ) : (
-                <>
-                  <td className="py-1.5">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(a.id)}
-                      onChange={() => toggleSelected(a.id)}
-                      aria-label={`Select ${a.name}`}
-                      className="h-4 w-4 rounded border-border bg-background"
-                    />
-                  </td>
-                  <td className="py-1.5">
-                    <EntityLabel id={a.id} name={a.name} color={a.color} />
-                  </td>
-                  <td className="py-1.5">
-                    <TypeBadge type={a.type} />
-                  </td>
-                  <td className="py-1.5">
-                    <ColorPicker
-                      value={a.color}
-                      onChange={(nextColor) => {
-                        void updateAccountColor(a, nextColor);
-                      }}
-                      label={`${a.name} color`}
-                    />
-                  </td>
-                  <td className="py-1.5 text-right font-mono">
-                    {formatCurrency(a.initial_balance)}
-                  </td>
-                  <td className="py-1.5 text-right font-mono">
-                    {formatCurrency(a.current_balance)}
-                  </td>
-                  <td className="py-1.5 text-right">
-                    <div className="flex justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setReconcileTarget(a)}
-                        className="p-1 text-muted-foreground hover:text-foreground"
-                        title="Update current value"
-                      >
-                        <RefreshCw size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => startEdit(a)}
-                        className="p-1 text-muted-foreground hover:text-foreground"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTarget(a)}
-                        className="p-1 text-muted-foreground hover:text-red-400"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </>
-              )}
-            </tr>
-          ))}
+              <tr
+                key={a.id}
+                tabIndex={0}
+                onFocus={() => setFocusedId(a.id)}
+                onKeyDown={
+                  editId === a.id
+                    ? (event) => handleAccountEditRowKeyDown(event, a.id)
+                    : undefined
+                }
+                className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
+                  focusedId === a.id ? "bg-secondary/20" : ""
+                }`}
+              >
+                {editId === a.id ? (
+                  <>
+                    <td className="py-1.5" />
+                    <td className="py-1.5 pr-2">
+                      <Input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="h-7 text-sm"
+                      />
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <SimpleSelect
+                        value={editType}
+                        onChange={(e) =>
+                          setEditType(e.target.value as "asset" | "liability")
+                        }
+                        options={[
+                          { value: "asset", label: "Asset" },
+                          { value: "liability", label: "Liability" },
+                        ]}
+                        className="h-7 text-sm"
+                      />
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <ColorPicker
+                        value={editColor}
+                        onChange={setEditColor}
+                        label={`${a.name} color`}
+                      />
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={editInitialBalance}
+                        onChange={(e) => setEditInitialBalance(e.target.value)}
+                        className="h-7 text-right text-sm"
+                      />
+                    </td>
+                    <td className="py-1.5 text-right">
+                      {formatCurrency(a.current_balance)}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => handleUpdate(a.id)}
+                          loading={saving}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setEditId(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="py-1.5">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(a.id)}
+                        onChange={() => toggleSelected(a.id)}
+                        aria-label={`Select ${a.name}`}
+                        className="h-4 w-4 rounded border-border bg-background"
+                      />
+                    </td>
+                    <td className="py-1.5">
+                      <EntityLabel id={a.id} name={a.name} color={a.color} />
+                    </td>
+                    <td className="py-1.5">
+                      <TypeBadge type={a.type} />
+                    </td>
+                    <td className="py-1.5">
+                      <ColorPicker
+                        value={a.color}
+                        onChange={(nextColor) => {
+                          void updateAccountColor(a, nextColor);
+                        }}
+                        label={`${a.name} color`}
+                      />
+                    </td>
+                    <td className="py-1.5 text-right font-mono">
+                      {formatCurrency(a.initial_balance)}
+                    </td>
+                    <td className="py-1.5 text-right font-mono">
+                      {formatCurrency(a.current_balance)}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setReconcileTarget(a)}
+                          className="p-1 text-muted-foreground hover:text-foreground"
+                          title="Update current value"
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(a)}
+                          className="p-1 text-muted-foreground hover:text-foreground"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(a)}
+                          className="p-1 text-muted-foreground hover:text-red-400"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -1564,7 +1565,8 @@ function CategoriesSection() {
           try {
             const result = await createCategory.mutateAsync(payload);
             createdId = result.data?.id ?? null;
-            if (!createdId) throw new Error("Category creation returned no category.");
+            if (!createdId)
+              throw new Error("Category creation returned no category.");
             successToast("Category created");
             setName("");
             setColor(null);
@@ -1935,128 +1937,128 @@ function CategoriesSection() {
           </thead>
           <tbody>
             {sortedCategories.map((c) => (
-            <tr
-              key={c.id}
-              tabIndex={0}
-              onKeyDown={
-                editId === c.id
-                  ? (event) => handleCategoryEditRowKeyDown(event, c.id)
-                  : undefined
-              }
-              onFocus={() => setFocusedId(c.id)}
-              className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
-                focusedId === c.id ? "bg-secondary/20" : ""
-              }`}
-            >
-              {editId === c.id ? (
-                <>
-                  <td className="py-1.5" />
-                  <td className="py-1.5 pr-2">
-                    <Input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="h-7 text-sm"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <SimpleSelect
-                      value={editType}
-                      onChange={(e) =>
-                        setEditType(e.target.value as "income" | "expense")
-                      }
-                      options={[
-                        { value: "income", label: "Income" },
-                        { value: "expense", label: "Expense" },
-                      ]}
-                      className="h-7 text-sm"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <ColorPicker
-                      value={editColor}
-                      onChange={setEditColor}
-                      label={`${c.name} color`}
-                    />
-                  </td>
-                  <td className="py-1.5 text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => handleUpdate(c.id)}
-                        loading={saving}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => setEditId(null)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </td>
-                </>
-              ) : (
-                <>
-                  <td className="py-1.5">
-                    {!c.is_system && (
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(c.id)}
-                        onChange={() => toggleSelected(c.id)}
-                        aria-label={`Select ${c.name}`}
-                        className="h-4 w-4 rounded border-border bg-background"
+              <tr
+                key={c.id}
+                tabIndex={0}
+                onKeyDown={
+                  editId === c.id
+                    ? (event) => handleCategoryEditRowKeyDown(event, c.id)
+                    : undefined
+                }
+                onFocus={() => setFocusedId(c.id)}
+                className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
+                  focusedId === c.id ? "bg-secondary/20" : ""
+                }`}
+              >
+                {editId === c.id ? (
+                  <>
+                    <td className="py-1.5" />
+                    <td className="py-1.5 pr-2">
+                      <Input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="h-7 text-sm"
                       />
-                    )}
-                  </td>
-                  <td className="py-1.5">
-                    <EntityLabel id={c.id} name={c.name} color={c.color} />
-                    {c.is_system && (
-                      <Lock
-                        size={12}
-                        className="ml-1.5 inline text-muted-foreground"
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <SimpleSelect
+                        value={editType}
+                        onChange={(e) =>
+                          setEditType(e.target.value as "income" | "expense")
+                        }
+                        options={[
+                          { value: "income", label: "Income" },
+                          { value: "expense", label: "Expense" },
+                        ]}
+                        className="h-7 text-sm"
                       />
-                    )}
-                  </td>
-                  <td className="py-1.5">
-                    <TypeBadge type={c.type} />
-                  </td>
-                  <td className="py-1.5">
-                    <ColorPicker
-                      value={c.color}
-                      onChange={(nextColor) => {
-                        void updateCategoryColor(c, nextColor);
-                      }}
-                      label={`${c.name} color`}
-                    />
-                  </td>
-                  <td className="py-1.5 text-right">
-                    {!c.is_system && (
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <ColorPicker
+                        value={editColor}
+                        onChange={setEditColor}
+                        label={`${c.name} color`}
+                      />
+                    </td>
+                    <td className="py-1.5 text-right">
                       <div className="flex justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => startEdit(c)}
-                          className="p-1 text-muted-foreground hover:text-foreground"
+                        <Button
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => handleUpdate(c.id)}
+                          loading={saving}
                         >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(c)}
-                          className="p-1 text-muted-foreground hover:text-red-400"
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setEditId(null)}
                         >
-                          <Trash2 size={14} />
-                        </button>
+                          Cancel
+                        </Button>
                       </div>
-                    )}
-                  </td>
-                </>
-              )}
-            </tr>
-          ))}
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="py-1.5">
+                      {!c.is_system && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(c.id)}
+                          onChange={() => toggleSelected(c.id)}
+                          aria-label={`Select ${c.name}`}
+                          className="h-4 w-4 rounded border-border bg-background"
+                        />
+                      )}
+                    </td>
+                    <td className="py-1.5">
+                      <EntityLabel id={c.id} name={c.name} color={c.color} />
+                      {c.is_system && (
+                        <Lock
+                          size={12}
+                          className="ml-1.5 inline text-muted-foreground"
+                        />
+                      )}
+                    </td>
+                    <td className="py-1.5">
+                      <TypeBadge type={c.type} />
+                    </td>
+                    <td className="py-1.5">
+                      <ColorPicker
+                        value={c.color}
+                        onChange={(nextColor) => {
+                          void updateCategoryColor(c, nextColor);
+                        }}
+                        label={`${c.name} color`}
+                      />
+                    </td>
+                    <td className="py-1.5 text-right">
+                      {!c.is_system && (
+                        <div className="flex justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => startEdit(c)}
+                            className="p-1 text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(c)}
+                            className="p-1 text-muted-foreground hover:text-red-400"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -2178,10 +2180,7 @@ function SubcategoriesSection() {
     getColStyle,
     getHeaderStyle,
     getResizeHandleProps,
-  } = useResizableColumns(
-    "setup.subcategories",
-    SETUP_SUBCATEGORY_COLUMN_DEFS,
-  );
+  } = useResizableColumns("setup.subcategories", SETUP_SUBCATEGORY_COLUMN_DEFS);
 
   const categoryOptions = categories.map((c) => ({
     value: c.id,
@@ -2659,154 +2658,154 @@ function SubcategoriesSection() {
           </thead>
           <tbody>
             {sortedSubcategories.map((s) => {
-            const parentCat = categoryMap.get(s.category_id);
-            return (
-              <tr
-                key={s.id}
-                tabIndex={0}
-                onFocus={() => setFocusedId(s.id)}
-                onKeyDown={
-                  editId === s.id
-                    ? (event) => handleSubcategoryEditRowKeyDown(event, s.id)
-                    : undefined
-                }
-                className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
-                  focusedId === s.id ? "bg-secondary/20" : ""
-                }`}
-              >
-                {editId === s.id ? (
-                  <>
-                    <td className="py-1.5" />
-                    <td className="py-1.5 pr-2">
-                      <Input
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="h-7 text-sm"
-                      />
-                    </td>
-                    <td className="py-1.5 pr-2">
-                      <SimpleSelect
-                        value={editCategoryId}
-                        onChange={(e) => setEditCategoryId(e.target.value)}
-                        options={categoryOptions}
-                        className="h-7 text-sm"
-                      />
-                    </td>
-                    <td className="py-1.5 pr-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="None"
-                        value={editGoal}
-                        onChange={(e) => setEditGoal(e.target.value)}
-                        className="h-7 text-right text-sm"
-                      />
-                    </td>
-                    <td className="py-1.5 pr-2">
-                      <ColorPicker
-                        value={editColor}
-                        onChange={setEditColor}
-                        label={`${s.name} color`}
-                      />
-                    </td>
-                    <td className="py-1.5 text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          size="sm"
-                          className="h-6 px-2 text-xs"
-                          onClick={() => handleUpdate(s.id)}
-                          loading={saving}
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 px-2 text-xs"
-                          onClick={() => setEditId(null)}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td className="py-1.5">
-                      {!s.is_system && (
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(s.id)}
-                          onChange={() => toggleSelected(s.id)}
-                          aria-label={`Select ${s.name}`}
-                          className="h-4 w-4 rounded border-border bg-background"
+              const parentCat = categoryMap.get(s.category_id);
+              return (
+                <tr
+                  key={s.id}
+                  tabIndex={0}
+                  onFocus={() => setFocusedId(s.id)}
+                  onKeyDown={
+                    editId === s.id
+                      ? (event) => handleSubcategoryEditRowKeyDown(event, s.id)
+                      : undefined
+                  }
+                  className={`border-b border-border/50 outline-none focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring ${
+                    focusedId === s.id ? "bg-secondary/20" : ""
+                  }`}
+                >
+                  {editId === s.id ? (
+                    <>
+                      <td className="py-1.5" />
+                      <td className="py-1.5 pr-2">
+                        <Input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="h-7 text-sm"
                         />
-                      )}
-                    </td>
-                    <td className="py-1.5">
-                      <EntityLabel id={s.id} name={s.name} color={s.color} />
-                      {s.is_system && (
-                        <Lock
-                          size={12}
-                          className="ml-1.5 inline text-muted-foreground"
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        <SimpleSelect
+                          value={editCategoryId}
+                          onChange={(e) => setEditCategoryId(e.target.value)}
+                          options={categoryOptions}
+                          className="h-7 text-sm"
                         />
-                      )}
-                    </td>
-                    <td className="py-1.5">
-                      {parentCat ? (
-                        <>
-                          <EntityLabel
-                            id={parentCat.id}
-                            name={parentCat.name}
-                            color={parentCat.color}
-                          />{" "}
-                          <TypeBadge type={parentCat.type} />
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">Unknown</span>
-                      )}
-                    </td>
-                    <td className="py-1.5 text-right font-mono">
-                      {s.monthly_goal != null ? (
-                        formatCurrency(s.monthly_goal)
-                      ) : (
-                        <span className="text-muted-foreground">--</span>
-                      )}
-                    </td>
-                    <td className="py-1.5">
-                      <ColorPicker
-                        value={s.color}
-                        onChange={(nextColor) => {
-                          void updateSubcategoryColor(s, nextColor);
-                        }}
-                        label={`${s.name} color`}
-                      />
-                    </td>
-                    <td className="py-1.5 text-right">
-                      {!s.is_system && (
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="None"
+                          value={editGoal}
+                          onChange={(e) => setEditGoal(e.target.value)}
+                          className="h-7 text-right text-sm"
+                        />
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        <ColorPicker
+                          value={editColor}
+                          onChange={setEditColor}
+                          label={`${s.name} color`}
+                        />
+                      </td>
+                      <td className="py-1.5 text-right">
                         <div className="flex justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(s)}
-                            className="p-1 text-muted-foreground hover:text-foreground"
+                          <Button
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => handleUpdate(s.id)}
+                            loading={saving}
                           >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeleteTarget(s)}
-                            className="p-1 text-muted-foreground hover:text-red-400"
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => setEditId(null)}
                           >
-                            <Trash2 size={14} />
-                          </button>
+                            Cancel
+                          </Button>
                         </div>
-                      )}
-                    </td>
-                  </>
-                )}
-              </tr>
-            );
-          })}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="py-1.5">
+                        {!s.is_system && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(s.id)}
+                            onChange={() => toggleSelected(s.id)}
+                            aria-label={`Select ${s.name}`}
+                            className="h-4 w-4 rounded border-border bg-background"
+                          />
+                        )}
+                      </td>
+                      <td className="py-1.5">
+                        <EntityLabel id={s.id} name={s.name} color={s.color} />
+                        {s.is_system && (
+                          <Lock
+                            size={12}
+                            className="ml-1.5 inline text-muted-foreground"
+                          />
+                        )}
+                      </td>
+                      <td className="py-1.5">
+                        {parentCat ? (
+                          <>
+                            <EntityLabel
+                              id={parentCat.id}
+                              name={parentCat.name}
+                              color={parentCat.color}
+                            />{" "}
+                            <TypeBadge type={parentCat.type} />
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">Unknown</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 text-right font-mono">
+                        {s.monthly_goal != null ? (
+                          formatCurrency(s.monthly_goal)
+                        ) : (
+                          <span className="text-muted-foreground">--</span>
+                        )}
+                      </td>
+                      <td className="py-1.5">
+                        <ColorPicker
+                          value={s.color}
+                          onChange={(nextColor) => {
+                            void updateSubcategoryColor(s, nextColor);
+                          }}
+                          label={`${s.name} color`}
+                        />
+                      </td>
+                      <td className="py-1.5 text-right">
+                        {!s.is_system && (
+                          <div className="flex justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => startEdit(s)}
+                              className="p-1 text-muted-foreground hover:text-foreground"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(s)}
+                              className="p-1 text-muted-foreground hover:text-red-400"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

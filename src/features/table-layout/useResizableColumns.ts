@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties, HTMLAttributes, PointerEvent as ReactPointerEvent } from "react";
+import type {
+  CSSProperties,
+  HTMLAttributes,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   subscribeToTableColumnWidthReset,
   readTableColumnWidths,

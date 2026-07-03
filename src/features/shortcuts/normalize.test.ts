@@ -32,11 +32,7 @@ test("shortcut normalization emits exact undo and redo key names", () => {
   ] as const;
 
   for (const { name, parts, expected } of cases) {
-    assert.deepEqual(
-      { key: normalizeShortcutParts(parts) },
-      expected,
-      name,
-    );
+    assert.deepEqual({ key: normalizeShortcutParts(parts) }, expected, name);
   }
 });
 

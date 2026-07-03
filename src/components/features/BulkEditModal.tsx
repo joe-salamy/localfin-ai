@@ -26,7 +26,10 @@ interface BulkEditModalProps {
   categories: Category[];
   subcategories: Subcategory[];
   tags: Tag[];
-  onCreateTag: (data: CreateTagData, options?: TagPickerCreateOptions) => Promise<Tag>;
+  onCreateTag: (
+    data: CreateTagData,
+    options?: TagPickerCreateOptions,
+  ) => Promise<Tag>;
   isLoading?: boolean;
 }
 

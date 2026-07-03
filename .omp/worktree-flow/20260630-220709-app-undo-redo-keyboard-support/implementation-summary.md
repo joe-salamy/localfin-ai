@@ -60,7 +60,7 @@
 - Added effective-binding list helpers:
   - `getShortcuts(commandId)` returns all effective bindings.
   - `getShortcut(commandId)` remains a compatibility helper returning the first effective binding or `null`.
-  - `displayShortcutList()` joins labels with ` / `.
+  - `displayShortcutList()` joins labels with `/`.
   - `ariaKeyShortcutList()` joins ARIA shortcut tokens with spaces.
 - Shortcut dispatch now matches any effective binding for a command.
 - Conflict checks now compare all candidate effective bindings across overlapping scopes.

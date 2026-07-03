@@ -15,4 +15,3 @@ LocalFin AI is a local-first personal finance tracker that uses LLM-powered pars
 - Every Markdown plan file must start with a single descriptive H1 (`# ...`) before any `##` sections. Use the H1 as a stable, filesystem-safe worktree-flow title, not a generic label like `Plan`; `worktree-flow.py` derives branch, worktree, staging, and archive names from that header.
 - Before performing any edit, briefly state in chat what files or behavior you intend to change and why. Do not wait for approval.
 - Be concise by default: answer with only the decision, changed files, verification, and blockers; avoid background, step-by-step narration, repeated summaries, and optional detail unless the user asks for it.
-

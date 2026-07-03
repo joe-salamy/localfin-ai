@@ -1,4 +1,7 @@
-import { DEFAULT_AMOUNT_GRADIENT_SETTINGS, normalizeColor } from "../../lib/colors";
+import {
+  DEFAULT_AMOUNT_GRADIENT_SETTINGS,
+  normalizeColor,
+} from "../../lib/colors";
 
 const STORAGE_KEY = "localfin.display.v1";
 const STORAGE_VERSION = 1;

@@ -1,16 +1,20 @@
 # Merge Conflict Context
 
 ## Branches
+
 - Base branch: main
 - Feature branch: feature/app-undo-redo-keyboard-support
 
 ## Plan
+
 - Path: .omp/worktree-flow/20260630-220709-app-undo-redo-keyboard-support/plan.md
 
 ## Merge base
+
 ea4db1091e53747f4e19faca03a44162d5582f83
 
 ## Conflicted files
+
 src/components/features/MultiTransactionTable.tsx
 src/components/features/TagManager.tsx
 src/components/features/TransactionTable.tsx
@@ -18,6 +22,7 @@ src/pages/SetupPage.tsx
 src/pages/TransactionHistoryPage.tsx
 
 ## Status
+
 ```text
 M .omp/worktree-flow/20260630-220709-app-undo-redo-keyboard-support/plan.md
 M  server/core-invariants.test.ts
@@ -63,18 +68,21 @@ UU src/pages/TransactionHistoryPage.tsx
 ```
 
 ## Base commits since merge base
+
 ```text
 05efa99 Harness artifacts: Confirmation Popups Setting
 d45cf9e Harness: Confirmation Popups Setting
 ```
 
 ## Feature commits since merge base
+
 ```text
 0931b54 Fix audit findings
 3fe8c24 Implement plan
 ```
 
 ## Resolution rules
+
 1. Latest base behavior is presumed correct unless the approved plan explicitly supersedes it.
 2. Feature intent comes from the approved plan and implementation summary.
 3. Preserve audited feature behavior when compatible with latest base.

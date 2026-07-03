@@ -493,7 +493,10 @@ export function TransactionHistoryPage() {
   const tagOptions = tags.map((tag) => ({ value: tag.id, label: tag.name }));
 
   const createTagForPicker = useCallback(
-    async (data: CreateTagData, options?: TagPickerCreateOptions): Promise<Tag> => {
+    async (
+      data: CreateTagData,
+      options?: TagPickerCreateOptions,
+    ): Promise<Tag> => {
       let createdTag: Tag | null = null;
       let applyError: unknown = null;
       const applied = await execute({

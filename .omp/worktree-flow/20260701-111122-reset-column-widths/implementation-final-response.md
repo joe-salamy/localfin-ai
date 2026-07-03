@@ -1,6 +1,7 @@
 Implemented and committed the approved reset-column-widths plan.
 
 Changed files:
+
 - `src/features/table-layout/storage.ts`
   - Added `resetAllTableColumnWidths()`.
   - Added `subscribeToTableColumnWidthReset(listener)`.
@@ -16,9 +17,11 @@ Changed files:
   - Added reset/removal/subscriber/fallback/unavailable-storage coverage.
 
 Commit:
+
 - `8bfa9d8cf2795ea3564f270c6c1baae503dcc434` (`Implement plan`)
 
 Verification:
+
 - `node --import tsx --test src/features/table-layout/storage.test.ts`
   - First attempt failed because this worktree had no installed dependencies: missing `tsx`.
   - Ran `npm ci`.
@@ -38,6 +41,7 @@ Verification:
   - Verified mounted table reset without reload to defaults: `320px`, `140px`, `140px`, `180px`, `128px`.
 
 Handoff:
+
 - Wrote `.omp/handoff/implementation-summary.md`.
 - Left `.omp/handoff/` uncommitted as required.
 - Final status has no staged/unstaged implementation changes; only workflow artifacts remain untracked:
@@ -45,4 +49,5 @@ Handoff:
   - `.omp/worktree-flow/20260701-111122-reset-column-widths/`
 
 Known risk:
+
 - If a future reset subscriber throws, later subscribers would not run. Current subscribers are React state refresh callbacks and are not expected to throw.

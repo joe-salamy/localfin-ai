@@ -63,7 +63,9 @@ function sanitizeWidths(value: unknown): Record<string, number> {
   return widths;
 }
 
-function sanitizeTables(value: unknown): Record<string, Record<string, number>> {
+function sanitizeTables(
+  value: unknown,
+): Record<string, Record<string, number>> {
   if (value === null || typeof value !== "object") return {};
 
   const tables: Record<string, Record<string, number>> = {};
@@ -86,7 +88,11 @@ export function readAllTableColumnWidths(): StoredTableColumnWidths {
   if (!raw) return defaultTableColumnWidths();
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (parsed === null || typeof parsed !== "object" || !("tables" in parsed)) {
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      !("tables" in parsed)
+    ) {
       return defaultTableColumnWidths();
     }
 
@@ -106,9 +112,7 @@ export function readAllTableColumnWidths(): StoredTableColumnWidths {
   }
 }
 
-export function readTableColumnWidths(
-  tableId: string,
-): Record<string, number> {
+export function readTableColumnWidths(tableId: string): Record<string, number> {
   return readAllTableColumnWidths().tables[tableId] ?? {};
 }
 
@@ -145,7 +149,10 @@ export function resetAllTableColumnWidths(): void {
       if (typeof storage.removeItem === "function") {
         storage.removeItem(STORAGE_KEY);
       } else {
-        storage.setItem(STORAGE_KEY, JSON.stringify(defaultTableColumnWidths()));
+        storage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(defaultTableColumnWidths()),
+        );
       }
     }
   } catch {

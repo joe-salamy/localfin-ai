@@ -49,6 +49,7 @@ Add application-wide undo/redo keyboard support for user-controlled LocalFin edi
 
 1. Create `src/features/undo-redo/UndoRedoContext.ts`, `UndoRedoProvider.tsx`, `hooks.ts`, and `history.ts`; no existing equivalent was found.
 2. Use this exact public shape:
+
    ```ts
    export interface UndoableAction {
      id: string;
@@ -67,6 +68,7 @@ Add application-wide undo/redo keyboard support for user-controlled LocalFin edi
      isRunning: boolean;
    }
    ```
+
 3. Implement `history.ts` as pure stack helpers and keep React state in `UndoRedoProvider`:
    - `execute()` returns `false` without running when `isRunning` is true; otherwise it runs `action.apply()`, pushes the action onto the undo stack only after success, clears the redo stack, and returns `true`.
    - `undo()` returns `false` when running or the undo stack is empty; otherwise it runs the top action’s `undo()`, moves it to the redo stack only after success, and returns `true`.
@@ -75,7 +77,7 @@ Add application-wide undo/redo keyboard support for user-controlled LocalFin edi
 4. In `UndoRedoProvider`, register:
    - `useShortcut("global.undo", () => void undo(), { enabled: canUndo && !isRunning })`.
    - `useShortcut("global.redo", () => void redo(), { enabled: canRedo && !isRunning })`.
-   Existing shortcut dispatch prevents default only when a matching enabled handler is invoked; disabled/no-stack undo therefore does not hijack native behavior.
+     Existing shortcut dispatch prevents default only when a matching enabled handler is invoked; disabled/no-stack undo therefore does not hijack native behavior.
 5. Mount the provider in `src/App.tsx` as a child of `ShortcutProvider` and parent of the existing routed providers:
    ```tsx
    <QueryClientProvider client={queryClient}>

@@ -271,7 +271,6 @@ function restoreTransactionRecord(id: string): TransactionWithDetails {
   return transaction;
 }
 
-
 function normalizeTransactionFields(
   data: CreateTransactionData,
   accountType: AccountType,

@@ -187,9 +187,9 @@ export function restoreTag(id: string): Tag {
   const db = getDb();
   const now = new Date().toISOString();
 
-  const existing = db
-    .prepare("SELECT * FROM tags WHERE id = ?")
-    .get(id) as TagRow | undefined;
+  const existing = db.prepare("SELECT * FROM tags WHERE id = ?").get(id) as
+    | TagRow
+    | undefined;
   if (!existing || existing.deleted_at === null) {
     throw new Error(`Tag with id "${id}" not found`);
   }

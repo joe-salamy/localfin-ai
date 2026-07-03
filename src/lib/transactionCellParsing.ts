@@ -26,15 +26,8 @@ export const addTransactionCellFields: readonly TransactionCellField[] = [
   "comment",
 ];
 
-export const historyTransactionCellFields: readonly HistoryTransactionCellField[] = [
-  "date",
-  "name",
-  "amount",
-  "kind",
-  "subcategory_id",
-  "tag_ids",
-  "comment",
-];
+export const historyTransactionCellFields: readonly HistoryTransactionCellField[] =
+  ["date", "name", "amount", "kind", "subcategory_id", "tag_ids", "comment"];
 
 export function normaliseClipboardValue(value: string): string {
   return value.trim().toLowerCase();
@@ -90,7 +83,9 @@ export function parsePastedDate(
     const year = Number(isoMatch[1]);
     const month = Number(isoMatch[2]);
     const day = Number(isoMatch[3]);
-    return isRealDate(year, month, day) ? formatDateParts(year, month, day) : null;
+    return isRealDate(year, month, day)
+      ? formatDateParts(year, month, day)
+      : null;
   }
 
   const displayMatch = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/.exec(
@@ -102,7 +97,9 @@ export function parsePastedDate(
   const day = Number(displayMatch[2]);
   const yearPart = Number(displayMatch[3]);
   const year = displayMatch[3].length === 2 ? 2000 + yearPart : yearPart;
-  return isRealDate(year, month, day) ? formatDateParts(year, month, day) : null;
+  return isRealDate(year, month, day)
+    ? formatDateParts(year, month, day)
+    : null;
 }
 
 export function resolveAccountId(

@@ -1,15 +1,18 @@
 # Implementation Summary
 
 ## Plan
+
 - Plan path: `.omp/worktree-flow/20260630-221214-confirmation-popups-setting/plan.md`
 - Plan title: Confirmation Popups Setting
 
 ## Worktree
+
 - Worktree path: `C:/Users/joesa/Code/localfin-ai-confirmation-popups-setting`
 - Branch: `feature/confirmation-popups-setting`
 - Commit: `51316be58ba5684caa74aafc0ddfb3446f8cd3d2`
 
 ## Changed Files
+
 - `src/components/features/MultiTransactionTable.tsx`
 - `src/components/features/TagManager.tsx`
 - `src/components/features/TransactionTable.tsx`
@@ -24,6 +27,7 @@
 - `src/pages/TransactionInputPage.tsx`
 
 ## Behavior Changes
+
 - Added `successConfirmationPopupsEnabled` to persisted display settings with default `true`.
 - Migrated old `localfin.display.v1` payloads without a storage-key change: missing, invalid, or non-`false` popup values read as enabled; explicit `false` is preserved.
 - Added `setSuccessConfirmationPopupsEnabled(enabled: boolean)` to the display settings context/provider.
@@ -35,6 +39,7 @@
 - Adjusted `src/features/display-settings/storage.ts` to import colors relatively (`../../lib/colors`) so the existing `npm run test:frontend` tsx command can execute the new storage test without extra environment variables.
 
 ## Tests and Checks Run
+
 - Static migration check: `grep` tool search for `toast\.success` under `src`.
   - Result: exactly one direct reference remains, in `src/features/display-settings/hooks.ts`.
 - `npm run test:frontend` from `C:/Users/joesa/Code/localfin-ai-confirmation-popups-setting`.
@@ -58,20 +63,24 @@
   - Cleaned up the two smoke-test tags through the UI.
 
 ## Skipped Checks
+
 - No backend/server test suite was run because the change is frontend-only display settings and Sonner UI behavior.
 - No production build was run because `npm run typecheck`, `npm run lint`, `npm run test:frontend`, static migration search, and browser smoke cover the touched contracts.
 
 ## Implementation Decisions and Tradeoffs
+
 - The hook exports a named `SuccessToast` type instead of using `ReturnType<typeof toast.success>` because the workspace rule prohibits publishing contracts through concrete-function `ReturnType`.
 - Success-toast gating is centralized in `useSuccessToast()` rather than moving `<Toaster />`; errors and warnings still call Sonner directly.
 - The amount-gradient reset creates a default settings object and copies only amount-gradient/color fields from it, preserving `settings.successConfirmationPopupsEnabled`.
 - Existing `toast` imports remain where files still emit `toast.error(...)` or `toast.warning(...)`.
 
 ## Assumptions
+
 - Scope remains success confirmations only; error/warning toasts, inline messages, and destructive confirmation modals are intentionally not gated.
 - LocalStorage is the correct persistence layer because display settings already use `localfin.display.v1` and the field is additive.
 - The UI smoke test exercised a local development database; temporary smoke-test tags were deleted through the UI after verification.
 
 ## Known Risks and Follow-up
+
 - No known implementation blockers remain.
 - Future direct `toast.success(...)` callsites should use `useSuccessToast()` to preserve the global setting contract.

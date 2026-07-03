@@ -1,10 +1,13 @@
 # Confirmation Popups Setting
 
 ## Context
+
 Add one Settings option that globally turns non-critical success confirmation popups on or off. The fixed scope is success confirmations only: Sonner `toast.success(...)` popups for successful saves, creates, updates, deletes, syncs, parses, scans, and similar completion messages are gated; `toast.error(...)`, `toast.warning(...)`, and destructive confirmation dialogs remain visible. Current notification hosting is Sonner via `package.json` dependency `"sonner": "^2.0.7"` and `src/App.tsx` rendering `<Toaster theme="dark" position="bottom-right" />`.
 
 ## Approach
+
 ### Persist one global UI preference
+
 1. In `src/features/display-settings/storage.ts`, extend `DisplaySettings` with the exact field `successConfirmationPopupsEnabled: boolean`.
 2. In `defaultDisplaySettings()`, default `successConfirmationPopupsEnabled` to `true` so existing users keep current behavior.
 3. In `readDisplaySettings()`, migrate old localStorage payloads without a storage-key change by reading the field as `successConfirmationPopupsEnabled: parsed.successConfirmationPopupsEnabled !== false`. This preserves `false`, treats missing/invalid/non-boolean values as enabled, and keeps `STORAGE_KEY = "localfin.display.v1"` because the field is additive.
@@ -15,6 +18,7 @@ Add one Settings option that globally turns non-critical success confirmation po
 8. Update `resetAmountGradientSettings()` so the Transaction Amount Colors reset does not unexpectedly reset the popup setting. Replace the current `updateSettings(defaultDisplaySettings())` behavior with an object that uses default amount-gradient/color values but preserves `settings.successConfirmationPopupsEnabled`. Dependency list must include `settings.successConfirmationPopupsEnabled`.
 
 ### Add the single Settings control
+
 1. In `src/pages/SettingsPage.tsx`, add a new card immediately after the API Key card and before the Assistant card.
 2. Use this exact card title: `Interface`.
 3. Reuse the existing checkbox styling from the Transaction Amount Colors card: `label` class `inline-flex items-center gap-2 text-sm text-muted-foreground`, `input` type `checkbox`, and input class `h-4 w-4 rounded border-border bg-background`.
@@ -25,6 +29,7 @@ Add one Settings option that globally turns non-critical success confirmation po
 8. Do not add separate toggles for saves, tags, accounts, syncs, scans, deletes, warnings, or errors.
 
 ### Centralize success-toast gating
+
 1. In `src/features/display-settings/hooks.ts`, import `useCallback` from React in addition to `useContext`, and import `toast` from `sonner`.
 2. Add this exported hook in the same file after `useDisplaySettings()` and before `useAmountGradient()`:
    - `export function useSuccessToast()`
@@ -36,6 +41,7 @@ Add one Settings option that globally turns non-critical success confirmation po
 4. Do not move `<Toaster />` in `src/App.tsx`; all target callsites are below `DisplaySettingsProvider`, and the root Sonner host can stay where it is.
 
 ### Migrate every success confirmation callsite
+
 1. Run the exact search `toast\\.success` over `src` before editing and use the list below as the required migration set. The final search after migration must show no direct `toast.success` outside `src/features/display-settings/hooks.ts`.
 2. In each migrated component/function, add `const successToast = useSuccessToast();` at the component top level, then replace direct `toast.success(...)` with `successToast(...)`. Keep existing `toast` imports where the file still uses `toast.error(...)` or `toast.warning(...)`.
 3. In `src/components/features/MultiTransactionTable.tsx`, import `useSuccessToast` from `@/features/display-settings/hooks`, add one `successToast` in `MultiTransactionTable`, and replace success calls at current lines 1011, 1057, 1137, and 1232.
@@ -53,6 +59,7 @@ Add one Settings option that globally turns non-critical success confirmation po
 10. Leave `src/components/features/ConfirmDeleteModal.tsx`, `src/components/ui/Modal.tsx`, and all destructive delete confirmation modal callsites unchanged; those are action gates, not success popups.
 
 ### Add targeted tests
+
 1. Add `src/features/display-settings/storage.test.ts` using the existing Node test style from `src/features/table-layout/storage.test.ts`: `/// <reference types="node" />`, `node:assert/strict`, `node:test`, an in-memory storage class, `beforeEach`, and `afterEach`.
 2. Because `display-settings/storage.ts` reads `window.localStorage`, the test setup must define `globalThis.window` with `{ localStorage: storage }` by `Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: storage } })`; cleanup must `Reflect.deleteProperty(globalThis, "window")`.
 3. The storage tests must cover these exact cases:
@@ -63,6 +70,7 @@ Add one Settings option that globally turns non-critical success confirmation po
 4. Do not add a separate notification store or backend-backed test fixture for this change; the behavior is covered by the centralized hook, the storage tests above, and the manual UI smoke test below.
 
 ## Critical files & anchors
+
 - `src/features/display-settings/storage.ts` — `DisplaySettings`, `defaultDisplaySettings`, `readDisplaySettings`, and `writeDisplaySettings`; this is the existing localStorage JSON store at key `localfin.display.v1`.
 - `src/features/display-settings/DisplaySettingsContext.ts` — `DisplaySettingsContextValue`; this is the context contract all display/UI settings consumers receive.
 - `src/features/display-settings/DisplaySettingsProvider.tsx` — `DisplaySettingsProvider`, `updateSettings`, `resetAmountGradientSettings`, and the memoized `value`; this is the app-wide state/write-through provider already wrapping `Router` in `src/App.tsx`.
@@ -70,6 +78,7 @@ Add one Settings option that globally turns non-critical success confirmation po
 - `src/pages/SettingsPage.tsx` — `SettingsPage`; add the single `Interface` card after the API Key card and before the Assistant card, using existing checkbox/card conventions.
 
 ## Verification
+
 1. Static migration check: search `toast\\.success` under `src`. Expected result after implementation: exactly one direct `toast.success` reference in `src/features/display-settings/hooks.ts`; no direct success call remains in the six migrated feature/page files.
 2. Frontend tests: run `npm run test:frontend` from `C:/Users/joesa/Code/localfin-ai`. Expected: existing tests plus the new `src/features/display-settings/storage.test.ts` pass.
 3. Typecheck: run `npm run typecheck` from `C:/Users/joesa/Code/localfin-ai`. Expected: no TypeScript errors, especially around `DisplaySettingsContextValue`, `useSuccessToast`, and migrated callsites.
@@ -85,6 +94,7 @@ Add one Settings option that globally turns non-critical success confirmation po
 6. Storage persistence smoke check during the manual test: reload `/settings` after turning the checkbox off. Expected: the checkbox remains off because `localfin.display.v1` persisted `successConfirmationPopupsEnabled: false`.
 
 ## Assumptions & contingencies
+
 - Scope is fixed by user selection: one setting gates success confirmations only. Errors, warnings, inline status messages, and destructive confirmation dialogs are not gated.
 - Persistence stays client-local in `localStorage` because all comparable frontend settings already use localStorage and no backend settings route exists in `server/app.ts`.
 - The field name is `successConfirmationPopupsEnabled`; if implementation discovers a naming collision, use `confirmationPopupsEnabled` everywhere instead, but still keep the visible label `Show success confirmation popups` and the same success-only behavior.

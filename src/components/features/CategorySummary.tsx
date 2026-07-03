@@ -102,7 +102,10 @@ export function CategorySummaryTable({ categories }: CategorySummaryProps) {
       >
         <colgroup>
           {categoryColumns.columns.map((column) => (
-            <col key={column.id} style={categoryColumns.getColStyle(column.id)} />
+            <col
+              key={column.id}
+              style={categoryColumns.getColStyle(column.id)}
+            />
           ))}
         </colgroup>
         <thead className="bg-secondary/50">
@@ -311,14 +314,20 @@ function CategoryRow({
                       style={subcategoryColumns.getHeaderStyle("total")}
                     >
                       Total
-                      <ResizeHandle layout={subcategoryColumns} columnId="total" />
+                      <ResizeHandle
+                        layout={subcategoryColumns}
+                        columnId="total"
+                      />
                     </th>
                     <th
                       className={cn(headerClass, "relative text-right")}
                       style={subcategoryColumns.getHeaderStyle("goal")}
                     >
                       Goal
-                      <ResizeHandle layout={subcategoryColumns} columnId="goal" />
+                      <ResizeHandle
+                        layout={subcategoryColumns}
+                        columnId="goal"
+                      />
                     </th>
                     <th
                       className={cn(headerClass, "relative text-right")}

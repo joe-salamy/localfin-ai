@@ -275,7 +275,10 @@ function TagSummaryRow({
                       style={categoryColumns.getHeaderStyle("category")}
                     >
                       Category
-                      <ResizeHandle layout={categoryColumns} columnId="category" />
+                      <ResizeHandle
+                        layout={categoryColumns}
+                        columnId="category"
+                      />
                     </th>
                     <th
                       className={cn(headerClass, "relative text-right")}
@@ -289,7 +292,10 @@ function TagSummaryRow({
                       style={categoryColumns.getHeaderStyle("income")}
                     >
                       Income
-                      <ResizeHandle layout={categoryColumns} columnId="income" />
+                      <ResizeHandle
+                        layout={categoryColumns}
+                        columnId="income"
+                      />
                     </th>
                     <th
                       className={cn(headerClass, "relative text-right")}

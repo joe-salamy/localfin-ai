@@ -317,9 +317,9 @@ export function restoreAccount(id: string): Account {
   const db = getDb();
   const now = new Date().toISOString();
 
-  const existing = db
-    .prepare("SELECT * FROM accounts WHERE id = ?")
-    .get(id) as AccountRow | undefined;
+  const existing = db.prepare("SELECT * FROM accounts WHERE id = ?").get(id) as
+    | AccountRow
+    | undefined;
   if (!existing || existing.deleted_at === null) {
     throw new Error(`Account with id "${id}" not found`);
   }

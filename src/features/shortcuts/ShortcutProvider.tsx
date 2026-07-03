@@ -42,7 +42,6 @@ function isScopeActive(
   return scope === "global" || activeScopes.includes(scope);
 }
 
-
 export function ShortcutProvider({ children }: { children: ReactNode }) {
   const initialSettings = useMemo(() => readShortcutSettings(), []);
   const [overrides, setOverrides] = useState<ShortcutOverrides>(() =>

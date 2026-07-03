@@ -33,7 +33,10 @@ import {
 } from "@/lib/categoryLabels";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
-import { useAmountGradient, useSuccessToast } from "@/features/display-settings/hooks";
+import {
+  useAmountGradient,
+  useSuccessToast,
+} from "@/features/display-settings/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
 import type { Category } from "@/types";
 import { useResizableColumns } from "@/features/table-layout/useResizableColumns";
@@ -45,7 +48,10 @@ import {
   rectangleFrom,
   selectionBoundingRange,
 } from "@/features/spreadsheet-selection/selection";
-import type { CellCoord, CellRange } from "@/features/spreadsheet-selection/selection";
+import type {
+  CellCoord,
+  CellRange,
+} from "@/features/spreadsheet-selection/selection";
 import {
   historyTransactionCellFields,
   kindHasSubcategory,
@@ -82,7 +88,10 @@ interface TransactionTableProps {
   categories: Category[];
   subcategories: Subcategory[];
   tags: Tag[];
-  onCreateTag: (data: CreateTagData, options?: TagPickerCreateOptions) => Promise<Tag>;
+  onCreateTag: (
+    data: CreateTagData,
+    options?: TagPickerCreateOptions,
+  ) => Promise<Tag>;
   suspectFindings?: SuspectTransactionFinding[];
 }
 
@@ -95,7 +104,6 @@ interface EditState {
   comment: string;
   tag_ids: string[];
 }
-
 
 function SortIcon({
   column,
@@ -119,8 +127,20 @@ const transactionHistoryColumns = [
   { id: "date", label: "Date", defaultWidth: 128, sortable: true },
   { id: "account", label: "Account", defaultWidth: 160 },
   { id: "name", label: "Name", defaultWidth: 220, sortable: true },
-  { id: "amount", label: "Amount", defaultWidth: 112, sortable: true, align: "right" },
-  { id: "balance", label: "Balance", defaultWidth: 112, sortable: true, align: "right" },
+  {
+    id: "amount",
+    label: "Amount",
+    defaultWidth: 112,
+    sortable: true,
+    align: "right",
+  },
+  {
+    id: "balance",
+    label: "Balance",
+    defaultWidth: 112,
+    sortable: true,
+    align: "right",
+  },
   { id: "category", label: "Category", defaultWidth: 160 },
   { id: "kind", label: "Type", defaultWidth: 112 },
   { id: "subcategory", label: "Subcategory", defaultWidth: 180 },
@@ -508,7 +528,9 @@ export function TransactionTable({
       const focus = { row, col };
       const range = rectangleFrom(dragSelection.anchor, focus);
       setSelectedRanges(
-        dragSelection.additive ? [...dragBaseRangesRef.current, range] : [range],
+        dragSelection.additive
+          ? [...dragBaseRangesRef.current, range]
+          : [range],
       );
       setActiveCell(focus);
     };
@@ -562,7 +584,9 @@ export function TransactionTable({
         (selectedCell) =>
           selectedCell.row !== cell.row || selectedCell.col !== cell.col,
       );
-      setSelectedRanges(cells.map((selectedCell) => rectangleFrom(selectedCell, selectedCell)));
+      setSelectedRanges(
+        cells.map((selectedCell) => rectangleFrom(selectedCell, selectedCell)),
+      );
       setAnchorCell(cell);
       setActiveCell(cell);
     },
@@ -635,7 +659,8 @@ export function TransactionTable({
     (rowIndex: number, colIndex: number, className?: string) => {
       const cell = { row: rowIndex, col: colIndex };
       const selected = isCellInRanges(cell, selectedRanges);
-      const active = activeCell?.row === rowIndex && activeCell.col === colIndex;
+      const active =
+        activeCell?.row === rowIndex && activeCell.col === colIndex;
       return cn(
         className,
         selected && "bg-ring/15 outline outline-1 outline-ring",
@@ -650,7 +675,8 @@ export function TransactionTable({
       transaction: TransactionWithDetails,
       field: HistoryTransactionCellField,
     ): string => {
-      if (field === "date") return format(parseISO(transaction.date), DISPLAY_DATE_FORMAT);
+      if (field === "date")
+        return format(parseISO(transaction.date), DISPLAY_DATE_FORMAT);
       if (field === "name") return transaction.name;
       if (field === "amount") return formatCurrency(transaction.amount);
       if (field === "kind") return transaction.kind;
@@ -662,7 +688,8 @@ export function TransactionTable({
           ) ?? ""
         );
       }
-      if (field === "tag_ids") return transaction.tags.map((tag) => tag.name).join(", ");
+      if (field === "tag_ids")
+        return transaction.tags.map((tag) => tag.name).join(", ");
       return transaction.comment ?? "";
     },
     [],
@@ -677,9 +704,12 @@ export function TransactionTable({
       draftKind: TransactionKind = transaction.kind,
     ): { updates: UpdateTransactionData; applied: boolean } => {
       if (mode === "clear") {
-        if (field === "subcategory_id") return { updates: { subcategory_id: null }, applied: true };
-        if (field === "tag_ids") return { updates: { tag_ids: [] }, applied: true };
-        if (field === "comment") return { updates: { comment: null }, applied: true };
+        if (field === "subcategory_id")
+          return { updates: { subcategory_id: null }, applied: true };
+        if (field === "tag_ids")
+          return { updates: { tag_ids: [] }, applied: true };
+        if (field === "comment")
+          return { updates: { comment: null }, applied: true };
         return { updates: {}, applied: false };
       }
 
@@ -707,14 +737,21 @@ export function TransactionTable({
         return {
           updates: {
             kind,
-            subcategory_id: kindHasSubcategory(kind) ? transaction.subcategory_id : null,
+            subcategory_id: kindHasSubcategory(kind)
+              ? transaction.subcategory_id
+              : null,
           },
           applied: true,
         };
       }
       if (field === "subcategory_id") {
-        if (!kindHasSubcategory(draftKind)) return { updates: {}, applied: false };
-        const subcategoryId = resolveSubcategoryId(value, categories, subcategories);
+        if (!kindHasSubcategory(draftKind))
+          return { updates: {}, applied: false };
+        const subcategoryId = resolveSubcategoryId(
+          value,
+          categories,
+          subcategories,
+        );
         return subcategoryId
           ? { updates: { subcategory_id: subcategoryId }, applied: true }
           : { updates: {}, applied: false };
@@ -738,10 +775,18 @@ export function TransactionTable({
       if (!bounds) return false;
 
       const matrix: string[][] = [];
-      for (let rowIndex = bounds.startRow; rowIndex <= bounds.endRow; rowIndex++) {
+      for (
+        let rowIndex = bounds.startRow;
+        rowIndex <= bounds.endRow;
+        rowIndex++
+      ) {
         const transaction = transactions[rowIndex];
         const values: string[] = [];
-        for (let colIndex = bounds.startCol; colIndex <= bounds.endCol; colIndex++) {
+        for (
+          let colIndex = bounds.startCol;
+          colIndex <= bounds.endCol;
+          colIndex++
+        ) {
           const cell = { row: rowIndex, col: colIndex };
           const field = historyTransactionCellFields[colIndex];
           values.push(
@@ -970,7 +1015,10 @@ export function TransactionTable({
 
   const handleHistoryKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
-      if (event.key.toLowerCase() !== "a" || (!event.ctrlKey && !event.metaKey)) {
+      if (
+        event.key.toLowerCase() !== "a" ||
+        (!event.ctrlKey && !event.metaKey)
+      ) {
         return;
       }
 
@@ -1007,7 +1055,9 @@ export function TransactionTable({
   const headerClass =
     "px-2 py-1.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider";
   const cellClass = "px-2 py-1.5 text-sm whitespace-nowrap";
-  const renderHistoryHeader = (col: (typeof transactionHistoryColumns)[number]) => {
+  const renderHistoryHeader = (
+    col: (typeof transactionHistoryColumns)[number],
+  ) => {
     const sortable = Boolean(col.sortable);
     return (
       <th
@@ -1230,7 +1280,9 @@ export function TransactionTable({
                         <span
                           data-row-index={rowIndex}
                           data-col-index={6}
-                          aria-label={t.comment ? undefined : "Empty comment cell"}
+                          aria-label={
+                            t.comment ? undefined : "Empty comment cell"
+                          }
                           className={getHistoryCellClassName(
                             rowIndex,
                             6,
@@ -1298,7 +1350,11 @@ export function TransactionTable({
                   <td
                     data-row-index={rowIndex}
                     data-col-index={3}
-                    className={getHistoryCellClassName(rowIndex, 3, cn(cellClass, "text-xs"))}
+                    className={getHistoryCellClassName(
+                      rowIndex,
+                      3,
+                      cn(cellClass, "text-xs"),
+                    )}
                     tabIndex={isEditing ? undefined : 0}
                     onFocus={() => focusHistoryCell(t.id, rowIndex, 3)}
                     {...getHistoryCellSelectionHandlers(rowIndex, 3)}

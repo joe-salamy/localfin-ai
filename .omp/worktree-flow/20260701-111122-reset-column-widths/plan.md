@@ -13,12 +13,14 @@ The optimal default width is therefore the current per-column default, not one w
 1. In `src/features/table-layout/storage.ts`, extend the private `BrowserStorage` interface with optional `removeItem?: (key: string) => void`; keep `isBrowserStorage()` requiring only `getItem` and `setItem` so existing storage shims remain valid.
 2. Add a module-level reset subscriber set and export this exact function:
    ```ts
-   export function subscribeToTableColumnWidthReset(listener: () => void): () => void
+   export function subscribeToTableColumnWidthReset(
+     listener: () => void,
+   ): () => void;
    ```
    It adds the listener to the set and returns an unsubscribe function that deletes it. No DOM event is required; this only needs to notify mounted hooks in the same app runtime after the Settings button is clicked.
 3. Export this exact function:
    ```ts
-   export function resetAllTableColumnWidths(): void
+   export function resetAllTableColumnWidths(): void;
    ```
    It must:
    - call `getTableColumnWidthStorage()`;
@@ -70,7 +72,10 @@ The optimal default width is therefore the current per-column default, not one w
    - Confirmation message: `Column widths reset to defaults.`
 6. Render the confirmation message only when `tableLayoutMessage` is non-empty, using the existing Settings message style:
    ```tsx
-   <p className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground" aria-live="polite">
+   <p
+     className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground"
+     aria-live="polite"
+   >
      {tableLayoutMessage}
    </p>
    ```

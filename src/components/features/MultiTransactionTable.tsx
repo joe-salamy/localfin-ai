@@ -1,5 +1,10 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import type { ClipboardEvent, ChangeEvent, KeyboardEvent, PointerEvent } from "react";
+import type {
+  ClipboardEvent,
+  ChangeEvent,
+  KeyboardEvent,
+  PointerEvent,
+} from "react";
 import { format, parse } from "date-fns";
 import {
   X,
@@ -47,7 +52,10 @@ import {
   rectangleFrom,
   selectionBoundingRange,
 } from "@/features/spreadsheet-selection/selection";
-import type { CellCoord, CellRange } from "@/features/spreadsheet-selection/selection";
+import type {
+  CellCoord,
+  CellRange,
+} from "@/features/spreadsheet-selection/selection";
 import {
   addTransactionCellFields,
   kindHasSubcategory,
@@ -92,7 +100,6 @@ interface DraftSnapshot {
   statementAccountId: string;
 }
 
-
 function emptyRow(): TransactionRow {
   return {
     id: crypto.randomUUID(),
@@ -134,7 +141,6 @@ function displayAmountToNumber(val: string): number {
   return parseFloat(cleaned) || 0;
 }
 
-
 function formatAmountDisplay(
   val: string,
   accountType?: AccountType,
@@ -155,7 +161,6 @@ function toApiDate(displayDate: string): string {
   return format(parsed, "yyyy-MM-dd");
 }
 
-
 function getAccountType(
   accountId: string,
   accounts: { id: string; type: AccountType }[],
@@ -173,7 +178,6 @@ function normalizeRowAmountDisplay(
     row.kind,
   );
 }
-
 
 type CellApplyMode = "paste" | "clear";
 
@@ -194,11 +198,17 @@ function applyCellValue(
 ): CellApplyResult {
   if (mode === "clear") {
     if (field === "kind") return { row, applied: false };
-    if (field === "date") return { row: { ...row, date: "" }, applied: row.date !== "" };
-    if (field === "name") return { row: { ...row, name: "" }, applied: row.name !== "" };
-    if (field === "amount") return { row: { ...row, amount: "" }, applied: row.amount !== "" };
+    if (field === "date")
+      return { row: { ...row, date: "" }, applied: row.date !== "" };
+    if (field === "name")
+      return { row: { ...row, name: "" }, applied: row.name !== "" };
+    if (field === "amount")
+      return { row: { ...row, amount: "" }, applied: row.amount !== "" };
     if (field === "account_id") {
-      return { row: { ...row, account_id: "" }, applied: row.account_id !== "" };
+      return {
+        row: { ...row, account_id: "" },
+        applied: row.account_id !== "",
+      };
     }
     if (field === "subcategory_id") {
       return {
@@ -206,7 +216,9 @@ function applyCellValue(
           ...row,
           subcategory_id: "",
           categorizationSource:
-            row.categorizationSource === "ai" ? "manual" : row.categorizationSource,
+            row.categorizationSource === "ai"
+              ? "manual"
+              : row.categorizationSource,
         },
         applied: row.subcategory_id !== "",
       };
@@ -303,7 +315,9 @@ function applyCellValue(
           ...row,
           subcategory_id: subcategoryId,
           categorizationSource:
-            row.categorizationSource === "ai" ? "manual" : row.categorizationSource,
+            row.categorizationSource === "ai"
+              ? "manual"
+              : row.categorizationSource,
         },
         applied: true,
       }
@@ -397,7 +411,6 @@ const manualTransactionColumns: readonly ResizableColumnDef[] = [
   { id: "comment", defaultWidth: 128 },
   { id: "remove", defaultWidth: 32 },
 ];
-
 
 // ── Main component ────────────────────────────────────────────────────
 
@@ -643,7 +656,9 @@ export function MultiTransactionTable() {
       const focus = { row, col };
       const range = rectangleFrom(dragSelection.anchor, focus);
       setSelectedRanges(
-        dragSelection.additive ? [...dragBaseRangesRef.current, range] : [range],
+        dragSelection.additive
+          ? [...dragBaseRangesRef.current, range]
+          : [range],
       );
       setActiveCell(focus);
     };
@@ -698,16 +713,23 @@ export function MultiTransactionTable() {
         (selectedCell) =>
           selectedCell.row !== cell.row || selectedCell.col !== cell.col,
       );
-      setSelectedRanges(cells.map((selectedCell) => rectangleFrom(selectedCell, selectedCell)));
+      setSelectedRanges(
+        cells.map((selectedCell) => rectangleFrom(selectedCell, selectedCell)),
+      );
       setActiveCell(cell);
       setAnchorCell(cell);
     },
     [expandSelectedCells, selectedRanges],
   );
 
-  const focusEditableCell = useCallback((rowIndex: number, colIndex: number) => {
-    cellRefs.current[rowIndex * addTransactionCellFields.length + colIndex]?.focus();
-  }, []);
+  const focusEditableCell = useCallback(
+    (rowIndex: number, colIndex: number) => {
+      cellRefs.current[
+        rowIndex * addTransactionCellFields.length + colIndex
+      ]?.focus();
+    },
+    [],
+  );
 
   const getCellSelectionHandlers = useCallback(
     (rowIndex: number, colIndex: number) => ({
@@ -778,7 +800,8 @@ export function MultiTransactionTable() {
     (rowIndex: number, colIndex: number) => {
       const cell = { row: rowIndex, col: colIndex };
       const selected = isCellInRanges(cell, selectedRanges);
-      const active = activeCell?.row === rowIndex && activeCell.col === colIndex;
+      const active =
+        activeCell?.row === rowIndex && activeCell.col === colIndex;
       return cn(
         "px-1 py-0.5 align-top",
         selected && "bg-ring/15 outline outline-1 outline-ring",
@@ -795,11 +818,17 @@ export function MultiTransactionTable() {
       if (field === "amount") return normalizeRowAmountDisplay(row, accounts);
       if (field === "kind") return row.kind;
       if (field === "account_id") {
-        return accounts.find((account) => account.id === row.account_id)?.name ?? "";
+        return (
+          accounts.find((account) => account.id === row.account_id)?.name ?? ""
+        );
       }
       if (field === "subcategory_id") {
-        const subcategory = subcategories.find((item) => item.id === row.subcategory_id);
-        return subcategory ? formatSubcategoryLabel(subcategory, manualCategoryLookup) : "";
+        const subcategory = subcategories.find(
+          (item) => item.id === row.subcategory_id,
+        );
+        return subcategory
+          ? formatSubcategoryLabel(subcategory, manualCategoryLookup)
+          : "";
       }
       if (field === "tag_ids") {
         return row.tag_ids
@@ -818,10 +847,18 @@ export function MultiTransactionTable() {
       if (!bounds) return false;
 
       const matrix: string[][] = [];
-      for (let rowIndex = bounds.startRow; rowIndex <= bounds.endRow; rowIndex++) {
+      for (
+        let rowIndex = bounds.startRow;
+        rowIndex <= bounds.endRow;
+        rowIndex++
+      ) {
         const row = rows[rowIndex];
         const values: string[] = [];
-        for (let colIndex = bounds.startCol; colIndex <= bounds.endCol; colIndex++) {
+        for (
+          let colIndex = bounds.startCol;
+          colIndex <= bounds.endCol;
+          colIndex++
+        ) {
           const cell = { row: rowIndex, col: colIndex };
           const field = addTransactionCellFields[colIndex];
           values.push(
@@ -891,7 +928,9 @@ export function MultiTransactionTable() {
         duplicatesChecked: false,
       });
       void executeDraftSnapshotAction(
-        mode === "clear" ? "Clear transaction cells" : "Paste transaction cells",
+        mode === "clear"
+          ? "Clear transaction cells"
+          : "Paste transaction cells",
         before,
         after,
         () => {
@@ -931,7 +970,12 @@ export function MultiTransactionTable() {
 
       event.preventDefault();
       const startColumn = addTransactionCellFields.indexOf(startField);
-      applyClipboardMatrix(parseClipboardMatrix(text), rowIndex, startColumn, "paste");
+      applyClipboardMatrix(
+        parseClipboardMatrix(text),
+        rowIndex,
+        startColumn,
+        "paste",
+      );
     },
     [applyClipboardMatrix, selectedRanges.length],
   );
@@ -993,11 +1037,7 @@ export function MultiTransactionTable() {
         rows: next,
         duplicatesChecked: false,
       });
-      void executeDraftSnapshotAction(
-        "Cut transaction cells",
-        before,
-        after,
-      );
+      void executeDraftSnapshotAction("Cut transaction cells", before, after);
     },
     [
       accounts,
@@ -1046,7 +1086,10 @@ export function MultiTransactionTable() {
 
   const handleGridKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
-      if (event.key.toLowerCase() !== "a" || (!event.ctrlKey && !event.metaKey)) {
+      if (
+        event.key.toLowerCase() !== "a" ||
+        (!event.ctrlKey && !event.metaKey)
+      ) {
         return;
       }
 
@@ -1186,11 +1229,8 @@ export function MultiTransactionTable() {
         statementText: "",
         statementAccountId: "",
       });
-      await executeDraftSnapshotAction(
-        "Parse statement",
-        before,
-        after,
-        () => successToast(`Parsed ${data.summary.total} transaction(s).`),
+      await executeDraftSnapshotAction("Parse statement", before, after, () =>
+        successToast(`Parsed ${data.summary.total} transaction(s).`),
       );
     } catch (err) {
       toast.error(
@@ -1288,13 +1328,17 @@ export function MultiTransactionTable() {
         apply: async () => {
           try {
             const result = await bulkCreateTransactions.mutateAsync(payload);
-            createdIds = (result.data ?? []).map((transaction) => transaction.id);
+            createdIds = (result.data ?? []).map(
+              (transaction) => transaction.id,
+            );
             successToast(`${payload.length} transaction(s) saved.`);
             setRows(initialRows());
             setDuplicatesChecked(false);
           } catch (err) {
             toast.error(
-              err instanceof Error ? err.message : "Failed to save transactions.",
+              err instanceof Error
+                ? err.message
+                : "Failed to save transactions.",
             );
             throw err;
           }
@@ -1402,7 +1446,10 @@ export function MultiTransactionTable() {
   );
 
   const createTagForPicker = useCallback(
-    async (data: CreateTagData, options?: TagPickerCreateOptions): Promise<Tag> => {
+    async (
+      data: CreateTagData,
+      options?: TagPickerCreateOptions,
+    ): Promise<Tag> => {
       let createdTag: Tag | null = null;
       let applyError: unknown = null;
       const applied = await execute({
@@ -1615,7 +1662,12 @@ export function MultiTransactionTable() {
                 </td>
 
                 {/* Date */}
-                <td data-row-index={idx} data-col-index={0} className={getCellClassName(idx, 0)} {...getCellSelectionHandlers(idx, 0)}>
+                <td
+                  data-row-index={idx}
+                  data-col-index={0}
+                  className={getCellClassName(idx, 0)}
+                  {...getCellSelectionHandlers(idx, 0)}
+                >
                   <input
                     ref={(node) => {
                       cellRefs.current[idx * 8] = node;
@@ -1633,7 +1685,12 @@ export function MultiTransactionTable() {
                 </td>
 
                 {/* Name */}
-                <td data-row-index={idx} data-col-index={1} className={getCellClassName(idx, 1)} {...getCellSelectionHandlers(idx, 1)}>
+                <td
+                  data-row-index={idx}
+                  data-col-index={1}
+                  className={getCellClassName(idx, 1)}
+                  {...getCellSelectionHandlers(idx, 1)}
+                >
                   <input
                     ref={(node) => {
                       cellRefs.current[idx * 8 + 1] = node;
@@ -1651,7 +1708,12 @@ export function MultiTransactionTable() {
                 </td>
 
                 {/* Amount */}
-                <td data-row-index={idx} data-col-index={2} className={getCellClassName(idx, 2)} {...getCellSelectionHandlers(idx, 2)}>
+                <td
+                  data-row-index={idx}
+                  data-col-index={2}
+                  className={getCellClassName(idx, 2)}
+                  {...getCellSelectionHandlers(idx, 2)}
+                >
                   <input
                     ref={(node) => {
                       cellRefs.current[idx * 8 + 2] = node;
@@ -1686,7 +1748,12 @@ export function MultiTransactionTable() {
                 </td>
 
                 {/* Type */}
-                <td data-row-index={idx} data-col-index={3} className={getCellClassName(idx, 3)} {...getCellSelectionHandlers(idx, 3)}>
+                <td
+                  data-row-index={idx}
+                  data-col-index={3}
+                  className={getCellClassName(idx, 3)}
+                  {...getCellSelectionHandlers(idx, 3)}
+                >
                   <select
                     ref={(node) => {
                       cellRefs.current[idx * 8 + 3] = node;
@@ -1707,7 +1774,12 @@ export function MultiTransactionTable() {
                 </td>
 
                 {/* Account */}
-                <td data-row-index={idx} data-col-index={4} className={getCellClassName(idx, 4)} {...getCellSelectionHandlers(idx, 4)}>
+                <td
+                  data-row-index={idx}
+                  data-col-index={4}
+                  className={getCellClassName(idx, 4)}
+                  {...getCellSelectionHandlers(idx, 4)}
+                >
                   <select
                     ref={(node) => {
                       cellRefs.current[idx * 8 + 4] = node;
@@ -1747,7 +1819,12 @@ export function MultiTransactionTable() {
                 </td>
 
                 {/* Subcategory (grouped) */}
-                <td data-row-index={idx} data-col-index={5} className={getCellClassName(idx, 5)} {...getCellSelectionHandlers(idx, 5)}>
+                <td
+                  data-row-index={idx}
+                  data-col-index={5}
+                  className={getCellClassName(idx, 5)}
+                  {...getCellSelectionHandlers(idx, 5)}
+                >
                   <GroupedSubcategorySelect
                     refIndex={idx * 8 + 5}
                     registerRef={(index, node) => {
@@ -1757,7 +1834,9 @@ export function MultiTransactionTable() {
                     onChange={(val) => handleSubcategoryChange(row, val)}
                     categories={categories}
                     subcategories={subcategories}
-                    className={cn(!kindHasSubcategory(row.kind) && "opacity-60")}
+                    className={cn(
+                      !kindHasSubcategory(row.kind) && "opacity-60",
+                    )}
                     disabled={!kindHasSubcategory(row.kind)}
                     onPaste={(e) => handlePaste(e, idx, "subcategory_id")}
                     onFocus={() => handleCellFocus(row.id, idx, 5)}
@@ -1770,7 +1849,12 @@ export function MultiTransactionTable() {
                 </td>
 
                 {/* Tags */}
-                <td data-row-index={idx} data-col-index={6} className={getCellClassName(idx, 6)} {...getCellSelectionHandlers(idx, 6)}>
+                <td
+                  data-row-index={idx}
+                  data-col-index={6}
+                  className={getCellClassName(idx, 6)}
+                  {...getCellSelectionHandlers(idx, 6)}
+                >
                   <div
                     onPaste={(e) => handlePaste(e, idx, "tag_ids")}
                     onFocus={() => handleCellFocus(row.id, idx, 6)}
@@ -1792,7 +1876,12 @@ export function MultiTransactionTable() {
                 </td>
 
                 {/* Comment */}
-                <td data-row-index={idx} data-col-index={7} className={getCellClassName(idx, 7)} {...getCellSelectionHandlers(idx, 7)}>
+                <td
+                  data-row-index={idx}
+                  data-col-index={7}
+                  className={getCellClassName(idx, 7)}
+                  {...getCellSelectionHandlers(idx, 7)}
+                >
                   <input
                     ref={(node) => {
                       cellRefs.current[idx * 8 + 7] = node;

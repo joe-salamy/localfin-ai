@@ -105,7 +105,10 @@ export function AccountSummaryTable({
       >
         <colgroup>
           {accountColumns.columns.map((column) => (
-            <col key={column.id} style={accountColumns.getColStyle(column.id)} />
+            <col
+              key={column.id}
+              style={accountColumns.getColStyle(column.id)}
+            />
           ))}
         </colgroup>
         <thead className="bg-secondary/50">
@@ -291,14 +294,20 @@ function AccountRow({
                       style={transactionColumns.getHeaderStyle("date")}
                     >
                       Date
-                      <ResizeHandle layout={transactionColumns} columnId="date" />
+                      <ResizeHandle
+                        layout={transactionColumns}
+                        columnId="date"
+                      />
                     </th>
                     <th
                       className={cn(headerClass, "relative")}
                       style={transactionColumns.getHeaderStyle("name")}
                     >
                       Name
-                      <ResizeHandle layout={transactionColumns} columnId="name" />
+                      <ResizeHandle
+                        layout={transactionColumns}
+                        columnId="name"
+                      />
                     </th>
                     <th
                       className={cn(headerClass, "relative text-right")}

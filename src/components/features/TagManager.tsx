@@ -39,7 +39,8 @@ const TAG_COLUMNS: ResizableColumnDef[] = [
 ];
 
 export function TagManager() {
-  const { tags, isLoading, createTag, updateTag, deleteTag, restoreTag } = useTags();
+  const { tags, isLoading, createTag, updateTag, deleteTag, restoreTag } =
+    useTags();
   const { execute } = useUndoRedo();
   const successToast = useSuccessToast();
   const [name, setName] = useState("");

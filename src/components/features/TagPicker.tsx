@@ -23,7 +23,10 @@ interface TagPickerProps {
   value: string[];
   onChange: (tagIds: string[]) => void;
   tags: Tag[];
-  onCreateTag: (data: CreateTagData, options?: TagPickerCreateOptions) => Promise<Tag>;
+  onCreateTag: (
+    data: CreateTagData,
+    options?: TagPickerCreateOptions,
+  ) => Promise<Tag>;
   className?: string;
   disabled?: boolean;
   placeholder?: string;

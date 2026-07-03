@@ -114,7 +114,9 @@ test("reset falls back to an empty width payload when removeItem is unavailable"
   writeTableColumnWidths("manual", { name: 176 });
   resetAllTableColumnWidths();
 
-  const payload = JSON.parse(storageWithoutRemoveItem.getItem(STORAGE_KEY) ?? "");
+  const payload = JSON.parse(
+    storageWithoutRemoveItem.getItem(STORAGE_KEY) ?? "",
+  );
   assert.deepEqual(payload.tables, {});
   assert.equal(payload.version, 1);
 });
