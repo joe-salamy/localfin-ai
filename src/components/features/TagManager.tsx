@@ -8,6 +8,10 @@ import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
 import { TagChip } from "@/components/features/TagPicker";
 import { useTags } from "@/hooks/useTags";
 import { useUndoRedo } from "@/features/undo-redo/hooks";
+import {
+  DEFAULT_NEW_TAG_COLOR,
+  resolveNewTagCreateColor,
+} from "@/components/features/tagManagerColor";
 import { resolveEntityColor } from "@/lib/colors";
 import { handleEnterSave } from "@/lib/enterSave";
 import type { Tag } from "@/types";
@@ -29,7 +33,7 @@ export function TagManager() {
   const { execute } = useUndoRedo();
   const successToast = useSuccessToast();
   const [name, setName] = useState("");
-  const [color, setColor] = useState<string | null>(null);
+  const [color, setColor] = useState<string | null>(DEFAULT_NEW_TAG_COLOR);
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState<string | null>(null);
@@ -73,13 +77,13 @@ export function TagManager() {
           try {
             const result = await createTag.mutateAsync({
               name: nextName,
-              color,
+              color: resolveNewTagCreateColor(color),
             });
             createdId = result.data?.id ?? null;
             if (!createdId) throw new Error("Tag creation returned no tag.");
             successToast("Tag created");
             setName("");
-            setColor(null);
+            setColor(DEFAULT_NEW_TAG_COLOR);
           } catch (err) {
             toast.error(
               err instanceof Error ? err.message : "Failed to create tag",
@@ -200,6 +204,7 @@ export function TagManager() {
               value={color}
               onChange={setColor}
               label="New tag color"
+              allowClear={false}
             />
           </div>
           <Button
