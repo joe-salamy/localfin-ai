@@ -5,7 +5,7 @@ import type {
   KeyboardEvent,
   PointerEvent,
 } from "react";
-import { format, parse } from "date-fns";
+import { format, isValid, parse } from "date-fns";
 import {
   X,
   AlertTriangle,
@@ -136,6 +136,13 @@ function isRowValid(row: TransactionRow) {
   return row.date && row.name && row.amount && row.account_id;
 }
 
+function parseDisplayDate(displayDate: string): Date | null {
+  const parsed = parse(displayDate, "MM/dd/yyyy", new Date());
+  return isValid(parsed) && format(parsed, "MM/dd/yyyy") === displayDate
+    ? parsed
+    : null;
+}
+
 function displayAmountToNumber(val: string): number {
   const cleaned = val.replace(/[$,\s]/g, "");
   return parseFloat(cleaned) || 0;
@@ -156,8 +163,10 @@ function formatAmountDisplay(
 }
 
 function toApiDate(displayDate: string): string {
-  // MM/DD/YYYY -> YYYY-MM-DD
-  const parsed = parse(displayDate, "MM/dd/yyyy", new Date());
+  const parsed = parseDisplayDate(displayDate);
+  if (!parsed) {
+    throw new Error("Invalid transaction date.");
+  }
   return format(parsed, "yyyy-MM-dd");
 }
 
@@ -1251,6 +1260,12 @@ export function MultiTransactionTable() {
     const invalid = filledRows.filter((r) => !isRowValid(r));
     if (invalid.length > 0) {
       toast.error("Each row needs at least a date, name, amount, and account.");
+      return;
+    }
+
+    const invalidDates = filledRows.filter((row) => !parseDisplayDate(row.date));
+    if (invalidDates.length > 0) {
+      toast.error("Dates must use MM/DD/YYYY.");
       return;
     }
     if (filledRows.length === 0) {

@@ -88,15 +88,14 @@ export function parsePastedDate(
       : null;
   }
 
-  const displayMatch = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/.exec(
+  const displayMatch = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(
     trimmed,
   );
   if (!displayMatch) return null;
 
   const month = Number(displayMatch[1]);
   const day = Number(displayMatch[2]);
-  const yearPart = Number(displayMatch[3]);
-  const year = displayMatch[3].length === 2 ? 2000 + yearPart : yearPart;
+  const year = Number(displayMatch[3]);
   return isRealDate(year, month, day)
     ? formatDateParts(year, month, day)
     : null;
