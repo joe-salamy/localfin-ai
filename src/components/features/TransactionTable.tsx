@@ -67,6 +67,7 @@ import {
   transactionAmountScaleValue,
 } from "@/lib/financialColorScale";
 import { handleEnterSave } from "@/lib/enterSave";
+import { shouldHandleFieldEditDoubleClick } from "@/lib/fieldEditDoubleClick";
 
 interface TransactionTableProps {
   transactions: TransactionWithDetails[];
@@ -1213,6 +1214,11 @@ export function TransactionTable({
                     className={getHistoryCellClassName(rowIndex, 0, cellClass)}
                     tabIndex={isEditing ? undefined : 0}
                     onFocus={() => focusHistoryCell(t.id, rowIndex, 0)}
+                    onDoubleClick={(event) => {
+                      if (isEditing) return;
+                      if (!shouldHandleFieldEditDoubleClick(event)) return;
+                      startEdit(t);
+                    }}
                     {...getHistoryCellSelectionHandlers(rowIndex, 0)}
                   >
                     {isEditing ? (
@@ -1241,6 +1247,11 @@ export function TransactionTable({
                     className={getHistoryCellClassName(rowIndex, 1, cellClass)}
                     tabIndex={isEditing ? undefined : 0}
                     onFocus={() => focusHistoryCell(t.id, rowIndex, 1)}
+                    onDoubleClick={(event) => {
+                      if (isEditing) return;
+                      if (!shouldHandleFieldEditDoubleClick(event)) return;
+                      startEdit(t);
+                    }}
                     {...getHistoryCellSelectionHandlers(rowIndex, 1)}
                   >
                     {isEditing ? (
@@ -1307,6 +1318,11 @@ export function TransactionTable({
                     )}
                     tabIndex={isEditing ? undefined : 0}
                     onFocus={() => focusHistoryCell(t.id, rowIndex, 2)}
+                    onDoubleClick={(event) => {
+                      if (isEditing) return;
+                      if (!shouldHandleFieldEditDoubleClick(event)) return;
+                      startEdit(t);
+                    }}
                     {...getHistoryCellSelectionHandlers(rowIndex, 2)}
                   >
                     {isEditing ? (
@@ -1357,6 +1373,11 @@ export function TransactionTable({
                     )}
                     tabIndex={isEditing ? undefined : 0}
                     onFocus={() => focusHistoryCell(t.id, rowIndex, 3)}
+                    onDoubleClick={(event) => {
+                      if (isEditing) return;
+                      if (!shouldHandleFieldEditDoubleClick(event)) return;
+                      startEdit(t);
+                    }}
                     {...getHistoryCellSelectionHandlers(rowIndex, 3)}
                   >
                     {isEditing ? (
@@ -1393,6 +1414,11 @@ export function TransactionTable({
                     tabIndex={isEditing ? undefined : 0}
                     onFocus={() => focusHistoryCell(t.id, rowIndex, 4)}
                     onPaste={(e) => void applySubcategoryPaste(e, t)}
+                    onDoubleClick={(event) => {
+                      if (isEditing) return;
+                      if (!shouldHandleFieldEditDoubleClick(event)) return;
+                      startEdit(t);
+                    }}
                     title="Paste a copied subcategory here to apply it to this row or selected rows"
                     {...getHistoryCellSelectionHandlers(rowIndex, 4)}
                   >
@@ -1435,6 +1461,11 @@ export function TransactionTable({
                     className={getHistoryCellClassName(rowIndex, 5, cellClass)}
                     tabIndex={isEditing ? undefined : 0}
                     onFocus={() => focusHistoryCell(t.id, rowIndex, 5)}
+                    onDoubleClick={(event) => {
+                      if (isEditing) return;
+                      if (!shouldHandleFieldEditDoubleClick(event)) return;
+                      startEdit(t);
+                    }}
                     {...getHistoryCellSelectionHandlers(rowIndex, 5)}
                   >
                     {isEditing ? (

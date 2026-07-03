@@ -14,6 +14,7 @@ import {
 } from "@/components/features/tagManagerColor";
 import { resolveEntityColor } from "@/lib/colors";
 import { handleEnterSave } from "@/lib/enterSave";
+import { shouldHandleFieldEditDoubleClick } from "@/lib/fieldEditDoubleClick";
 import type { Tag } from "@/types";
 import {
   useResizableColumns,
@@ -294,7 +295,14 @@ export function TagManager() {
                   }
                   className="hover:bg-secondary/20"
                 >
-                  <td className="px-2 py-1.5 text-sm">
+                  <td
+                    className="px-2 py-1.5 text-sm"
+                    onDoubleClick={(event) => {
+                      if (isEditing) return;
+                      if (!shouldHandleFieldEditDoubleClick(event)) return;
+                      startEdit(tag);
+                    }}
+                  >
                     {isEditing ? (
                       <input
                         type="text"
@@ -306,7 +314,14 @@ export function TagManager() {
                       <TagChip tag={tag} />
                     )}
                   </td>
-                  <td className="px-2 py-1.5 text-sm">
+                  <td
+                    className="px-2 py-1.5 text-sm"
+                    onDoubleClick={(event) => {
+                      if (isEditing) return;
+                      if (!shouldHandleFieldEditDoubleClick(event)) return;
+                      startEdit(tag);
+                    }}
+                  >
                     {isEditing ? (
                       <ColorPicker
                         value={editColor}

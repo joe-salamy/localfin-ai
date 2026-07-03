@@ -44,6 +44,7 @@ export function ColorPicker({
         <Popover.Content
           align="start"
           sideOffset={4}
+          data-field-edit-double-click-ignore="true"
           className="z-50 w-48 rounded-md border border-border bg-card p-2 shadow-lg"
         >
           <div className="grid grid-cols-10 gap-1">

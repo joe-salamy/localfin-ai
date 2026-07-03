@@ -47,6 +47,7 @@ import {
   type ResizableColumnDef,
 } from "@/features/table-layout/useResizableColumns";
 import { handleEnterSave } from "@/lib/enterSave";
+import { shouldHandleFieldEditDoubleClick } from "@/lib/fieldEditDoubleClick";
 import { useSuccessToast } from "@/features/display-settings/hooks";
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -1243,13 +1244,31 @@ function AccountsSection() {
                         className="h-4 w-4 rounded border-border bg-background"
                       />
                     </td>
-                    <td className="py-1.5">
+                    <td
+                      className="py-1.5"
+                      onDoubleClick={(event) => {
+                        if (!shouldHandleFieldEditDoubleClick(event)) return;
+                        startEdit(a);
+                      }}
+                    >
                       <EntityLabel id={a.id} name={a.name} color={a.color} />
                     </td>
-                    <td className="py-1.5">
+                    <td
+                      className="py-1.5"
+                      onDoubleClick={(event) => {
+                        if (!shouldHandleFieldEditDoubleClick(event)) return;
+                        startEdit(a);
+                      }}
+                    >
                       <TypeBadge type={a.type} />
                     </td>
-                    <td className="py-1.5">
+                    <td
+                      className="py-1.5"
+                      onDoubleClick={(event) => {
+                        if (!shouldHandleFieldEditDoubleClick(event)) return;
+                        startEdit(a);
+                      }}
+                    >
                       <ColorPicker
                         value={a.color}
                         onChange={(nextColor) => {
@@ -1258,7 +1277,13 @@ function AccountsSection() {
                         label={`${a.name} color`}
                       />
                     </td>
-                    <td className="py-1.5 text-right font-mono">
+                    <td
+                      className="py-1.5 text-right font-mono"
+                      onDoubleClick={(event) => {
+                        if (!shouldHandleFieldEditDoubleClick(event)) return;
+                        startEdit(a);
+                      }}
+                    >
                       {formatCurrency(a.initial_balance)}
                     </td>
                     <td className="py-1.5 text-right font-mono">
@@ -2016,7 +2041,14 @@ function CategoriesSection() {
                         />
                       )}
                     </td>
-                    <td className="py-1.5">
+                    <td
+                      className="py-1.5"
+                      onDoubleClick={(event) => {
+                        if (c.is_system) return;
+                        if (!shouldHandleFieldEditDoubleClick(event)) return;
+                        startEdit(c);
+                      }}
+                    >
                       <EntityLabel id={c.id} name={c.name} color={c.color} />
                       {c.is_system && (
                         <Lock
@@ -2025,10 +2057,24 @@ function CategoriesSection() {
                         />
                       )}
                     </td>
-                    <td className="py-1.5">
+                    <td
+                      className="py-1.5"
+                      onDoubleClick={(event) => {
+                        if (c.is_system) return;
+                        if (!shouldHandleFieldEditDoubleClick(event)) return;
+                        startEdit(c);
+                      }}
+                    >
                       <TypeBadge type={c.type} />
                     </td>
-                    <td className="py-1.5">
+                    <td
+                      className="py-1.5"
+                      onDoubleClick={(event) => {
+                        if (c.is_system) return;
+                        if (!shouldHandleFieldEditDoubleClick(event)) return;
+                        startEdit(c);
+                      }}
+                    >
                       <ColorPicker
                         value={c.color}
                         onChange={(nextColor) => {
@@ -2744,7 +2790,14 @@ function SubcategoriesSection() {
                           />
                         )}
                       </td>
-                      <td className="py-1.5">
+                      <td
+                        className="py-1.5"
+                        onDoubleClick={(event) => {
+                          if (s.is_system) return;
+                          if (!shouldHandleFieldEditDoubleClick(event)) return;
+                          startEdit(s);
+                        }}
+                      >
                         <EntityLabel id={s.id} name={s.name} color={s.color} />
                         {s.is_system && (
                           <Lock
@@ -2753,7 +2806,14 @@ function SubcategoriesSection() {
                           />
                         )}
                       </td>
-                      <td className="py-1.5">
+                      <td
+                        className="py-1.5"
+                        onDoubleClick={(event) => {
+                          if (s.is_system) return;
+                          if (!shouldHandleFieldEditDoubleClick(event)) return;
+                          startEdit(s);
+                        }}
+                      >
                         {parentCat ? (
                           <>
                             <EntityLabel
@@ -2767,14 +2827,28 @@ function SubcategoriesSection() {
                           <span className="text-muted-foreground">Unknown</span>
                         )}
                       </td>
-                      <td className="py-1.5 text-right font-mono">
+                      <td
+                        className="py-1.5 text-right font-mono"
+                        onDoubleClick={(event) => {
+                          if (s.is_system) return;
+                          if (!shouldHandleFieldEditDoubleClick(event)) return;
+                          startEdit(s);
+                        }}
+                      >
                         {s.monthly_goal != null ? (
                           formatCurrency(s.monthly_goal)
                         ) : (
                           <span className="text-muted-foreground">--</span>
                         )}
                       </td>
-                      <td className="py-1.5">
+                      <td
+                        className="py-1.5"
+                        onDoubleClick={(event) => {
+                          if (s.is_system) return;
+                          if (!shouldHandleFieldEditDoubleClick(event)) return;
+                          startEdit(s);
+                        }}
+                      >
                         <ColorPicker
                           value={s.color}
                           onChange={(nextColor) => {
