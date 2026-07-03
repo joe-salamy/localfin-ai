@@ -1,0 +1,14 @@
+{
+  "audit_head_before": "e6930b5a0e936818815ae619da6622a65d961385",
+  "base": "main",
+  "completed_stage": "cleanup_complete",
+  "feature_branch": "feature/double-click-field-editing",
+  "feature_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-double-click-field-editing",
+  "integration_branch": "integration/double-click-field-editing-20260702-182139",
+  "integration_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-integrate-double-click-field-editing-20260702-182139",
+  "merge_mode": "squash",
+  "plan_path": "C:\\Users\\joesa\\Code\\localfin-ai-double-click-field-editing\\.omp\\worktree-flow\\20260702-175559-double-click-field-editing\\plan.md",
+  "plan_title": "Double Click Field Editing",
+  "run_id": "20260702-175559-double-click-field-editing",
+  "slug": "double-click-field-editing"
+}
