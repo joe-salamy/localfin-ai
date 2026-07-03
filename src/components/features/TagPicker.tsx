@@ -1,23 +1,13 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Check, ChevronDown, Plus, X } from "lucide-react";
-import type { CreateTagData, Tag, TagType } from "@/types";
+import type { CreateTagData, Tag } from "@/types";
 import { Button } from "@/components/ui/Button";
-import { SimpleSelect } from "@/components/ui/SimpleSelect";
 import { cn } from "@/lib/utils";
 import { resolveEntityColor } from "@/lib/colors";
 import { createTagWithControlledSelection } from "./tagPickerCreateSelection";
 import type { TagPickerCreateOptions } from "./tagPickerCreateSelection";
 export type { TagPickerCreateOptions } from "./tagPickerCreateSelection";
-
-const TAG_TYPES: TagType[] = [
-  "custom",
-  "trip",
-  "event",
-  "person",
-  "reimbursable",
-  "tax",
-];
 
 interface TagPickerProps {
   value: string[];
@@ -36,16 +26,12 @@ function normalizeTagName(name: string): string {
   return name.trim().replace(/\s+/g, " ");
 }
 
-function tagTypeLabel(type: TagType): string {
-  return type.charAt(0).toUpperCase() + type.slice(1);
-}
-
 export function TagChip({
   tag,
   onRemove,
   className,
 }: {
-  tag: Pick<Tag, "id" | "name" | "type" | "color">;
+  tag: Pick<Tag, "id" | "name" | "color">;
   onRemove?: () => void;
   className?: string;
 }) {
@@ -57,7 +43,7 @@ export function TagChip({
         "inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-secondary/70 px-2 py-0.5 text-xs text-foreground",
         className,
       )}
-      title={`${tag.name} (${tag.type})`}
+      title={tag.name}
     >
       <span
         className="h-2 w-2 shrink-0 rounded-full"
@@ -97,7 +83,6 @@ export const TagPicker = forwardRef<HTMLButtonElement, TagPickerProps>(
   ) => {
     const [open, setOpen] = useState(false);
     const [newName, setNewName] = useState("");
-    const [newType, setNewType] = useState<TagType>("custom");
     const [creating, setCreating] = useState(false);
 
     const valueRef = useRef(value);
@@ -111,10 +96,7 @@ export const TagPicker = forwardRef<HTMLButtonElement, TagPickerProps>(
       () =>
         [...tags]
           .filter((tag) => !tag.deleted_at)
-          .sort(
-            (a, b) =>
-              a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
-          ),
+          .sort((a, b) => a.name.localeCompare(b.name)),
       [tags],
     );
     const selectedTags = activeTags.filter((tag) => selectedIds.has(tag.id));
@@ -132,9 +114,7 @@ export const TagPicker = forwardRef<HTMLButtonElement, TagPickerProps>(
       if (!name || creating || disabled) return;
 
       const existing = activeTags.find(
-        (tag) =>
-          tag.type === newType &&
-          normalizeTagName(tag.name).toLowerCase() === name.toLowerCase(),
+        (tag) => normalizeTagName(tag.name).toLowerCase() === name.toLowerCase(),
       );
       if (existing) {
         const latestValue = valueRef.current;
@@ -147,7 +127,7 @@ export const TagPicker = forwardRef<HTMLButtonElement, TagPickerProps>(
       setCreating(true);
       try {
         await createTagWithControlledSelection({
-          data: { name, type: newType },
+          data: { name },
           valueRef,
           onChange,
           onCreateTag,
@@ -211,9 +191,6 @@ export const TagPicker = forwardRef<HTMLButtonElement, TagPickerProps>(
                       aria-hidden="true"
                     />
                     <span className="min-w-0 flex-1 truncate">{tag.name}</span>
-                    <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-                      {tag.type}
-                    </span>
                     {selected && (
                       <Check className="h-3.5 w-3.5 text-green-400" />
                     )}
@@ -248,17 +225,6 @@ export const TagPicker = forwardRef<HTMLButtonElement, TagPickerProps>(
                   <Plus className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <SimpleSelect
-                value={newType}
-                onChange={(event) => setNewType(event.target.value as TagType)}
-                options={TAG_TYPES.map((type) => ({
-                  value: type,
-                  label: tagTypeLabel(type),
-                }))}
-                disabled={disabled || creating}
-                className="mt-2 h-8 text-xs"
-                aria-label="New tag type"
-              />
             </div>
           </Popover.Content>
         </Popover.Portal>

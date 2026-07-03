@@ -4,36 +4,21 @@ import { Pencil, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { ColorPicker } from "@/components/ui/ColorPicker";
-import { SimpleSelect } from "@/components/ui/SimpleSelect";
 import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
 import { TagChip } from "@/components/features/TagPicker";
 import { useTags } from "@/hooks/useTags";
 import { useUndoRedo } from "@/features/undo-redo/hooks";
 import { resolveEntityColor } from "@/lib/colors";
 import { handleEnterSave } from "@/lib/enterSave";
-import type { Tag, TagType } from "@/types";
+import type { Tag } from "@/types";
 import {
   useResizableColumns,
   type ResizableColumnDef,
 } from "@/features/table-layout/useResizableColumns";
 import { useSuccessToast } from "@/features/display-settings/hooks";
 
-const TAG_TYPES: TagType[] = [
-  "custom",
-  "trip",
-  "event",
-  "person",
-  "reimbursable",
-  "tax",
-];
-const tagTypeOptions = TAG_TYPES.map((type) => ({
-  value: type,
-  label: type.charAt(0).toUpperCase() + type.slice(1),
-}));
-
 const TAG_COLUMNS: ResizableColumnDef[] = [
-  { id: "tag", defaultWidth: 220 },
-  { id: "type", defaultWidth: 112 },
+  { id: "tag", defaultWidth: 260 },
   { id: "color", defaultWidth: 96 },
   { id: "actions", defaultWidth: 96 },
 ];
@@ -44,11 +29,9 @@ export function TagManager() {
   const { execute } = useUndoRedo();
   const successToast = useSuccessToast();
   const [name, setName] = useState("");
-  const [type, setType] = useState<TagType>("custom");
   const [color, setColor] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [editType, setEditType] = useState<TagType>("custom");
   const [editColor, setEditColor] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Tag | null>(null);
 
@@ -56,10 +39,7 @@ export function TagManager() {
     () =>
       [...tags]
         .filter((tag) => !tag.deleted_at)
-        .sort(
-          (a, b) =>
-            a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
-        ),
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [tags],
   );
 
@@ -74,7 +54,6 @@ export function TagManager() {
   const startEdit = (tag: Tag) => {
     setEditId(tag.id);
     setEditName(tag.name);
-    setEditType(tag.type);
     setEditColor(tag.color);
   };
 
@@ -94,14 +73,12 @@ export function TagManager() {
           try {
             const result = await createTag.mutateAsync({
               name: nextName,
-              type,
               color,
             });
             createdId = result.data?.id ?? null;
             if (!createdId) throw new Error("Tag creation returned no tag.");
             successToast("Tag created");
             setName("");
-            setType("custom");
             setColor(null);
           } catch (err) {
             toast.error(
@@ -131,7 +108,7 @@ export function TagManager() {
     }
 
     const before = tags.find((tag) => tag.id === id);
-    const updates = { name: nextName, type: editType, color: editColor };
+    const updates = { name: nextName, color: editColor };
     try {
       if (!before) {
         await updateTag.mutateAsync({ id, ...updates });
@@ -146,7 +123,6 @@ export function TagManager() {
             await updateTag.mutateAsync({
               id,
               name: before.name,
-              type: before.type,
               color: before.color,
             });
           },
@@ -203,7 +179,7 @@ export function TagManager() {
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border bg-secondary/10 p-3">
-        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem_auto_auto] md:items-end">
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
           <label className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">
               Name
@@ -216,12 +192,6 @@ export function TagManager() {
               className="h-9 w-full rounded border border-border bg-input px-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
-          <SimpleSelect
-            label="Type"
-            value={type}
-            onChange={(event) => setType(event.target.value as TagType)}
-            options={tagTypeOptions}
-          />
           <div className="space-y-1">
             <div className="text-xs font-medium text-muted-foreground">
               Color
@@ -266,16 +236,6 @@ export function TagManager() {
               </th>
               <th
                 className="relative px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground"
-                style={getHeaderStyle("type")}
-              >
-                Type
-                <span
-                  {...getResizeHandleProps("type")}
-                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
-                />
-              </th>
-              <th
-                className="relative px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground"
                 style={getHeaderStyle("color")}
               >
                 Color
@@ -300,7 +260,7 @@ export function TagManager() {
             {isLoading && (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={3}
                   className="px-2 py-4 text-center text-sm text-muted-foreground"
                 >
                   Loading tags...
@@ -310,7 +270,7 @@ export function TagManager() {
             {!isLoading && sortedTags.length === 0 && (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={3}
                   className="px-2 py-4 text-center text-sm text-muted-foreground"
                 >
                   No tags yet.
@@ -339,22 +299,6 @@ export function TagManager() {
                       />
                     ) : (
                       <TagChip tag={tag} />
-                    )}
-                  </td>
-                  <td className="px-2 py-1.5 text-sm">
-                    {isEditing ? (
-                      <SimpleSelect
-                        value={editType}
-                        onChange={(event) =>
-                          setEditType(event.target.value as TagType)
-                        }
-                        options={tagTypeOptions}
-                        className="h-8 text-xs"
-                      />
-                    ) : (
-                      <span className="rounded bg-secondary px-1.5 py-0.5 text-xs uppercase text-muted-foreground">
-                        {tag.type}
-                      </span>
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-sm">

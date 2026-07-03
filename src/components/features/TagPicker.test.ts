@@ -37,7 +37,7 @@ test("created tag undo and redo callbacks mutate the latest controlled tag ids",
   };
 
   const result = await createTagWithControlledSelection({
-    data: { name: "Road Trip", type: "trip" },
+    data: { name: "Road Trip" },
     valueRef,
     onChange,
     onCreateTag: async (data, options) => {
@@ -48,7 +48,7 @@ test("created tag undo and redo callbacks mutate the latest controlled tag ids",
   });
 
   assert.equal(result, created);
-  assert.deepEqual(receivedData, { name: "Road Trip", type: "trip" });
+  assert.deepEqual(receivedData, { name: "Road Trip" });
   const onUndo = receivedOptions?.onUndo;
   const onRedo = receivedOptions?.onRedo;
   assert.ok(onUndo, "onCreateTag receives an undo callback");

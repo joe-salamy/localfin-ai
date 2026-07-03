@@ -32,7 +32,6 @@ const resizeHandleClass =
 const tagSummaryColumnDefs = [
   { id: "expander", defaultWidth: 48 },
   { id: "tag", defaultWidth: 180 },
-  { id: "type", defaultWidth: 112 },
   { id: "spend", defaultWidth: 128 },
   { id: "income", defaultWidth: 128 },
   { id: "net", defaultWidth: 128 },
@@ -112,13 +111,6 @@ export function TagSummaryTable({ tags }: TagSummaryTableProps) {
               <ResizeHandle layout={tagColumns} columnId="tag" />
             </th>
             <th
-              className={cn(headerClass, "relative")}
-              style={tagColumns.getHeaderStyle("type")}
-            >
-              Type
-              <ResizeHandle layout={tagColumns} columnId="type" />
-            </th>
-            <th
               className={cn(headerClass, "relative text-right")}
               style={tagColumns.getHeaderStyle("spend")}
             >
@@ -152,7 +144,7 @@ export function TagSummaryTable({ tags }: TagSummaryTableProps) {
           {tags.length === 0 && (
             <tr>
               <td
-                colSpan={7}
+                colSpan={6}
                 className="px-2 py-4 text-center text-sm text-muted-foreground"
               >
                 No tag data.
@@ -164,7 +156,6 @@ export function TagSummaryTable({ tags }: TagSummaryTableProps) {
             const chipTag = {
               id: tag.tag_id,
               name: tag.tag_name,
-              type: tag.tag_type,
               color: tag.tag_color,
             };
             return (
@@ -195,7 +186,6 @@ function TagSummaryRow({
   chipTag: {
     id: string;
     name: string;
-    type: TagSummaryType["tag_type"];
     color: string | null;
   };
   isOpen: boolean;
@@ -214,11 +204,6 @@ function TagSummaryRow({
         </td>
         <td className={cellClass}>
           <TagChip tag={chipTag} />
-        </td>
-        <td className={cellClass}>
-          <span className="rounded bg-secondary px-1.5 py-0.5 text-xs uppercase text-muted-foreground">
-            {tag.tag_type}
-          </span>
         </td>
         <td
           className={cn(
@@ -251,7 +236,7 @@ function TagSummaryRow({
       </tr>
       {isOpen && tag.categories.length > 0 && (
         <tr>
-          <td colSpan={7} className="p-0">
+          <td colSpan={6} className="p-0">
             <div className="bg-secondary/20 px-6 py-2">
               <table
                 className="w-full"
