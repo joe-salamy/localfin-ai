@@ -46,16 +46,25 @@ import type { FlaggedWordMatch } from "@/features/flagged-words/storage";
 import { useResizableColumns } from "@/features/table-layout/useResizableColumns";
 import type { ResizableColumnDef } from "@/features/table-layout/useResizableColumns";
 import {
+  expandRangesToCells,
   formatClipboardMatrix,
   isCellInRanges,
+  isSingleCellMatrix,
+  moveCellWithinBounds,
   parseClipboardMatrix,
   rectangleFrom,
   selectionBoundingRange,
+  topLeftCell,
 } from "@/features/spreadsheet-selection/selection";
 import type {
   CellCoord,
   CellRange,
+  SpreadsheetArrowKey,
 } from "@/features/spreadsheet-selection/selection";
+import {
+  hasSelectedInputText,
+  isNativeEditableTarget,
+} from "@/features/spreadsheet-selection/domTargets";
 import {
   addTransactionCellFields,
   kindHasSubcategory,
@@ -457,12 +466,16 @@ export function MultiTransactionTable() {
   const [selectedRanges, setSelectedRanges] = useState<CellRange[]>([]);
   const [anchorCell, setAnchorCell] = useState<CellCoord | null>(null);
   const [activeCell, setActiveCell] = useState<CellCoord | null>(null);
+  const [editingCell, setEditingCell] = useState<CellCoord | null>(null);
+  const [copiedRanges, setCopiedRanges] = useState<CellRange[]>([]);
+  const copiedRangeTimeoutRef = useRef<number | null>(null);
   const [dragSelection, setDragSelection] = useState<{
     anchor: CellCoord;
     additive: boolean;
   } | null>(null);
   const dragBaseRangesRef = useRef<CellRange[]>([]);
   const pointerSelectingRef = useRef(false);
+  const programmaticCellFocusRef = useRef(false);
   const {
     columns,
     totalWidth,
@@ -518,6 +531,30 @@ export function MultiTransactionTable() {
 
   useShortcutScope("transactionInput");
   useShortcutScope("transactionInputGrid", gridFocused);
+
+  const clearCopiedRanges = useCallback(() => {
+    if (
+      copiedRangeTimeoutRef.current !== null &&
+      typeof window !== "undefined"
+    ) {
+      window.clearTimeout(copiedRangeTimeoutRef.current);
+    }
+    copiedRangeTimeoutRef.current = null;
+    setCopiedRanges([]);
+  }, []);
+
+  const markCopiedRanges = useCallback(() => {
+    clearCopiedRanges();
+    setCopiedRanges(selectedRanges.map((range) => ({ ...range })));
+    if (typeof window !== "undefined") {
+      copiedRangeTimeoutRef.current = window.setTimeout(
+        clearCopiedRanges,
+        1200,
+      );
+    }
+  }, [clearCopiedRanges, selectedRanges]);
+
+  useEffect(() => clearCopiedRanges, [clearCopiedRanges]);
 
   // ── Row manipulation ──────────────────────────────────────────────
 
@@ -696,18 +733,18 @@ export function MultiTransactionTable() {
     setSelectedRanges([range]);
     setAnchorCell(cell);
     setActiveCell(cell);
+    setEditingCell(null);
   }, []);
 
-  const expandSelectedCells = useCallback((): CellCoord[] => {
-    const cells: CellCoord[] = [];
-    for (let row = 0; row < rows.length; row++) {
-      for (let col = 0; col < addTransactionCellFields.length; col++) {
-        const cell = { row, col };
-        if (isCellInRanges(cell, selectedRanges)) cells.push(cell);
-      }
-    }
-    return cells;
-  }, [rows.length, selectedRanges]);
+  const expandSelectedCells = useCallback(
+    (): CellCoord[] =>
+      expandRangesToCells(
+        selectedRanges,
+        rows.length,
+        addTransactionCellFields.length,
+      ),
+    [rows.length, selectedRanges],
+  );
 
   const toggleCellSelection = useCallback(
     (cell: CellCoord) => {
@@ -715,6 +752,7 @@ export function MultiTransactionTable() {
         setSelectedRanges((current) => [...current, rectangleFrom(cell, cell)]);
         setAnchorCell(cell);
         setActiveCell(cell);
+        setEditingCell(null);
         return;
       }
 
@@ -727,17 +765,56 @@ export function MultiTransactionTable() {
       );
       setActiveCell(cell);
       setAnchorCell(cell);
+      setEditingCell(null);
     },
     [expandSelectedCells, selectedRanges],
   );
 
   const focusEditableCell = useCallback(
     (rowIndex: number, colIndex: number) => {
+      programmaticCellFocusRef.current = true;
       cellRefs.current[
         rowIndex * addTransactionCellFields.length + colIndex
       ]?.focus();
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => {
+          programmaticCellFocusRef.current = false;
+        });
+      } else {
+        programmaticCellFocusRef.current = false;
+      }
     },
     [],
+  );
+
+  const enterCellEditMode = useCallback(
+    (cell: CellCoord | null = activeCell): boolean => {
+      if (!cell) return false;
+
+      setEditingCell(cell);
+      setSelectedRanges([rectangleFrom(cell, cell)]);
+      setAnchorCell(cell);
+      setActiveCell(cell);
+      focusEditableCell(cell.row, cell.col);
+
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => {
+          const target =
+            cellRefs.current[
+              cell.row * addTransactionCellFields.length + cell.col
+            ];
+          if (
+            target instanceof HTMLInputElement ||
+            target instanceof HTMLTextAreaElement
+          ) {
+            const valueLength = target.value.length;
+            target.setSelectionRange(valueLength, valueLength);
+          }
+        });
+      }
+      return true;
+    },
+    [activeCell, focusEditableCell],
   );
 
   const getCellSelectionHandlers = useCallback(
@@ -751,14 +828,12 @@ export function MultiTransactionTable() {
         const dragAnchor = event.shiftKey
           ? (anchorCell ?? activeCell ?? cell)
           : cell;
-        const target = event.target;
-        const interactive =
-          target instanceof HTMLElement &&
-          ["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(target.tagName);
+        const interactive = isNativeEditableTarget(event.target);
 
         if (event.shiftKey) {
           setSelectedRanges([rectangleFrom(dragAnchor, cell)]);
           setActiveCell(cell);
+          setEditingCell(null);
         } else if (additive) {
           toggleCellSelection(cell);
         } else {
@@ -780,10 +855,14 @@ export function MultiTransactionTable() {
         pointerSelectingRef.current = false;
         setDragSelection(null);
       },
+      onDoubleClick: () => {
+        enterCellEditMode({ row: rowIndex, col: colIndex });
+      },
     }),
     [
       activeCell,
       anchorCell,
+      enterCellEditMode,
       focusEditableCell,
       selectSingleCell,
       selectedRanges,
@@ -794,12 +873,14 @@ export function MultiTransactionTable() {
   const handleCellFocus = useCallback(
     (rowId: string, rowIndex: number, colIndex: number) => {
       setFocusedRowId(rowId);
-      if (pointerSelectingRef.current) return;
+      if (pointerSelectingRef.current || programmaticCellFocusRef.current)
+        return;
       const cell = { row: rowIndex, col: colIndex };
       setActiveCell(cell);
       if (!isCellInRanges(cell, selectedRanges)) {
         setSelectedRanges([rectangleFrom(cell, cell)]);
         setAnchorCell(cell);
+        setEditingCell(null);
       }
     },
     [selectedRanges],
@@ -811,13 +892,15 @@ export function MultiTransactionTable() {
       const selected = isCellInRanges(cell, selectedRanges);
       const active =
         activeCell?.row === rowIndex && activeCell.col === colIndex;
+      const copied = isCellInRanges(cell, copiedRanges);
       return cn(
         "px-1 py-0.5 align-top",
         selected && "bg-ring/15 outline outline-1 outline-ring",
         active && "outline-2",
+        copied && "bg-primary/10 outline-dashed outline-2 outline-primary",
       );
     },
-    [activeCell, selectedRanges],
+    [activeCell, copiedRanges, selectedRanges],
   );
 
   const getManualCellDisplayValue = useCallback(
@@ -960,6 +1043,116 @@ export function MultiTransactionTable() {
     ],
   );
 
+  const clearSelectedManualCells = useCallback(
+    (selectedCells: CellCoord[], label: string): boolean => {
+      if (selectedCells.length === 0) return false;
+
+      const next = cloneRows(rows);
+      let changed = false;
+      for (const cell of selectedCells) {
+        const field = addTransactionCellFields[cell.col];
+        const row = next[cell.row];
+        if (!field || !row) continue;
+        const result = applyCellValue(
+          { ...row, tag_ids: [...row.tag_ids] },
+          field,
+          "",
+          accounts,
+          categories,
+          subcategories,
+          tags,
+          "clear",
+        );
+        next[cell.row] = result.applied
+          ? { ...result.row, isDuplicate: false }
+          : result.row;
+        changed ||= result.applied;
+      }
+      if (!changed) return false;
+
+      const before = captureDraftSnapshot();
+      const after = captureDraftSnapshot({
+        rows: next,
+        duplicatesChecked: false,
+      });
+      void executeDraftSnapshotAction(label, before, after);
+      return true;
+    },
+    [
+      accounts,
+      captureDraftSnapshot,
+      categories,
+      executeDraftSnapshotAction,
+      rows,
+      subcategories,
+      tags,
+    ],
+  );
+
+  const fillSelectedManualCells = useCallback(
+    (value: string, selectedCells: CellCoord[]) => {
+      if (selectedCells.length === 0) return;
+
+      const next = cloneRows(rows);
+      let changed = false;
+      let skipped = 0;
+
+      for (const cell of selectedCells) {
+        const field = addTransactionCellFields[cell.col];
+        const row = next[cell.row];
+        if (!field || !row) continue;
+        const result = applyCellValue(
+          { ...row, tag_ids: [...row.tag_ids] },
+          field,
+          value,
+          accounts,
+          categories,
+          subcategories,
+          tags,
+          "paste",
+        );
+        if (!result.applied) {
+          skipped++;
+          continue;
+        }
+        next[cell.row] = { ...result.row, isDuplicate: false };
+        changed = true;
+      }
+
+      if (!changed) {
+        if (skipped > 0) {
+          toast.warning(`Skipped ${skipped} invalid pasted cell(s).`);
+        }
+        return;
+      }
+
+      const before = captureDraftSnapshot();
+      const after = captureDraftSnapshot({
+        rows: next,
+        duplicatesChecked: false,
+      });
+      void executeDraftSnapshotAction(
+        "Fill transaction cells",
+        before,
+        after,
+        () => {
+          if (skipped > 0) {
+            toast.warning(`Skipped ${skipped} invalid pasted cell(s).`);
+          }
+        },
+      );
+    },
+    [
+      accounts,
+      captureDraftSnapshot,
+      categories,
+      executeDraftSnapshotAction,
+      rows,
+      subcategories,
+      tags,
+    ],
+  );
+
   const handlePaste = useCallback(
     (
       event: ClipboardEvent<HTMLElement>,
@@ -985,78 +1178,45 @@ export function MultiTransactionTable() {
         startColumn,
         "paste",
       );
+      clearCopiedRanges();
     },
-    [applyClipboardMatrix, selectedRanges.length],
+    [applyClipboardMatrix, clearCopiedRanges, selectedRanges.length],
   );
 
   const handleGridCopy = useCallback(
     (event: ClipboardEvent<HTMLDivElement>) => {
-      const target = event.target;
+      if (hasSelectedInputText(event.target)) return;
       if (
-        (target instanceof HTMLInputElement ||
-          target instanceof HTMLTextAreaElement) &&
-        target.selectionStart !== target.selectionEnd
+        isNativeEditableTarget(event.target) &&
+        !(event.target instanceof HTMLInputElement) &&
+        !(event.target instanceof HTMLTextAreaElement)
       ) {
         return;
       }
-      writeSelectedCellsToClipboard(event);
+      if (writeSelectedCellsToClipboard(event)) markCopiedRanges();
     },
-    [writeSelectedCellsToClipboard],
+    [markCopiedRanges, writeSelectedCellsToClipboard],
   );
 
   const handleGridCut = useCallback(
     (event: ClipboardEvent<HTMLDivElement>) => {
-      const target = event.target;
+      if (hasSelectedInputText(event.target)) return;
       if (
-        (target instanceof HTMLInputElement ||
-          target instanceof HTMLTextAreaElement) &&
-        target.selectionStart !== target.selectionEnd
+        isNativeEditableTarget(event.target) &&
+        !(event.target instanceof HTMLInputElement) &&
+        !(event.target instanceof HTMLTextAreaElement)
       ) {
         return;
       }
       if (!writeSelectedCellsToClipboard(event)) return;
-      const selectedCells = expandSelectedCells();
-      if (selectedCells.length === 0) return;
-
-      const next = cloneRows(rows);
-      let changed = false;
-      for (const cell of selectedCells) {
-        const field = addTransactionCellFields[cell.col];
-        const row = next[cell.row];
-        if (!field || !row) continue;
-        const result = applyCellValue(
-          { ...row, tag_ids: [...row.tag_ids] },
-          field,
-          "",
-          accounts,
-          categories,
-          subcategories,
-          tags,
-          "clear",
-        );
-        next[cell.row] = result.applied
-          ? { ...result.row, isDuplicate: false }
-          : result.row;
-        changed ||= result.applied;
-      }
-      if (!changed) return;
-
-      const before = captureDraftSnapshot();
-      const after = captureDraftSnapshot({
-        rows: next,
-        duplicatesChecked: false,
-      });
-      void executeDraftSnapshotAction("Cut transaction cells", before, after);
+      clearCopiedRanges();
+      setEditingCell(null);
+      clearSelectedManualCells(expandSelectedCells(), "Cut transaction cells");
     },
     [
-      accounts,
-      captureDraftSnapshot,
-      categories,
-      executeDraftSnapshotAction,
+      clearCopiedRanges,
+      clearSelectedManualCells,
       expandSelectedCells,
-      rows,
-      subcategories,
-      tags,
       writeSelectedCellsToClipboard,
     ],
   );
@@ -1065,63 +1225,192 @@ export function MultiTransactionTable() {
     (event: ClipboardEvent<HTMLDivElement>) => {
       if (event.defaultPrevented) return;
       const text = event.clipboardData.getData("text/plain");
-      const target = event.target;
+      const matrix = parseClipboardMatrix(text);
+
+      if (hasSelectedInputText(event.target)) return;
       if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement
+        isNativeEditableTarget(event.target) &&
+        !(event.target instanceof HTMLInputElement) &&
+        !(event.target instanceof HTMLTextAreaElement)
       ) {
-        if (target.selectionStart !== target.selectionEnd) return;
-        if (!text.includes("\t") && !text.includes("\n")) return;
+        return;
       }
 
       const selectedCells = expandSelectedCells();
       if (selectedCells.length === 0) return;
+      if (
+        isNativeEditableTarget(event.target) &&
+        !text.includes("\t") &&
+        !text.includes("\n") &&
+        selectedCells.length === 1
+      ) {
+        return;
+      }
 
-      const startCell = selectedCells.reduce((best, cell) =>
-        cell.row < best.row || (cell.row === best.row && cell.col < best.col)
-          ? cell
-          : best,
-      );
+      if (isSingleCellMatrix(matrix) && selectedCells.length > 1) {
+        event.preventDefault();
+        fillSelectedManualCells(matrix[0]?.[0] ?? "", selectedCells);
+        setEditingCell(null);
+        clearCopiedRanges();
+        return;
+      }
+
+      const startCell = topLeftCell(selectedCells);
+      if (!startCell) return;
       event.preventDefault();
-      applyClipboardMatrix(
-        parseClipboardMatrix(text),
-        startCell.row,
-        startCell.col,
-        "paste",
-      );
+      applyClipboardMatrix(matrix, startCell.row, startCell.col, "paste");
+      setEditingCell(null);
+      clearCopiedRanges();
     },
-    [applyClipboardMatrix, expandSelectedCells],
+    [
+      applyClipboardMatrix,
+      clearCopiedRanges,
+      expandSelectedCells,
+      fillSelectedManualCells,
+    ],
   );
 
+  const isSpreadsheetArrowKey = (
+    key: string,
+  ): key is SpreadsheetArrowKey =>
+    key === "ArrowUp" ||
+    key === "ArrowDown" ||
+    key === "ArrowLeft" ||
+    key === "ArrowRight";
+
   const handleGridKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>) => {
-      if (
-        event.key.toLowerCase() !== "a" ||
-        (!event.ctrlKey && !event.metaKey)
-      ) {
-        return;
+    (event: KeyboardEvent<HTMLDivElement>): boolean => {
+      const activeEditingCell =
+        editingCell &&
+        activeCell &&
+        editingCell.row === activeCell.row &&
+        editingCell.col === activeCell.col;
+
+      if (activeEditingCell && isNativeEditableTarget(event.target)) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          setEditingCell(null);
+          return true;
+        }
+        if (
+          event.key === "Delete" ||
+          event.key === "Backspace" ||
+          isSpreadsheetArrowKey(event.key)
+        ) {
+          return false;
+        }
       }
 
-      const activeElement = document.activeElement;
       if (
-        activeElement instanceof HTMLInputElement ||
-        activeElement instanceof HTMLTextAreaElement
+        event.key === "Enter" &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        activeCell
       ) {
-        return;
+        event.preventDefault();
+        event.stopPropagation();
+        return enterCellEditMode(activeCell);
       }
 
-      event.preventDefault();
-      if (rows.length === 0) return;
-      const start = { row: 0, col: 0 };
-      const end = {
-        row: rows.length - 1,
-        col: addTransactionCellFields.length - 1,
-      };
-      setSelectedRanges([rectangleFrom(start, end)]);
-      setAnchorCell(start);
-      setActiveCell(end);
+      if (event.key === "F2") {
+        event.preventDefault();
+        event.stopPropagation();
+        return enterCellEditMode(activeCell);
+      }
+
+      if (
+        event.key.toLowerCase() === "a" &&
+        (event.ctrlKey || event.metaKey)
+      ) {
+        if (!gridContainerRef.current?.contains(document.activeElement)) {
+          return false;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        if (rows.length === 0) return true;
+        const start = { row: 0, col: 0 };
+        const end = {
+          row: rows.length - 1,
+          col: addTransactionCellFields.length - 1,
+        };
+        setSelectedRanges([rectangleFrom(start, end)]);
+        setAnchorCell(start);
+        setActiveCell(end);
+        setEditingCell(null);
+        clearCopiedRanges();
+        return true;
+      }
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        event.stopPropagation();
+        setEditingCell(null);
+        clearCopiedRanges();
+        clearSelectedManualCells(expandSelectedCells(), "Clear transaction cells");
+        return true;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedRanges([]);
+        setAnchorCell(null);
+        setActiveCell(null);
+        setEditingCell(null);
+        clearCopiedRanges();
+        return true;
+      }
+
+      if (
+        isSpreadsheetArrowKey(event.key) &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        const currentCell =
+          activeCell ?? topLeftCell(expandSelectedCells()) ?? { row: 0, col: 0 };
+        const nextCell = moveCellWithinBounds(
+          currentCell,
+          event.key,
+          rows.length,
+          addTransactionCellFields.length,
+        );
+        if (!nextCell) return false;
+
+        event.preventDefault();
+        event.stopPropagation();
+        setEditingCell(null);
+        clearCopiedRanges();
+        if (event.shiftKey) {
+          const rangeAnchor = anchorCell ?? currentCell;
+          setSelectedRanges([rectangleFrom(rangeAnchor, nextCell)]);
+          setAnchorCell(rangeAnchor);
+        } else {
+          setSelectedRanges([rectangleFrom(nextCell, nextCell)]);
+          setAnchorCell(nextCell);
+        }
+        setActiveCell(nextCell);
+        focusEditableCell(nextCell.row, nextCell.col);
+        return true;
+      }
+
+      return false;
     },
-    [rows.length],
+    [
+      activeCell,
+      anchorCell,
+      clearCopiedRanges,
+      clearSelectedManualCells,
+      editingCell,
+      enterCellEditMode,
+      expandSelectedCells,
+      focusEditableCell,
+      rows.length,
+    ],
   );
 
   // ── Submit ────────────────────────────────────────────────────────
@@ -1390,16 +1679,27 @@ export function MultiTransactionTable() {
 
   const handleGridContainerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
+      if (handleGridKeyDown(event)) return;
+
       if (!saving) {
-        const saved = handleEnterSave(event, () => {
+        handleEnterSave(event, () => {
           void handleSave();
         });
-        if (saved) return;
       }
-
-      handleGridKeyDown(event);
     },
     [handleGridKeyDown, handleSave, saving],
+  );
+
+  const handleGridContainerKeyDownCapture = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (
+        event.key.toLowerCase() === "a" &&
+        (event.ctrlKey || event.metaKey)
+      ) {
+        handleGridKeyDown(event);
+      }
+    },
+    [handleGridKeyDown],
   );
 
   useShortcut("transactionInput.addRow", addRow);
@@ -1598,12 +1898,15 @@ export function MultiTransactionTable() {
         onCopy={handleGridCopy}
         onCut={handleGridCut}
         onPaste={handleGridPaste}
+        onKeyDownCapture={handleGridContainerKeyDownCapture}
         onKeyDown={handleGridContainerKeyDown}
         onFocus={() => setGridFocused(true)}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) {
             setGridFocused(false);
             setFocusedRowId(null);
+            setEditingCell(null);
+            clearCopiedRanges();
           }
         }}
       >
@@ -1932,8 +2235,9 @@ export function MultiTransactionTable() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Tip: Paste tab-delimited data (date, name, amount) from a spreadsheet
-        into any field to populate multiple rows.
+        Tip: Paste tab-delimited data to populate rows, paste one value over a
+        selected range to fill it, use Delete/Backspace to clear selected cells,
+        and use Arrow keys to move between cells.
       </p>
 
       <Modal

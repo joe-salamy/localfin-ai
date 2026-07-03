@@ -42,16 +42,24 @@ import type { Category } from "@/types";
 import { useResizableColumns } from "@/features/table-layout/useResizableColumns";
 import type { ResizableColumnDef } from "@/features/table-layout/useResizableColumns";
 import {
+  expandRangesToCells,
   formatClipboardMatrix,
   isCellInRanges,
+  isSingleCellMatrix,
+  moveCellWithinBounds,
   parseClipboardMatrix,
   rectangleFrom,
   selectionBoundingRange,
+  topLeftCell,
 } from "@/features/spreadsheet-selection/selection";
 import type {
   CellCoord,
   CellRange,
+  SpreadsheetArrowKey,
 } from "@/features/spreadsheet-selection/selection";
+import {
+  isNativeEditableTarget,
+} from "@/features/spreadsheet-selection/domTargets";
 import {
   historyTransactionCellFields,
   kindHasSubcategory,
@@ -190,12 +198,15 @@ export function TransactionTable({
   const [selectedRanges, setSelectedRanges] = useState<CellRange[]>([]);
   const [anchorCell, setAnchorCell] = useState<CellCoord | null>(null);
   const [activeCell, setActiveCell] = useState<CellCoord | null>(null);
+  const [copiedRanges, setCopiedRanges] = useState<CellRange[]>([]);
+  const copiedRangeTimeoutRef = useRef<number | null>(null);
   const [dragSelection, setDragSelection] = useState<{
     anchor: CellCoord;
     additive: boolean;
   } | null>(null);
   const dragBaseRangesRef = useRef<CellRange[]>([]);
   const pointerSelectingRef = useRef(false);
+  const programmaticCellFocusRef = useRef(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const {
     columns,
@@ -246,6 +257,30 @@ export function TransactionTable({
     tableFocused || editingId !== null,
   );
   useShortcutScope("transactionHistoryEdit", editingId !== null);
+
+  const clearCopiedRanges = useCallback(() => {
+    if (
+      copiedRangeTimeoutRef.current !== null &&
+      typeof window !== "undefined"
+    ) {
+      window.clearTimeout(copiedRangeTimeoutRef.current);
+    }
+    copiedRangeTimeoutRef.current = null;
+    setCopiedRanges([]);
+  }, []);
+
+  const markCopiedRanges = useCallback(() => {
+    clearCopiedRanges();
+    setCopiedRanges(selectedRanges.map((range) => ({ ...range })));
+    if (typeof window !== "undefined") {
+      copiedRangeTimeoutRef.current = window.setTimeout(
+        clearCopiedRanges,
+        1200,
+      );
+    }
+  }, [clearCopiedRanges, selectedRanges]);
+
+  useEffect(() => clearCopiedRanges, [clearCopiedRanges]);
 
   useEffect(() => {
     if (transactions.length === 0) {
@@ -343,6 +378,12 @@ export function TransactionTable({
 
   function handleEditRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>) {
     if (saving) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelEdit();
+      return;
+    }
     handleEnterSave(event, () => {
       void saveEdit();
     });
@@ -555,16 +596,15 @@ export function TransactionTable({
     };
   }, [dragSelection]);
 
-  const expandSelectedCells = useCallback((): CellCoord[] => {
-    const cells: CellCoord[] = [];
-    for (let row = 0; row < transactions.length; row++) {
-      for (let col = 0; col < historyTransactionCellFields.length; col++) {
-        const cell = { row, col };
-        if (isCellInRanges(cell, selectedRanges)) cells.push(cell);
-      }
-    }
-    return cells;
-  }, [selectedRanges, transactions.length]);
+  const expandSelectedCells = useCallback(
+    (): CellCoord[] =>
+      expandRangesToCells(
+        selectedRanges,
+        transactions.length,
+        historyTransactionCellFields.length,
+      ),
+    [selectedRanges, transactions.length],
+  );
 
   const selectHistoryCell = useCallback((cell: CellCoord) => {
     setSelectedRanges([rectangleFrom(cell, cell)]);
@@ -606,10 +646,7 @@ export function TransactionTable({
         const dragAnchor = event.shiftKey
           ? (anchorCell ?? activeCell ?? cell)
           : cell;
-        const target = event.target;
-        const interactive =
-          target instanceof HTMLElement &&
-          ["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(target.tagName);
+        const interactive = isNativeEditableTarget(event.target);
 
         if (event.shiftKey) {
           setSelectedRanges([rectangleFrom(dragAnchor, cell)]);
@@ -645,7 +682,7 @@ export function TransactionTable({
   const focusHistoryCell = useCallback(
     (transactionId: string, rowIndex: number, colIndex: number) => {
       setFocusedId(transactionId);
-      if (pointerSelectingRef.current) return;
+      if (pointerSelectingRef.current || programmaticCellFocusRef.current) return;
       const cell = { row: rowIndex, col: colIndex };
       setActiveCell(cell);
       if (!isCellInRanges(cell, selectedRanges)) {
@@ -656,19 +693,41 @@ export function TransactionTable({
     [selectedRanges],
   );
 
+  const focusHistoryGridCell = useCallback(
+    (rowIndex: number, colIndex: number) => {
+      const target = tableContainerRef.current?.querySelector(
+        `[data-row-index="${rowIndex}"][data-col-index="${colIndex}"]`,
+      );
+      if (target instanceof HTMLElement) {
+        programmaticCellFocusRef.current = true;
+        target.focus();
+        if (typeof window !== "undefined") {
+          window.requestAnimationFrame(() => {
+            programmaticCellFocusRef.current = false;
+          });
+        } else {
+          programmaticCellFocusRef.current = false;
+        }
+      }
+    },
+    [],
+  );
+
   const getHistoryCellClassName = useCallback(
     (rowIndex: number, colIndex: number, className?: string) => {
       const cell = { row: rowIndex, col: colIndex };
       const selected = isCellInRanges(cell, selectedRanges);
       const active =
         activeCell?.row === rowIndex && activeCell.col === colIndex;
+      const copied = isCellInRanges(cell, copiedRanges);
       return cn(
         className,
         selected && "bg-ring/15 outline outline-1 outline-ring",
         active && "outline-2",
+        copied && "bg-primary/10 outline-dashed outline-2 outline-primary",
       );
     },
-    [activeCell, selectedRanges],
+    [activeCell, copiedRanges, selectedRanges],
   );
 
   const getHistoryCellDisplayValue = useCallback(
@@ -946,37 +1005,88 @@ export function TransactionTable({
     [onEditMany, parseHistoryCellValue, successToast, transactions],
   );
 
+  const fillSelectedHistoryCells = useCallback(
+    async (value: string, selectedCells: CellCoord[]) => {
+      const updatesById = new Map<
+        string,
+        { updates: UpdateTransactionData; cells: number }
+      >();
+      let skipped = 0;
+
+      for (const cell of selectedCells) {
+        const transaction = transactions[cell.row];
+        const field = historyTransactionCellFields[cell.col];
+        if (!transaction || !field) continue;
+
+        const existing = updatesById.get(transaction.id) ?? {
+          updates: {},
+          cells: 0,
+        };
+        const draftKind = existing.updates.kind ?? transaction.kind;
+        const result = parseHistoryCellValue(
+          field,
+          value,
+          transaction,
+          "paste",
+          draftKind,
+        );
+        if (!result.applied) {
+          skipped++;
+          continue;
+        }
+        existing.updates = { ...existing.updates, ...result.updates };
+        existing.cells++;
+        updatesById.set(transaction.id, existing);
+      }
+
+      const changes = Array.from(updatesById, ([id, entry]) => ({
+        id,
+        updates: entry.updates,
+      }));
+      const updatedCells = Array.from(updatesById.values()).reduce(
+        (total, entry) => total + entry.cells,
+        0,
+      );
+      const updatedRows = changes.length;
+      const ok =
+        changes.length === 0
+          ? true
+          : await onEditMany(changes, {
+              silent: true,
+              label: "Fill transaction cells",
+            });
+
+      if (ok && updatedRows > 0) {
+        successToast(
+          `Filled ${updatedCells} cell(s) across ${updatedRows} row(s).`,
+        );
+      }
+      if (skipped > 0 || !ok) {
+        toast.warning(
+          `Skipped ${skipped} invalid cell(s); ${ok ? 0 : 1} row update(s) failed.`,
+        );
+      }
+    },
+    [onEditMany, parseHistoryCellValue, successToast, transactions],
+  );
+
   const handleHistoryCopy = useCallback(
     (event: ClipboardEvent<HTMLDivElement>) => {
-      const target = event.target;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
-      ) {
-        return;
-      }
-      writeHistorySelectionToClipboard(event);
+      if (isNativeEditableTarget(event.target)) return;
+      if (writeHistorySelectionToClipboard(event)) markCopiedRanges();
     },
-    [writeHistorySelectionToClipboard],
+    [markCopiedRanges, writeHistorySelectionToClipboard],
   );
 
   const handleHistoryCut = useCallback(
     (event: ClipboardEvent<HTMLDivElement>) => {
-      const target = event.target;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
-      ) {
-        return;
-      }
+      if (isNativeEditableTarget(event.target)) return;
       if (!writeHistorySelectionToClipboard(event)) return;
+      clearCopiedRanges();
       void clearSelectedHistoryCells(expandSelectedCells());
     },
     [
+      clearCopiedRanges,
       clearSelectedHistoryCells,
       expandSelectedCells,
       writeHistorySelectionToClipboard,
@@ -986,36 +1096,105 @@ export function TransactionTable({
   const handleHistoryPaste = useCallback(
     (event: ClipboardEvent<HTMLDivElement>) => {
       if (event.defaultPrevented) return;
-      const target = event.target;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
-      ) {
-        return;
-      }
+      if (isNativeEditableTarget(event.target)) return;
+
+      const matrix = parseClipboardMatrix(
+        event.clipboardData.getData("text/plain"),
+      );
       const selectedCells = expandSelectedCells();
       if (selectedCells.length === 0) return;
 
-      const startCell = selectedCells.reduce((best, cell) =>
-        cell.row < best.row || (cell.row === best.row && cell.col < best.col)
-          ? cell
-          : best,
-      );
+      if (isSingleCellMatrix(matrix) && selectedCells.length > 1) {
+        event.preventDefault();
+        void fillSelectedHistoryCells(matrix[0]?.[0] ?? "", selectedCells);
+        clearCopiedRanges();
+        return;
+      }
+
+      const startCell = topLeftCell(selectedCells);
+      if (!startCell) return;
       event.preventDefault();
       void applyHistoryClipboardMatrix(
-        parseClipboardMatrix(event.clipboardData.getData("text/plain")),
+        matrix,
         startCell.row,
         startCell.col,
         "paste",
       );
+      clearCopiedRanges();
     },
-    [applyHistoryClipboardMatrix, expandSelectedCells],
+    [
+      applyHistoryClipboardMatrix,
+      clearCopiedRanges,
+      expandSelectedCells,
+      fillSelectedHistoryCells,
+    ],
   );
+
+  const isSpreadsheetArrowKey = (
+    key: string,
+  ): key is SpreadsheetArrowKey =>
+    key === "ArrowUp" ||
+    key === "ArrowDown" ||
+    key === "ArrowLeft" ||
+    key === "ArrowRight";
 
   const handleHistoryKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
+      if (editingId !== null) return;
+      if (isNativeEditableTarget(event.target)) return;
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        const selectedCells = expandSelectedCells();
+        if (selectedCells.length === 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        clearCopiedRanges();
+        void clearSelectedHistoryCells(selectedCells);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedRanges([]);
+        setAnchorCell(null);
+        setActiveCell(null);
+        clearCopiedRanges();
+        return;
+      }
+
+      if (
+        isSpreadsheetArrowKey(event.key) &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        const currentCell =
+          activeCell ?? topLeftCell(expandSelectedCells()) ?? { row: 0, col: 0 };
+        const nextCell = moveCellWithinBounds(
+          currentCell,
+          event.key,
+          transactions.length,
+          historyTransactionCellFields.length,
+        );
+        if (!nextCell) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        clearCopiedRanges();
+        if (event.shiftKey) {
+          const rangeAnchor = anchorCell ?? currentCell;
+          setSelectedRanges([rectangleFrom(rangeAnchor, nextCell)]);
+          setAnchorCell(rangeAnchor);
+        } else {
+          setSelectedRanges([rectangleFrom(nextCell, nextCell)]);
+          setAnchorCell(nextCell);
+        }
+        setActiveCell(nextCell);
+        focusHistoryGridCell(nextCell.row, nextCell.col);
+        return;
+      }
+
       if (
         event.key.toLowerCase() !== "a" ||
         (!event.ctrlKey && !event.metaKey)
@@ -1024,13 +1203,6 @@ export function TransactionTable({
       }
 
       const activeElement = document.activeElement;
-      if (
-        activeElement instanceof HTMLInputElement ||
-        activeElement instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
-
       const selectableCell =
         activeElement instanceof HTMLElement
           ? activeElement.closest("[data-row-index][data-col-index]")
@@ -1040,6 +1212,7 @@ export function TransactionTable({
       }
 
       event.preventDefault();
+      event.stopPropagation();
       if (transactions.length === 0) return;
       const start = { row: 0, col: 0 };
       const end = {
@@ -1049,8 +1222,18 @@ export function TransactionTable({
       setSelectedRanges([rectangleFrom(start, end)]);
       setAnchorCell(start);
       setActiveCell(end);
+      clearCopiedRanges();
     },
-    [transactions.length],
+    [
+      activeCell,
+      anchorCell,
+      clearCopiedRanges,
+      clearSelectedHistoryCells,
+      editingId,
+      expandSelectedCells,
+      focusHistoryGridCell,
+      transactions.length,
+    ],
   );
 
   const headerClass =
@@ -1113,6 +1296,7 @@ export function TransactionTable({
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) {
             setTableFocused(false);
+            clearCopiedRanges();
           }
         }}
       >

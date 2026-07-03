@@ -8,6 +8,12 @@ export interface CellRange {
   end: CellCoord;
 }
 
+export type SpreadsheetArrowKey =
+  | "ArrowUp"
+  | "ArrowDown"
+  | "ArrowLeft"
+  | "ArrowRight";
+
 export interface NormalizedCellRange {
   startRow: number;
   endRow: number;
@@ -37,6 +43,58 @@ export function isCellInRanges(
       cell.col <= normalized.endCol
     );
   });
+}
+
+export function expandRangesToCells(
+  ranges: readonly CellRange[],
+  rowCount: number,
+  colCount: number,
+): CellCoord[] {
+  if (rowCount <= 0 || colCount <= 0 || ranges.length === 0) return [];
+
+  const cells: CellCoord[] = [];
+  for (let row = 0; row < rowCount; row++) {
+    for (let col = 0; col < colCount; col++) {
+      const cell = { row, col };
+      if (isCellInRanges(cell, ranges)) cells.push(cell);
+    }
+  }
+  return cells;
+}
+
+export function topLeftCell(cells: readonly CellCoord[]): CellCoord | null {
+  if (cells.length === 0) return null;
+  return cells.reduce((best, cell) =>
+    cell.row < best.row || (cell.row === best.row && cell.col < best.col)
+      ? cell
+      : best,
+  );
+}
+
+export function isSingleCellMatrix(
+  matrix: readonly (readonly string[])[],
+): boolean {
+  return matrix.length === 1 && (matrix[0]?.length ?? 0) === 1;
+}
+
+export function moveCellWithinBounds(
+  cell: CellCoord,
+  key: SpreadsheetArrowKey,
+  rowCount: number,
+  colCount: number,
+): CellCoord | null {
+  if (rowCount <= 0 || colCount <= 0) return null;
+
+  if (key === "ArrowLeft") {
+    return { row: cell.row, col: Math.max(0, cell.col - 1) };
+  }
+  if (key === "ArrowRight") {
+    return { row: cell.row, col: Math.min(colCount - 1, cell.col + 1) };
+  }
+  if (key === "ArrowUp") {
+    return { row: Math.max(0, cell.row - 1), col: cell.col };
+  }
+  return { row: Math.min(rowCount - 1, cell.row + 1), col: cell.col };
 }
 
 export function selectionBoundingRange(
