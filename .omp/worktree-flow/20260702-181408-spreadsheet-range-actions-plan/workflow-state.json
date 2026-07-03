@@ -1,0 +1,14 @@
+{
+  "audit_head_before": "e62fbccc8f3689718e6157c6151fc2b9725cd2eb",
+  "base": "main",
+  "completed_stage": "cleanup_complete",
+  "feature_branch": "feature/spreadsheet-range-actions-plan",
+  "feature_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-spreadsheet-range-actions-plan",
+  "integration_branch": "integration/spreadsheet-range-actions-plan-20260702-184206",
+  "integration_worktree": "C:\\Users\\joesa\\Code\\localfin-ai-integrate-spreadsheet-range-actions-plan-20260702-184206",
+  "merge_mode": "squash",
+  "plan_path": "C:\\Users\\joesa\\Code\\localfin-ai-spreadsheet-range-actions-plan\\.omp\\worktree-flow\\20260702-181408-spreadsheet-range-actions-plan\\plan.md",
+  "plan_title": "Spreadsheet Range Actions Plan",
+  "run_id": "20260702-181408-spreadsheet-range-actions-plan",
+  "slug": "spreadsheet-range-actions-plan"
+}
