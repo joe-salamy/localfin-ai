@@ -21,6 +21,7 @@ import {
   displayShortcutList,
   isSingleCharacterShortcut,
   normalizeKeyboardEvent,
+  shortcutBindingsMatch,
   validateShortcut,
 } from "@/features/shortcuts/normalize";
 import { useDisplaySettings } from "@/features/display-settings/hooks";
@@ -44,9 +45,10 @@ const SHORTCUT_COLUMNS: ResizableColumnDef[] = [
   { id: "command", defaultWidth: 320 },
   { id: "scope", defaultWidth: 140 },
   { id: "default", defaultWidth: 140 },
-  { id: "current", defaultWidth: 180 },
+  { id: "changed", defaultWidth: 180 },
   { id: "actions", defaultWidth: 128 },
 ];
+
 
 export function SettingsPage() {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -607,11 +609,11 @@ export function SettingsPage() {
                   </th>
                   <th
                     className="relative px-3 py-2 font-medium"
-                    style={getHeaderStyle("current")}
+                    style={getHeaderStyle("changed")}
                   >
-                    Current
+                    Changed
                     <span
-                      {...getResizeHandleProps("current")}
+                      {...getResizeHandleProps("changed")}
                       className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-ring/40"
                     />
                   </th>
@@ -640,9 +642,14 @@ export function SettingsPage() {
                   </tr>
                   {group.commands.map((command) => {
                     const current = getShortcuts(command.id);
+                    const changed = shortcutBindingsMatch(
+                      current,
+                      command.defaultBindings,
+                    )
+                      ? null
+                      : current;
                     const conflicts = getConflicts(command.id, current);
                     const isCapturing = capturingCommandId === command.id;
-
                     return (
                       <tr
                         key={command.id}
@@ -702,8 +709,10 @@ export function SettingsPage() {
                             >
                               Press keys...
                             </button>
+                          ) : changed ? (
+                            displayShortcutList(changed)
                           ) : (
-                            displayShortcutList(current)
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </td>
                         <td className="px-3 py-2">

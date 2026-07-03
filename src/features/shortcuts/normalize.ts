@@ -218,6 +218,16 @@ export function displayShortcutList(
   return bindings.map((binding) => displayShortcut(binding)).join(" / ");
 }
 
+export function shortcutBindingsMatch(
+  left: readonly ShortcutBinding[],
+  right: readonly ShortcutBinding[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((binding, index) => binding.key === right[index]?.key)
+  );
+}
+
 export function ariaKeyShortcut(
   binding: ShortcutBinding | null,
 ): string | undefined {

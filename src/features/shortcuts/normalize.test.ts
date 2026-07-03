@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeShortcutParts, parseShortcut } from "./normalize";
+import {
+  normalizeShortcutParts,
+  parseShortcut,
+  shortcutBindingsMatch,
+} from "./normalize";
 
 test("shortcut normalization emits exact undo and redo key names", () => {
   const cases = [
@@ -38,4 +42,22 @@ test("shortcut normalization emits exact undo and redo key names", () => {
 
 test("Cmd+Shift+Z parses to the same normalized redo key as keyboard events", () => {
   assert.deepEqual(parseShortcut("Cmd+Shift+Z"), { key: "Shift+Meta+Z" });
+});
+
+test("shortcut binding lists only match when every key matches in order", () => {
+  assert.equal(
+    shortcutBindingsMatch([{ key: "Ctrl+K" }], [{ key: "Ctrl+K" }]),
+    true,
+  );
+  assert.equal(
+    shortcutBindingsMatch([{ key: "Ctrl+K" }], [{ key: "Ctrl+J" }]),
+    false,
+  );
+  assert.equal(
+    shortcutBindingsMatch(
+      [{ key: "Ctrl+K" }, { key: "Ctrl+Shift+K" }],
+      [{ key: "Ctrl+K" }],
+    ),
+    false,
+  );
 });
