@@ -4,7 +4,6 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ColorPicker } from "@/components/ui/ColorPicker";
-import { TagManager } from "@/components/features/TagManager";
 import type {
   CommandDefinition,
   CommandId,
@@ -334,14 +333,6 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="mb-2">
-          <CardTitle>Tags</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TagManager />
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader className="mb-2">

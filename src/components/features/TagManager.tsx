@@ -69,7 +69,7 @@ export function TagManager() {
     getColStyle,
     getHeaderStyle,
     getResizeHandleProps,
-  } = useResizableColumns("settings.tags", TAG_COLUMNS);
+  } = useResizableColumns("setup.tags", TAG_COLUMNS);
 
   const startEdit = (tag: Tag) => {
     setEditId(tag.id);

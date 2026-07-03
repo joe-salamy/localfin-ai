@@ -87,6 +87,7 @@ export type CommandId =
   | "setup.toggleAccounts"
   | "setup.toggleCategories"
   | "setup.toggleSubcategories"
+  | "setup.toggleTags"
   | "setup.accounts.add"
   | "setup.accounts.save"
   | "setup.accounts.cancel"
@@ -674,6 +675,14 @@ export const DEFAULT_COMMANDS = [
     "Setup",
     "setup",
     "Ctrl+Alt+3",
+  ),
+  command(
+    "setup.toggleTags",
+    "Toggle Tags Section",
+    "Expand or collapse tags.",
+    "Setup",
+    "setup",
+    "Ctrl+Alt+4",
   ),
   command(
     "setup.accounts.add",

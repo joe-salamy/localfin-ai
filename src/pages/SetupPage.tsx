@@ -26,10 +26,12 @@ import { ColorPicker } from "@/components/ui/ColorPicker";
 import { EntityLabel } from "@/components/ui/EntityLabel";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
+import { TagManager } from "@/components/features/TagManager";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAccountLinking } from "@/hooks/useAccountLinking";
 import { useCategories } from "@/hooks/useCategories";
 import { useTransactions } from "@/hooks/useTransactions";
+import { useTags } from "@/hooks/useTags";
 import type {
   AccountWithBalance,
   Category,
@@ -2888,10 +2890,16 @@ function SubcategoriesSection() {
 export function SetupPage() {
   const { accounts } = useAccounts();
   const { categories, subcategories } = useCategories();
+  const { tags } = useTags();
   const [accountsOpen, setAccountsOpen] = useState(true);
   const [categoriesOpen, setCategoriesOpen] = useState(true);
   const [subcategoriesOpen, setSubcategoriesOpen] = useState(true);
+  const [tagsOpen, setTagsOpen] = useState(true);
   const successToast = useSuccessToast();
+  const activeTagCount = useMemo(
+    () => tags.filter((tag) => !tag.deleted_at).length,
+    [tags],
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -2918,6 +2926,10 @@ export function SetupPage() {
   useShortcut(
     "setup.toggleSubcategories",
     useCallback(() => setSubcategoriesOpen((open) => !open), []),
+  );
+  useShortcut(
+    "setup.toggleTags",
+    useCallback(() => setTagsOpen((open) => !open), []),
   );
 
   return (
@@ -2949,6 +2961,15 @@ export function SetupPage() {
         onOpenChange={setSubcategoriesOpen}
       >
         <SubcategoriesSection />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Tags"
+        count={activeTagCount}
+        open={tagsOpen}
+        onOpenChange={setTagsOpen}
+      >
+        <TagManager />
       </CollapsibleSection>
     </div>
   );
