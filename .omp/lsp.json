@@ -1,10 +1,25 @@
 {
   "servers": {
     "typescript-language-server": {
-      "command": "node_modules/.bin/typescript-language-server.cmd",
+      "command": "typescript-language-server",
       "args": ["--stdio"],
       "fileTypes": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
       "rootMarkers": ["tsconfig.json", "package.json"]
+    },
+    "vscode-html-language-server": {
+      "disabled": true
+    },
+    "vscode-css-language-server": {
+      "disabled": true
+    },
+    "vscode-json-language-server": {
+      "disabled": true
+    },
+    "eslint": {
+      "disabled": true
+    },
+    "pyright": {
+      "disabled": true
     }
   }
 }
