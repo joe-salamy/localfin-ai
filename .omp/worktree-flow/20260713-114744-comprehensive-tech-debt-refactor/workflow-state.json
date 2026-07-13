@@ -1,0 +1,14 @@
+{
+  "audit_head_before": "383272359cdc330ea9ca443f7e90202e351e5dae",
+  "base": "main",
+  "completed_stage": "cleanup_complete",
+  "feature_branch": "feature/comprehensive-tech-debt-refactor",
+  "feature_worktree": "/mnt/c/Users/joesa/code/localfin-ai-comprehensive-tech-debt-refactor",
+  "integration_branch": "integration/comprehensive-tech-debt-refactor-20260713-151327",
+  "integration_worktree": "/mnt/c/Users/joesa/code/localfin-ai-integrate-comprehensive-tech-debt-refactor-20260713-151327",
+  "merge_mode": "squash",
+  "plan_path": "/mnt/c/Users/joesa/code/localfin-ai-comprehensive-tech-debt-refactor/.omp/worktree-flow/20260713-114744-comprehensive-tech-debt-refactor/plan.md",
+  "plan_title": "Comprehensive Tech Debt Refactor",
+  "run_id": "20260713-114744-comprehensive-tech-debt-refactor",
+  "slug": "comprehensive-tech-debt-refactor"
+}
