@@ -15,7 +15,7 @@ import {
 import { resolveEntityColor } from "@/lib/colors";
 import { handleEnterSave } from "@/lib/enterSave";
 import { shouldHandleFieldEditDoubleClick } from "@/lib/fieldEditDoubleClick";
-import type { Tag } from "@/types";
+import type { Tag } from "@shared/contracts"
 import {
   useResizableColumns,
   type ResizableColumnDef,

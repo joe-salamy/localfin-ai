@@ -12,6 +12,7 @@ import type {
   TransactionsSyncResponse,
 } from "plaid";
 import { ENV_KEYS, PROVIDER_CONFIG } from "../../config/app.js";
+import { UpstreamServiceError } from "../../errors.js";
 
 export type PlaidAccount = AccountBase;
 export type PlaidTransaction = Transaction;
@@ -78,7 +79,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function providerError(action: string, error: unknown): Error {
+function providerError(action: string, error: unknown): UpstreamServiceError {
+  let detail: string;
   if (isRecord(error) && isRecord(error.response)) {
     const status =
       typeof error.response.status === "number"
@@ -87,13 +89,15 @@ function providerError(action: string, error: unknown): Error {
     const data = "data" in error.response ? error.response.data : undefined;
     const message =
       typeof data === "string" ? data : JSON.stringify(data ?? {});
-    return new Error(
-      `Plaid ${action} failed${status}: ${redactProviderText(message)}`,
-    );
+    detail = `Plaid ${action} failed${status}: ${redactProviderText(message)}`;
+  } else {
+    const message = error instanceof Error ? error.message : String(error);
+    detail = `Plaid ${action} failed: ${redactProviderText(message)}`;
   }
 
-  const message = error instanceof Error ? error.message : String(error);
-  return new Error(`Plaid ${action} failed: ${redactProviderText(message)}`);
+  return new UpstreamServiceError("Plaid request failed", {
+    cause: new Error(detail, { cause: error }),
+  });
 }
 
 function getPlaidClient(): PlaidApi {
@@ -123,8 +127,9 @@ export async function createPlaidLinkToken(): Promise<PlaidLinkTokenResult> {
     redirect_uri: redirectUri || undefined,
   };
 
+  const client = getPlaidClient();
   try {
-    const response = await getPlaidClient().linkTokenCreate(request);
+    const response = await client.linkTokenCreate(request);
     const data: LinkTokenCreateResponse = response.data;
     return {
       link_token: data.link_token,
@@ -138,8 +143,9 @@ export async function createPlaidLinkToken(): Promise<PlaidLinkTokenResult> {
 export async function exchangePublicToken(
   publicToken: string,
 ): Promise<PlaidPublicTokenExchangeResult> {
+  const client = getPlaidClient();
   try {
-    const response = await getPlaidClient().itemPublicTokenExchange({
+    const response = await client.itemPublicTokenExchange({
       public_token: publicToken,
     });
     const data: ItemPublicTokenExchangeResponse = response.data;
@@ -156,8 +162,9 @@ export async function exchangePublicToken(
 export async function getBalances(
   accessToken: string,
 ): Promise<AccountsGetResponse> {
+  const client = getPlaidClient();
   try {
-    const response = await getPlaidClient().accountsBalanceGet({
+    const response = await client.accountsBalanceGet({
       access_token: accessToken,
     });
     return response.data;
@@ -169,8 +176,9 @@ export async function getBalances(
 export async function syncTransactions(
   input: PlaidSyncTransactionsInput,
 ): Promise<TransactionsSyncResponse> {
+  const client = getPlaidClient();
   try {
-    const response = await getPlaidClient().transactionsSync({
+    const response = await client.transactionsSync({
       access_token: input.accessToken,
       cursor: input.cursor ?? undefined,
       count: input.count ?? 500,
@@ -183,8 +191,9 @@ export async function syncTransactions(
 }
 
 export async function removeItem(accessToken: string): Promise<void> {
+  const client = getPlaidClient();
   try {
-    await getPlaidClient().itemRemove({ access_token: accessToken });
+    await client.itemRemove({ access_token: accessToken });
   } catch (error) {
     throw providerError("item removal", error);
   }

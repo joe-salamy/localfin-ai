@@ -13,12 +13,11 @@ import {
 } from "date-fns";
 import { getDb } from "../db/index.js";
 import { DATE_CONFIG } from "../config/app.js";
-import type {
-  CreateSpendingGoalData,
-  GoalPeriod,
-  SpendingGoal,
-  SpendingGoalWithDetails,
-} from "../../src/types/index.js";
+import { ConflictError, NotFoundError } from "../errors.js";
+import type { CreateSpendingGoalData,
+GoalPeriod,
+SpendingGoal,
+SpendingGoalWithDetails, } from "../../shared/contracts/index.js"
 
 // === Row types for query results ===
 
@@ -115,7 +114,7 @@ function assertActiveSubcategory(subcategoryId: string): void {
     .get(subcategoryId);
 
   if (!subcategory) {
-    throw new Error(`Subcategory with id "${subcategoryId}" not found`);
+    throw new NotFoundError(`Subcategory with id "${subcategoryId}" not found`)
   }
 }
 
@@ -137,7 +136,7 @@ export function createSpendingGoal(data: CreateSpendingGoalData): SpendingGoal {
     .get(data.subcategory_id);
 
   if (existing) {
-    throw new Error("A spending goal already exists for this subcategory");
+    throw new ConflictError("A spending goal already exists for this subcategory")
   }
 
   db.prepare(
@@ -227,7 +226,7 @@ export function updateSpendingGoal(
     .get(id) as SpendingGoalRow | undefined;
 
   if (!existing) {
-    throw new Error(`Spending goal with id "${id}" not found`);
+    throw new NotFoundError(`Spending goal with id "${id}" not found`)
   }
 
   const amount = updates.amount ?? existing.amount;
@@ -255,7 +254,7 @@ export function deleteSpendingGoal(id: string): void {
     .get(id) as SpendingGoalRow | undefined;
 
   if (!existing) {
-    throw new Error(`Spending goal with id "${id}" not found`);
+    throw new NotFoundError(`Spending goal with id "${id}" not found`)
   }
 
   db.prepare("UPDATE spending_goals SET deleted_at = ? WHERE id = ?").run(
@@ -281,7 +280,7 @@ export function getSpendingProgress(
     .get(goalId) as SpendingGoalRow | undefined;
 
   if (!goal) {
-    throw new Error(`Spending goal with id "${goalId}" not found`);
+    throw new NotFoundError(`Spending goal with id "${goalId}" not found`)
   }
 
   const refDate = referenceDate ? parseISO(referenceDate) : new Date();

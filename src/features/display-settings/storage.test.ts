@@ -1,7 +1,4 @@
-/// <reference types="node" />
-
-import assert from "node:assert/strict";
-import { afterEach, beforeEach, test } from "node:test";
+import { afterEach, beforeEach, expect, test } from "vitest"
 import {
   defaultDisplaySettings,
   readDisplaySettings,
@@ -39,7 +36,7 @@ afterEach(() => {
 test("missing storage enables success confirmation popups", () => {
   const result = readDisplaySettings();
 
-  assert.equal(result.successConfirmationPopupsEnabled, true);
+  expect(result.successConfirmationPopupsEnabled).toBe(true);
 });
 
 test("old stored settings enable success confirmations while preserving amount colors", () => {
@@ -57,11 +54,11 @@ test("old stored settings enable success confirmations while preserving amount c
 
   const result = readDisplaySettings();
 
-  assert.equal(result.successConfirmationPopupsEnabled, true);
-  assert.equal(result.amountGradientEnabled, true);
-  assert.equal(result.negativeColor, "#111111");
-  assert.equal(result.neutralColor, "#222222");
-  assert.equal(result.positiveColor, "#333333");
+  expect(result.successConfirmationPopupsEnabled).toBe(true);
+  expect(result.amountGradientEnabled).toBe(true);
+  expect(result.negativeColor).toBe("#111111");
+  expect(result.neutralColor).toBe("#222222");
+  expect(result.positiveColor).toBe("#333333");
 });
 
 test("stored false disables success confirmation popups", () => {
@@ -80,7 +77,7 @@ test("stored false disables success confirmation popups", () => {
 
   const result = readDisplaySettings();
 
-  assert.equal(result.successConfirmationPopupsEnabled, false);
+  expect(result.successConfirmationPopupsEnabled).toBe(false);
 });
 
 test("writes disabled success confirmation popups", () => {
@@ -90,8 +87,8 @@ test("writes disabled success confirmation popups", () => {
   });
 
   const raw = storage.getItem(STORAGE_KEY);
-  assert.ok(raw !== null);
+  expect(raw !== null).toBeTruthy();
 
-  const persisted = JSON.parse(raw);
-  assert.equal(persisted.successConfirmationPopupsEnabled, false);
+  const persisted = JSON.parse(raw!);
+  expect(persisted.successConfirmationPopupsEnabled).toBe(false);
 });

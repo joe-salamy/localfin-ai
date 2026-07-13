@@ -1,10 +1,10 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+
+import { expect, test } from "vitest"
 import {
   createTagWithControlledSelection,
   type TagPickerCreateOptions,
 } from "./tagPickerCreateSelection";
-import type { CreateTagData, Tag } from "../../types";
+import type { CreateTagData, Tag } from "@shared/contracts";
 
 function tag(id: string): Tag {
   return {
@@ -47,22 +47,22 @@ test("created tag undo and redo callbacks mutate the latest controlled tag ids",
     },
   });
 
-  assert.equal(result, created);
-  assert.deepEqual(receivedData, { name: "Road Trip" });
+  expect(result).toBe(created);
+  expect(receivedData).toEqual({ name: "Road Trip" });
   const onUndo = receivedOptions?.onUndo;
   const onRedo = receivedOptions?.onRedo;
-  assert.ok(onUndo, "onCreateTag receives an undo callback");
-  assert.ok(onRedo, "onCreateTag receives a redo callback");
-  assert.deepEqual(controlledValue, ["tag-kept", "tag-created"]);
+  expect(onUndo, "onCreateTag receives an undo callback").toBeTypeOf("function");
+  expect(onRedo, "onCreateTag receives a redo callback").toBeTypeOf("function");
+  expect(controlledValue).toEqual(["tag-kept", "tag-created"]);
 
   setControlledValue(["tag-kept", "tag-created", "tag-added-after-create"]);
-  onUndo(created);
-  assert.deepEqual(controlledValue, ["tag-kept", "tag-added-after-create"]);
+  onUndo!(created);
+  expect(controlledValue).toEqual(["tag-kept", "tag-added-after-create"]);
 
   setControlledValue(["tag-added-after-create"]);
-  onRedo(created);
-  assert.deepEqual(controlledValue, ["tag-added-after-create", "tag-created"]);
-  assert.deepEqual(changes, [
+  onRedo!(created);
+  expect(controlledValue).toEqual(["tag-added-after-create", "tag-created"]);
+  expect(changes).toEqual([
     ["tag-kept", "tag-created"],
     ["tag-kept", "tag-added-after-create"],
     ["tag-added-after-create", "tag-created"],

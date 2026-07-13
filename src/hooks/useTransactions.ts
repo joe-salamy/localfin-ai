@@ -1,20 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
-import type {
-  Transaction,
-  TransactionFilters,
-  TransactionWithDetails,
-  RecentAccountTransaction,
-  CreateTransactionData,
-  UpdateTransactionData,
-  BulkTransactionUpdateData,
-  RunSuspectScanRequest,
-  RunSuspectScanResponse,
-  SuspectFindingFilters,
-  SuspectFindingStatus,
-  SuspectTransactionFinding,
-} from "@/types/index";
+import { invalidateFinanceQueries } from "@/lib/queryInvalidation";
+import {
+  duplicateCheckResultSchema,
+  transactionSchema,
+  transactionWithDetailsSchema,
+  type Transaction,
+  type TransactionFilters,
+  type TransactionWithDetails,
+  type RecentAccountTransaction,
+  type CreateTransactionData,
+  type UpdateTransactionData,
+  type BulkTransactionUpdateData,
+  type RunSuspectScanRequest,
+  type RunSuspectScanResponse,
+  type SuspectFindingFilters,
+  type SuspectFindingStatus,
+  type SuspectTransactionFinding,
+} from "@shared/contracts";
 
 function buildQueryString(filters?: TransactionFilters): string {
   if (!filters) return "";
@@ -46,11 +50,7 @@ export function useTransactions(filters?: TransactionFilters) {
   });
 
   const invalidateRelated = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
-    ]);
+    invalidateFinanceQueries(queryClient, "transactions");
 
   const createTransaction = useMutation({
     mutationFn: (data: CreateTransactionData) =>
@@ -89,13 +89,21 @@ export function useTransactions(filters?: TransactionFilters) {
 
   const bulkRestoreTransactions = useMutation({
     mutationFn: (ids: string[]) =>
-      apiPost<TransactionWithDetails[]>("/transactions/bulk/restore", { ids }),
+      apiPost<TransactionWithDetails[]>(
+        "/transactions/bulk/restore",
+        { ids },
+        transactionWithDetailsSchema.array(),
+      ),
     onSuccess: () => invalidateRelated(),
   });
 
   const bulkCreateTransactions = useMutation({
     mutationFn: (transactions: CreateTransactionData[]) =>
-      apiPost<TransactionWithDetails[]>("/transactions/bulk", { transactions }),
+      apiPost<TransactionWithDetails[]>(
+        "/transactions/bulk",
+        { transactions },
+        transactionWithDetailsSchema.array(),
+      ),
     onSuccess: () => invalidateRelated(),
   });
 
@@ -107,12 +115,21 @@ export function useTransactions(filters?: TransactionFilters) {
         amount: number;
         account_id: string;
       }>,
-    ) => apiPost<boolean[]>("/transactions/check-duplicates", { transactions }),
+    ) =>
+      apiPost<boolean[]>(
+        "/transactions/check-duplicates",
+        { transactions },
+        duplicateCheckResultSchema,
+      ),
   });
 
   const checkTransferMatch = useMutation({
     mutationFn: (data: { date: string; amount: number; account_id: string }) =>
-      apiPost<Transaction | null>("/transactions/check-transfer", data),
+      apiPost<Transaction | null>(
+        "/transactions/check-transfer",
+        data,
+        transactionSchema.nullable(),
+      ),
   });
 
   return {

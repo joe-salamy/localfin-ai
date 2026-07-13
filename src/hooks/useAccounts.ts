@@ -1,13 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
-import type {
-  Account,
-  AccountWithBalance,
-  CreateAccountData,
-  ReconcileAccountData,
-  ReconcileAccountResult,
-} from "@/types/index";
+import { invalidateFinanceQueries } from "@/lib/queryInvalidation";
+import type { Account,
+AccountWithBalance,
+CreateAccountData,
+ReconcileAccountData,
+ReconcileAccountResult, } from "@shared/contracts"
 
 export function useAccounts() {
   const queryClient = useQueryClient();
@@ -20,11 +19,7 @@ export function useAccounts() {
   });
 
   const invalidateRelated = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
-    ]);
+    invalidateFinanceQueries(queryClient, "accounts");
 
   const createAccount = useMutation({
     mutationFn: (data: CreateAccountData) =>

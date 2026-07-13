@@ -11,28 +11,28 @@ export function AppLayout() {
 
   useShortcut(
     "global.dashboard",
-    useCallback(() => navigate("/"), [navigate]),
+    useCallback(() => void navigate("/"), [navigate]),
   );
   useShortcut(
     "global.setup",
-    useCallback(() => navigate("/setup"), [navigate]),
+    useCallback(() => void navigate("/setup"), [navigate]),
   );
   useShortcut(
     "global.addTransactions",
-    useCallback(() => navigate("/transactions/input"), [navigate]),
+    useCallback(() => void navigate("/transactions/input"), [navigate]),
   );
   useShortcut(
     "global.transactionHistory",
-    useCallback(() => navigate("/transactions/history"), [navigate]),
+    useCallback(() => void navigate("/transactions/history"), [navigate]),
   );
   useShortcut(
     "global.settings",
-    useCallback(() => navigate("/settings"), [navigate]),
+    useCallback(() => void navigate("/settings"), [navigate]),
   );
   useShortcut(
     "global.keyboardShortcuts",
     useCallback(() => {
-      navigate("/settings#keyboard-shortcuts");
+      void navigate("/settings#keyboard-shortcuts");
       window.setTimeout(
         () => document.getElementById("keyboard-shortcuts")?.focus(),
         0,

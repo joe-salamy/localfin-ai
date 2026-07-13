@@ -25,11 +25,9 @@ import {
   resolveOrCreateTagsByName,
   updateTag,
 } from "../tags.js";
-import type {
-  CreateTransactionData,
-  Tag,
-  TagType,
-} from "../../../src/types/index.js";
+import type { CreateTransactionData,
+Tag,
+TagType, } from "../../../shared/contracts/index.js"
 import type { AIAction, ExecutedAction } from "./types.js";
 import {
   DEFAULT_BULK_TRANSACTION_LIMIT,
@@ -70,7 +68,7 @@ import {
 import {
   categoryTypeForSubcategory,
   transactionSearchFilters,
-} from "./action-preparation.js";
+} from "./transaction-action-input.js";
 
 function tagObjectRequests(
   value: unknown,

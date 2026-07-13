@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CSSProperties, HTMLAttributes } from "react";
-import type { CategorySummary as CategorySummaryType } from "@/types";
+import type { CategorySummary as CategorySummaryType } from "@shared/contracts"
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { EntityLabel } from "@/components/ui/EntityLabel";
 import { formatCurrency, cn } from "@/lib/utils";

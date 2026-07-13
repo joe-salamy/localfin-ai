@@ -7,8 +7,10 @@
     "dev": "concurrently -k -n server,client \"npm:dev:server\" \"wait-on http-get://127.0.0.1:3001/api/health && npm run dev:client\"",
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
-    "test": "node --import tsx --test \"server/**/*.test.ts\"",
-    "test:frontend": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test": "npm run test:server && npm run test:scripts && npm run test:frontend",
+    "test:server": "node --import tsx --test \"server/**/*.test.ts\"",
+    "test:scripts": "node --import tsx --test \"scripts/**/*.test.ts\"",
+    "test:frontend": "vitest run",
     "eval:agent:live": "tsx scripts/agent-live-eval.ts",
     "log:view": "tsx scripts/render-log-html.ts",
     "typecheck": "tsc -b --pretty false",
@@ -32,7 +34,7 @@
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
     "react-plaid-link": "^4.1.1",
-    "react-router-dom": "^7.14.0",
+    "react-router-dom": "^7.18.1",
     "recharts": "^3.8.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
@@ -41,6 +43,10 @@
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@tailwindcss/vite": "^4.2.2",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -57,12 +63,20 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "express": "^5.2.1",
     "globals": "^17.4.0",
+    "jsdom": "^29.1.1",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.21.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.0",
     "typescript-language-server": "^5.3.0",
     "vite": "^8.0.4",
+    "vitest": "^4.1.10",
     "wait-on": "^9.0.10"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
+  },
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0 <26"
   }
 }

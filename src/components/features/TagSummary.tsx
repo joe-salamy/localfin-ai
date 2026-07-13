@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { EntityLabel } from "@/components/ui/EntityLabel";
 import { TagChip } from "@/components/features/TagPicker";
 import { cn, formatCurrency } from "@/lib/utils";
-import type { TagSummary as TagSummaryType } from "@/types";
+import type { TagSummary as TagSummaryType } from "@shared/contracts"
 import {
   useResizableColumns,
   type ResizableColumnDef,

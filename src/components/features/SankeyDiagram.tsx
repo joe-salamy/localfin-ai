@@ -1,4 +1,4 @@
-import type { SankeyData } from "@/types";
+import type { SankeyData } from "@shared/contracts"
 import { ResponsiveSankey } from "@nivo/sankey";
 import { useEffect, useMemo, useRef, useState } from "react";
 

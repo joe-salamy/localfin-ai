@@ -11,12 +11,10 @@ import { getDb } from "../db/index.js";
 import { DATE_CONFIG } from "../config/app.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
 import { resolveEntityColor } from "../../src/lib/colors.js";
-import type {
-  NetWorthDataPoint,
-  SankeyData,
-  SankeyLink,
-  SankeyNode,
-} from "../../src/types/index.js";
+import type { NetWorthDataPoint,
+SankeyData,
+SankeyLink,
+SankeyNode, } from "../../shared/contracts/index.js"
 
 // === Row types for query results ===
 

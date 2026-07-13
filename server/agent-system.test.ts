@@ -22,7 +22,7 @@ import {
 import { createTag, getTags } from "./services/tags.js";
 import { closeDbForTests, getDb } from "./db/index.js";
 import type { ChatResult } from "./services/ai-chat.js";
-import type { CategoryType } from "../src/types/index.js";
+import type { CategoryType } from "../shared/contracts/index.js"
 
 type MockResponder = (
   body: Record<string, unknown>,
@@ -151,7 +151,7 @@ function softDeletedCounts(db: Database.Database): Record<string, number> {
   );
 }
 
-test("agent creates budget structure and captures a transaction through the real tool loop", async (t) => {
+void test("agent creates budget structure and captures a transaction through the real tool loop", async (t) => {
   const { db } = await createFixture(t);
   const calls = installOpenRouterMock(() => ({
     message: "Created the checking account, grocery budget, and transaction.",
@@ -231,7 +231,7 @@ test("agent creates budget structure and captures a transaction through the real
   );
 });
 
-test("agent searches before updating a described transaction and finishes in a follow-up turn", async (t) => {
+void test("agent searches before updating a described transaction and finishes in a follow-up turn", async (t) => {
   const { db } = await createFixture(t);
   createAccount({
     name: "Test Checking",
@@ -316,7 +316,7 @@ test("agent searches before updating a described transaction and finishes in a f
   assert.equal(updated?.comment, "client rideshare");
 });
 
-test("agent persists partial failures without rolling back valid actions", async (t) => {
+void test("agent persists partial failures without rolling back valid actions", async (t) => {
   const { db } = await createFixture(t);
   createAccount({ name: "Test Checking", type: "asset" });
   createNamedCategory("Food", "expense");
@@ -382,7 +382,7 @@ test("agent persists partial failures without rolling back valid actions", async
   assert.match(assistantMessage.actions_json, /Missing Account/);
 });
 
-test("agent refuses deletion and streaming emits a traceable lifecycle", async (t) => {
+void test("agent refuses deletion and streaming emits a traceable lifecycle", async (t) => {
   const { db } = await createFixture(t);
   createAccount({ name: "Test Checking", type: "asset" });
   createNamedCategory("Transportation", "expense");
@@ -435,7 +435,7 @@ test("agent refuses deletion and streaming emits a traceable lifecycle", async (
   assert.ok(events.includes("final"));
 });
 
-test("agent creates an explicit trip tag and assigns it to a transaction", async (t) => {
+void test("agent creates an explicit trip tag and assigns it to a transaction", async (t) => {
   const { db } = await createFixture(t);
   createAccount({
     name: "Travel Checking",
@@ -521,7 +521,7 @@ test("agent creates an explicit trip tag and assigns it to a transaction", async
   );
 });
 
-test("agent update failure does not create explicit add-tag side effects", async (t) => {
+void test("agent update failure does not create explicit add-tag side effects", async (t) => {
   await createFixture(t);
 
   const result = executeAction({
@@ -540,7 +540,7 @@ test("agent update failure does not create explicit add-tag side effects", async
   assert.deepEqual(getTags(), []);
 });
 
-test("agent rejects conflicting bulk tag edits when also updating comments", async (t) => {
+void test("agent rejects conflicting bulk tag edits when also updating comments", async (t) => {
   await createFixture(t);
   const account = createAccount({ name: "Checking", type: "asset" });
   const categoryId = createNamedCategory("Travel", "expense");
@@ -584,7 +584,7 @@ test("agent rejects conflicting bulk tag edits when also updating comments", asy
   );
 });
 
-test("agent does not infer tags without explicit tag wording", async (t) => {
+void test("agent does not infer tags without explicit tag wording", async (t) => {
   await createFixture(t);
   createAccount({
     name: "Travel Checking",

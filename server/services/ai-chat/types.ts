@@ -1,16 +1,14 @@
 import type { OpenRouterReasoningDetail } from "../../ai/openrouter.js";
-import type {
-  Account,
-  AccountType,
-  Category,
-  CategoryType,
-  GoalPeriod,
-  SpendingGoalWithDetails,
-  Subcategory,
-  Tag,
-  TagType,
-  TransactionWithDetails,
-} from "../../../src/types/index.js";
+import type { Account,
+AccountType,
+Category,
+CategoryType,
+GoalPeriod,
+SpendingGoalWithDetails,
+Subcategory,
+Tag,
+TagType,
+TransactionWithDetails, } from "../../../shared/contracts/index.js"
 
 export interface ChatRequest {
   conversationId: string;

@@ -1,4 +1,4 @@
-import type { Category, Subcategory, Tag, TransactionKind } from "@/types";
+import type { Category, Subcategory, Tag, TransactionKind } from "@shared/contracts"
 
 export type TransactionCellField =
   | "date"

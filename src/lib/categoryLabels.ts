@@ -1,4 +1,4 @@
-import type { Category, CategoryType, Subcategory } from "@/types";
+import type { Category, CategoryType, Subcategory } from "@shared/contracts"
 
 type CategoryLookup = Map<string, Category>;
 

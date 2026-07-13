@@ -1,7 +1,4 @@
-/// <reference types="node" />
-
-import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, expect, test } from "vitest"
 import { handleEnterSave, shouldHandleEnterSave } from "./enterSave";
 
 function keyEvent(
@@ -33,27 +30,18 @@ test("plain Enter is handled and prevents default before saving", () => {
   const { event, wasPrevented } = keyEvent();
   let saves = 0;
 
-  assert.equal(
-    handleEnterSave(event, () => saves++),
-    true,
-  );
+  expect(handleEnterSave(event, () => saves++)).toBe(true);
 
-  assert.equal(saves, 1);
-  assert.equal(wasPrevented(), true);
+  expect(saves).toBe(1);
+  expect(wasPrevented()).toBe(true);
 });
 
 test("modified Enter and composing Enter are ignored", () => {
-  assert.equal(shouldHandleEnterSave(keyEvent({ ctrlKey: true }).event), false);
-  assert.equal(
-    shouldHandleEnterSave(keyEvent({ shiftKey: true }).event),
-    false,
-  );
-  assert.equal(
-    shouldHandleEnterSave(
-      keyEvent({ nativeEvent: { isComposing: true } }).event,
-    ),
-    false,
-  );
+  expect(shouldHandleEnterSave(keyEvent({ ctrlKey: true }).event)).toBe(false);
+  expect(shouldHandleEnterSave(keyEvent({ shiftKey: true }).event)).toBe(false);
+  expect(shouldHandleEnterSave(
+    keyEvent({ nativeEvent: { isComposing: true } }).event,
+  )).toBe(false);
 });
 
 test("Enter from nested buttons is ignored", () => {
@@ -72,11 +60,8 @@ test("Enter from nested buttons is ignored", () => {
   });
   let saves = 0;
 
-  assert.equal(
-    handleEnterSave(event, () => saves++),
-    false,
-  );
+  expect(handleEnterSave(event, () => saves++)).toBe(false);
 
-  assert.equal(saves, 0);
-  assert.equal(wasPrevented(), false);
+  expect(saves).toBe(0);
+  expect(wasPrevented()).toBe(false);
 });

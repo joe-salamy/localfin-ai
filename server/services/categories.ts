@@ -1,10 +1,9 @@
 import crypto from "node:crypto";
 import { getDb, toBool } from "../db/index.js";
-import type {
-  Category,
-  CategoryType,
-  Subcategory,
-} from "../../src/types/index.js";
+import { ConflictError, NotFoundError } from "../errors.js";
+import type { Category,
+CategoryType,
+Subcategory, } from "../../shared/contracts/index.js"
 
 interface CategoryRow {
   id: string;
@@ -77,7 +76,7 @@ function checkNameUniqueness(
           .get(name);
 
   if (accountExists) {
-    throw new Error(`An account with the name "${name}" already exists`);
+    throw new ConflictError(`An account with the name "${name}" already exists`)
   }
 
   const categoryExists =
@@ -94,7 +93,7 @@ function checkNameUniqueness(
           .get(name);
 
   if (categoryExists) {
-    throw new Error(`A category with the name "${name}" already exists`);
+    throw new ConflictError(`A category with the name "${name}" already exists`)
   }
 
   const subcategoryExists =
@@ -111,7 +110,7 @@ function checkNameUniqueness(
           .get(name);
 
   if (subcategoryExists) {
-    throw new Error(`A subcategory with the name "${name}" already exists`);
+    throw new ConflictError(`A subcategory with the name "${name}" already exists`)
   }
 }
 
@@ -167,7 +166,7 @@ export function updateCategory(
     .prepare("SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL")
     .get(id) as CategoryRow | undefined;
   if (!existing) {
-    throw new Error(`Category with id "${id}" not found`);
+    throw new NotFoundError(`Category with id "${id}" not found`)
   }
 
   const onlyColorUpdate =
@@ -176,7 +175,7 @@ export function updateCategory(
     updates.type === undefined;
 
   if (toBool(existing.is_system) && !onlyColorUpdate) {
-    throw new Error("Cannot update system categories");
+    throw new ConflictError("Cannot update system categories")
   }
 
   if (updates.name !== undefined) {
@@ -205,11 +204,11 @@ export function deleteCategory(id: string): void {
     .prepare("SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL")
     .get(id) as CategoryRow | undefined;
   if (!existing) {
-    throw new Error(`Category with id "${id}" not found`);
+    throw new NotFoundError(`Category with id "${id}" not found`)
   }
 
   if (toBool(existing.is_system)) {
-    throw new Error("Cannot delete system categories");
+    throw new ConflictError("Cannot delete system categories")
   }
 
   const subcategoryCount = db
@@ -219,9 +218,7 @@ export function deleteCategory(id: string): void {
     .get(id) as { count: number };
 
   if (subcategoryCount.count > 0) {
-    throw new Error(
-      "Cannot delete category with existing subcategories. Delete all subcategories first.",
-    );
+    throw new ConflictError("Cannot delete category with existing subcategories. Delete all subcategories first.")
   }
 
   db.prepare("UPDATE categories SET deleted_at = ? WHERE id = ?").run(now, id);
@@ -235,7 +232,7 @@ export function restoreCategory(id: string): Category {
     .prepare("SELECT * FROM categories WHERE id = ?")
     .get(id) as CategoryRow | undefined;
   if (!existing || existing.deleted_at === null) {
-    throw new Error(`Category with id "${id}" not found`);
+    throw new NotFoundError(`Category with id "${id}" not found`)
   }
 
   const conflict = db
@@ -249,9 +246,7 @@ export function restoreCategory(id: string): Category {
     )
     .get(existing.name, existing.type, id);
   if (conflict) {
-    throw new Error(
-      `A category with the name "${existing.name}" and type "${existing.type}" already exists`,
-    );
+    throw new ConflictError(`A category with the name "${existing.name}" and type "${existing.type}" already exists`)
   }
 
   db.prepare(
@@ -282,7 +277,7 @@ export function createSubcategory(data: {
     .prepare("SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL")
     .get(data.category_id) as CategoryRow | undefined;
   if (!category) {
-    throw new Error(`Category with id "${data.category_id}" not found`);
+    throw new NotFoundError(`Category with id "${data.category_id}" not found`)
   }
 
   db.prepare(
@@ -347,7 +342,7 @@ export function updateSubcategory(
     .prepare("SELECT * FROM subcategories WHERE id = ? AND deleted_at IS NULL")
     .get(id) as SubcategoryRow | undefined;
   if (!existing) {
-    throw new Error(`Subcategory with id "${id}" not found`);
+    throw new NotFoundError(`Subcategory with id "${id}" not found`)
   }
 
   const onlyColorUpdate =
@@ -357,7 +352,7 @@ export function updateSubcategory(
     updates.monthly_goal === undefined;
 
   if (toBool(existing.is_system) && !onlyColorUpdate) {
-    throw new Error("Cannot update system subcategories");
+    throw new ConflictError("Cannot update system subcategories")
   }
 
   if (updates.name !== undefined) {
@@ -369,7 +364,7 @@ export function updateSubcategory(
       .prepare("SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL")
       .get(updates.category_id) as CategoryRow | undefined;
     if (!category) {
-      throw new Error(`Category with id "${updates.category_id}" not found`);
+      throw new NotFoundError(`Category with id "${updates.category_id}" not found`)
     }
   }
 
@@ -399,11 +394,11 @@ export function deleteSubcategory(id: string): void {
     .prepare("SELECT * FROM subcategories WHERE id = ? AND deleted_at IS NULL")
     .get(id) as SubcategoryRow | undefined;
   if (!existing) {
-    throw new Error(`Subcategory with id "${id}" not found`);
+    throw new NotFoundError(`Subcategory with id "${id}" not found`)
   }
 
   if (toBool(existing.is_system)) {
-    throw new Error("Cannot delete system subcategories");
+    throw new ConflictError("Cannot delete system subcategories")
   }
 
   db.prepare("UPDATE subcategories SET deleted_at = ? WHERE id = ?").run(
@@ -420,14 +415,14 @@ export function restoreSubcategory(id: string): Subcategory {
     .prepare("SELECT * FROM subcategories WHERE id = ?")
     .get(id) as SubcategoryRow | undefined;
   if (!existing || existing.deleted_at === null) {
-    throw new Error(`Subcategory with id "${id}" not found`);
+    throw new NotFoundError(`Subcategory with id "${id}" not found`)
   }
 
   const parent = db
     .prepare("SELECT 1 FROM categories WHERE id = ? AND deleted_at IS NULL")
     .get(existing.category_id);
   if (!parent) {
-    throw new Error(`Category with id "${existing.category_id}" not found`);
+    throw new NotFoundError(`Category with id "${existing.category_id}" not found`)
   }
 
   const conflict = db
@@ -441,9 +436,7 @@ export function restoreSubcategory(id: string): Subcategory {
     )
     .get(existing.name, existing.category_id, id);
   if (conflict) {
-    throw new Error(
-      `A subcategory with the name "${existing.name}" already exists in this category`,
-    );
+    throw new ConflictError(`A subcategory with the name "${existing.name}" already exists in this category`)
   }
 
   db.prepare(

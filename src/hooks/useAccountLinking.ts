@@ -1,14 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
+import { invalidateFinanceQueries } from "@/lib/queryInvalidation";
+import {
+  akoyaAuthorizationResultSchema,
+  plaidLinkTokenResultSchema,
+  providerConnectionSummarySchema,
+  providerSyncResultSchema,
+} from "@shared/contracts";
 import type {
   AkoyaAuthorizationResult,
   PlaidLinkTokenResult,
   ProviderConnectionSummary,
   ProviderSyncResult,
-} from "@/types";
+  TargetInstitution,
+} from "@shared/contracts";
 
-type PlaidTargetInstitution = "us_bank" | "discover";
+type PlaidTargetInstitution = Extract<
+  TargetInstitution,
+  "us_bank" | "discover"
+>;
 
 interface CreatePlaidLinkTokenInput {
   targetInstitution: PlaidTargetInstitution;
@@ -34,22 +45,24 @@ export function useAccountLinking() {
   const connectionsQuery = useQuery({
     queryKey: queryKeys.accountLinking.connections(),
     queryFn: () =>
-      apiGet<ProviderConnectionSummary[]>("/account-linking/connections"),
+      apiGet<ProviderConnectionSummary[]>(
+        "/account-linking/connections",
+        providerConnectionSummarySchema.array(),
+      ),
     select: (res) => res.data ?? [],
     staleTime: Infinity,
   });
 
   const invalidateRelated = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.accountLinking.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
-    ]);
+    invalidateFinanceQueries(queryClient, "providers");
 
   const createPlaidLinkToken = useMutation({
     mutationFn: (data: CreatePlaidLinkTokenInput) =>
-      apiPost<PlaidLinkTokenResult>("/account-linking/plaid/link-token", data),
+      apiPost<PlaidLinkTokenResult>(
+        "/account-linking/plaid/link-token",
+        data,
+        plaidLinkTokenResultSchema,
+      ),
   });
 
   const exchangePlaidPublicToken = useMutation({
@@ -57,6 +70,7 @@ export function useAccountLinking() {
       apiPost<ProviderConnectionSummary>(
         "/account-linking/plaid/exchange",
         data,
+        providerConnectionSummarySchema,
       ),
     onSuccess: () => invalidateRelated(),
   });
@@ -66,12 +80,17 @@ export function useAccountLinking() {
       apiPost<AkoyaAuthorizationResult>(
         "/account-linking/akoya/authorize",
         data,
+        akoyaAuthorizationResultSchema,
       ),
   });
 
   const syncProviderConnections = useMutation({
     mutationFn: (data: SyncProviderConnectionsInput = {}) =>
-      apiPost<ProviderSyncResult[]>("/account-linking/sync", data),
+      apiPost<ProviderSyncResult[]>(
+        "/account-linking/sync",
+        data,
+        providerSyncResultSchema.array(),
+      ),
     onSuccess: () => invalidateRelated(),
   });
 

@@ -2,15 +2,8 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { ENV_KEYS, PROVIDER_CONFIG } from "../config/app.js";
-import {
-  createAkoyaAuthorizationUrl,
-  createPlaidLinkToken,
-  disconnectProviderConnection,
-  exchangePlaidPublicToken,
-  handleAkoyaCallback,
-  listProviderConnections,
-  syncProviderConnections,
-} from "../services/account-linking.js";
+import { publicErrorMessage } from "../errors.js";
+import { accountLinkingService } from "../services/account-linking.js";
 import { idParamSchema, nonEmptyString, parseRequest } from "./validation.js";
 
 const router = Router();
@@ -42,10 +35,6 @@ const syncSchema = z.object({
   connectionId: nonEmptyString.optional(),
 });
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Unknown error";
-}
-
 function frontendBaseUrl() {
   return (
     process.env[ENV_KEYS.frontendBaseUrl] ?? PROVIDER_CONFIG.frontendBaseUrl
@@ -53,101 +42,61 @@ function frontendBaseUrl() {
 }
 
 router.get("/connections", (_req: Request, res: Response) => {
-  try {
-    res.json({ success: true, data: listProviderConnections() });
-  } catch (error) {
-    res.status(400).json({ success: false, error: errorMessage(error) });
-  }
+  res.json({ success: true, data: accountLinkingService.listProviderConnections() });
 });
 
 router.post("/plaid/link-token", async (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(plaidLinkTokenSchema, req.body, res);
-    if (!body) return;
-    const data = await createPlaidLinkToken(body.targetInstitution);
-    res.json({ success: true, data });
-  } catch (error) {
-    res.status(400).json({ success: false, error: errorMessage(error) });
-  }
+  const body = parseRequest(plaidLinkTokenSchema, req.body);
+  const data = await accountLinkingService.createPlaidLinkToken(body.targetInstitution);
+  res.json({ success: true, data });
 });
 
 router.post("/plaid/exchange", async (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(plaidExchangeSchema, req.body, res);
-    if (!body) return;
-    const data = await exchangePlaidPublicToken(body);
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    res.status(400).json({ success: false, error: errorMessage(error) });
-  }
+  const body = parseRequest(plaidExchangeSchema, req.body);
+  const data = await accountLinkingService.exchangePlaidPublicToken(body);
+  res.status(201).json({ success: true, data });
 });
 
 router.post("/akoya/authorize", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(akoyaAuthorizeSchema, req.body, res);
-    if (!body) return;
-    const data = createAkoyaAuthorizationUrl(body.targetInstitution);
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    res.status(400).json({ success: false, error: errorMessage(error) });
-  }
+  const body = parseRequest(akoyaAuthorizeSchema, req.body);
+  const data = accountLinkingService.createAkoyaAuthorizationUrl(body.targetInstitution);
+  res.status(201).json({ success: true, data });
 });
 
 router.get("/akoya/callback", async (req: Request, res: Response) => {
   try {
-    const query = parseRequest(akoyaCallbackSchema, req.query, res);
-    if (!query) return;
+    const query = parseRequest(akoyaCallbackSchema, req.query);
     if (query.error) {
       res.redirect(
-        `${frontendBaseUrl()}/setup?provider=akoya&status=error&message=${encodeURIComponent(
-          query.error,
-        )}`,
+        `${frontendBaseUrl()}/setup?provider=akoya&status=error&message=${encodeURIComponent(query.error)}`,
       );
       return;
     }
     if (!query.code || !query.state) {
       res.redirect(
-        `${frontendBaseUrl()}/setup?provider=akoya&status=error&message=${encodeURIComponent(
-          "Missing Akoya callback code or state",
-        )}`,
+        `${frontendBaseUrl()}/setup?provider=akoya&status=error&message=${encodeURIComponent("Missing Akoya callback code or state")}`,
       );
       return;
     }
-    await handleAkoyaCallback({ code: query.code, state: query.state });
+    await accountLinkingService.handleAkoyaCallback({ code: query.code, state: query.state });
     res.redirect(`${frontendBaseUrl()}/setup?provider=akoya&status=connected`);
   } catch (error) {
     res.redirect(
-      `${frontendBaseUrl()}/setup?provider=akoya&status=error&message=${encodeURIComponent(
-        errorMessage(error),
-      )}`,
+      `${frontendBaseUrl()}/setup?provider=akoya&status=error&message=${encodeURIComponent(publicErrorMessage(error))}`,
     );
   }
 });
 
 router.post("/sync", async (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(syncSchema, req.body ?? {}, res);
-    if (!body) return;
-    const data = await syncProviderConnections(body);
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    const message = errorMessage(error);
-    const status = message.includes("not found") ? 404 : 400;
-    res.status(status).json({ success: false, error: message });
-  }
+  const body = parseRequest(syncSchema, req.body ?? {});
+  const data = await accountLinkingService.syncProviderConnections(body);
+  res.status(201).json({ success: true, data });
 });
 
 router.delete("/connections/:id", async (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    await disconnectProviderConnection(params.id);
-    res.json({ success: true });
-  } catch (error) {
-    const message = errorMessage(error);
-    const status = message.includes("not found") ? 404 : 400;
-    res.status(status).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+  await accountLinkingService.disconnectProviderConnection(params.id);
+  res.json({ success: true });
 });
 
 export const accountLinkingRouter = router;

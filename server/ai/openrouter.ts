@@ -7,6 +7,7 @@ import {
   OPENROUTER_CONFIG,
   type AIModel,
 } from "../config/app.js";
+import { UpstreamServiceError } from "../errors.js";
 
 interface OpenRouterMessage {
   role: "system" | "user" | "assistant";
@@ -88,6 +89,21 @@ function safeLogId(value: string): string {
       .replace(/[^a-zA-Z0-9_.-]/g, "_")
       .slice(0, OPENROUTER_CONFIG.maxLogIdLength) || crypto.randomUUID()
   );
+}
+
+function redactOpenRouterText(value: string, apiKey: string): string {
+  return value
+    .split(apiKey)
+    .join("[REDACTED]")
+    .replace(
+      /("(?:api_key|access_token|refresh_token|id_token|token|secret)"\s*:\s*")[^"]+(")/gi,
+      "$1[REDACTED]$2",
+    )
+    .replace(
+      /((?:api_key|access_token|refresh_token|id_token|token|secret)=)[^&\s]+/gi,
+      "$1[REDACTED]",
+    )
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, "$1[REDACTED]");
 }
 
 const conversationLogFiles = new Map<string, string>();
@@ -210,8 +226,8 @@ export async function callOpenRouter(
     });
 
     if (!response.ok) {
-      const err = await response.text();
-      const error = `OpenRouter API error: ${response.status} ${err}`;
+      const detail = redactOpenRouterText(await response.text(), apiKey);
+      const error = `OpenRouter API error: ${response.status} ${detail}`;
       const logFile = await appendConversationLog(conversationId, {
         timestamp: startedAt.toISOString(),
         completedAt: new Date().toISOString(),
@@ -286,7 +302,9 @@ export async function callOpenRouter(
         metadata: options.metadata ?? {},
       });
     }
-    throw error;
+    throw new UpstreamServiceError("OpenRouter request failed", {
+      cause: error,
+    });
   }
 }
 
@@ -336,8 +354,8 @@ export async function streamOpenRouter(
     });
 
     if (!response.ok) {
-      const err = await response.text();
-      const error = `OpenRouter API error: ${response.status} ${err}`;
+      const detail = redactOpenRouterText(await response.text(), apiKey);
+      const error = `OpenRouter API error: ${response.status} ${detail}`;
       await appendConversationLog(conversationId, {
         timestamp: startedAt.toISOString(),
         completedAt: new Date().toISOString(),
@@ -480,6 +498,8 @@ export async function streamOpenRouter(
         metadata: options.metadata ?? {},
       });
     }
-    throw error;
+    throw new UpstreamServiceError("OpenRouter request failed", {
+      cause: error,
+    });
   }
 }

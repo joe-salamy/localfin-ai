@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { NotFoundError } from "../errors.js";
 import {
   createTransaction,
   getTransactionsWithDetails,
@@ -159,210 +160,122 @@ const suspectFindingStatusSchema = z.object({
 });
 
 router.get("/", (req: Request, res: Response) => {
-  try {
-    const filters = parseRequest(transactionFiltersSchema, req.query, res);
-    if (!filters) return;
-    const data = getTransactionsWithDetails(filters);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const filters = parseRequest(transactionFiltersSchema, req.query);
+
+  const data = getTransactionsWithDetails(filters);
+  res.json({ success: true, data });
 });
 
 router.get("/recent-activity", (_req: Request, res: Response) => {
-  try {
-    const data = getRecentActivityByAccount();
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const data = getRecentActivityByAccount();
+  res.json({ success: true, data });
 });
 
 // Bulk routes BEFORE /:id to avoid "bulk" matching as an id
 router.post("/bulk", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(bulkCreateSchema, req.body, res);
-    if (!body) return;
-    const data = bulkCreateTransactions(body.transactions);
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(bulkCreateSchema, req.body);
+
+  const data = bulkCreateTransactions(body.transactions);
+  res.status(201).json({ success: true, data });
 });
 
 router.put("/bulk", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(bulkUpdateSchema, req.body, res);
-    if (!body) return;
-    bulkUpdateTransactions(body.ids, body.updates);
-    res.json({ success: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(bulkUpdateSchema, req.body);
+
+  bulkUpdateTransactions(body.ids, body.updates);
+  res.json({ success: true });
 });
 
 router.delete("/bulk", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(bulkDeleteSchema, req.body, res);
-    if (!body) return;
-    bulkDeleteTransactions(body.ids);
-    res.json({ success: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(bulkDeleteSchema, req.body);
+
+  bulkDeleteTransactions(body.ids);
+  res.json({ success: true });
 });
 
 router.post("/bulk/restore", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(bulkRestoreSchema, req.body, res);
-    if (!body) return;
-    const data = bulkRestoreTransactions(body.ids);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(bulkRestoreSchema, req.body);
+
+  const data = bulkRestoreTransactions(body.ids);
+  res.json({ success: true, data });
 });
 
 router.post("/check-duplicates", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(duplicateCheckSchema, req.body, res);
-    if (!body) return;
-    const data = checkDuplicates(body.transactions);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(duplicateCheckSchema, req.body);
+
+  const data = checkDuplicates(body.transactions);
+  res.json({ success: true, data });
 });
 
 router.post("/check-transfer", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(transferCheckSchema, req.body, res);
-    if (!body) return;
-    const data = checkTransferMatch(
-      body.amount,
-      body.account_id ?? (body.accountId as string),
-      body.date,
-    );
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(transferCheckSchema, req.body);
+
+  const data = checkTransferMatch(
+    body.amount,
+    body.account_id ?? (body.accountId as string),
+    body.date,
+  );
+  res.json({ success: true, data });
 });
 
 router.post("/suspect-scan", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(suspectScanSchema, req.body, res);
-    if (!body) return;
-    const data = runSuspectTransactionScan(body);
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(suspectScanSchema, req.body);
+
+  const data = runSuspectTransactionScan(body);
+  res.status(201).json({ success: true, data });
 });
 
 router.get("/suspect-findings", (req: Request, res: Response) => {
-  try {
-    const filters = parseRequest(suspectFindingFiltersSchema, req.query, res);
-    if (!filters) return;
-    const data = getSuspectTransactionFindings(filters);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const filters = parseRequest(suspectFindingFiltersSchema, req.query);
+
+  const data = getSuspectTransactionFindings(filters);
+  res.json({ success: true, data });
 });
 
 router.put("/suspect-findings/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    const body = parseRequest(suspectFindingStatusSchema, req.body, res);
-    if (!params || !body) return;
-    const data = updateSuspectTransactionFindingStatus(params.id, body.status);
-    if (!data) {
-      res
-        .status(404)
-        .json({ success: false, error: "Suspect finding not found" });
-      return;
-    }
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+  const body = parseRequest(suspectFindingStatusSchema, req.body);
+
+  const data = updateSuspectTransactionFindingStatus(params.id, body.status);
+  if (!data) throw new NotFoundError("Suspect finding not found");
+  res.json({ success: true, data });
 });
 
 router.get("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    const data = getTransactionById(params.id);
-    if (!data) {
-      res.status(404).json({ success: false, error: "Transaction not found" });
-      return;
-    }
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  const data = getTransactionById(params.id);
+  if (!data) throw new NotFoundError("Transaction not found");
+  res.json({ success: true, data });
 });
 
 router.post("/", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(createTransactionSchema, req.body, res);
-    if (!body) return;
-    const data = createTransaction(body);
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(createTransactionSchema, req.body);
+
+  const data = createTransaction(body);
+  res.status(201).json({ success: true, data });
 });
 
 router.put("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    const body = parseRequest(updateTransactionSchema, req.body, res);
-    if (!params || !body) return;
-    const data = updateTransaction(params.id, body);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+  const body = parseRequest(updateTransactionSchema, req.body);
+
+  const data = updateTransaction(params.id, body);
+  res.json({ success: true, data });
 });
 
 router.post("/:id/restore", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    const data = restoreTransaction(params.id);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  const data = restoreTransaction(params.id);
+  res.json({ success: true, data });
 });
 
 router.delete("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    deleteTransaction(params.id);
-    res.json({ success: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  deleteTransaction(params.id);
+  res.json({ success: true });
 });
 
 export const transactionRouter = router;

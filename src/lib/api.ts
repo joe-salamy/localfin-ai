@@ -1,3 +1,5 @@
+import { z } from "zod";
+import type { ApiResponse } from "@shared/contracts";
 import {
   API_BASE_PATH,
   INVALID_SERVER_RESPONSE_MESSAGE,
@@ -5,30 +7,23 @@ import {
   SSE_ACCEPT_HEADER,
 } from "@/config/constants";
 
-interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
+function responseRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
-function isApiResponse<T>(value: unknown): value is ApiResponse<T> {
-  return typeof value === "object" && value !== null && "success" in value;
-}
 
-function fallbackErrorMessage(status: number): string {
-  if (status >= 500) {
-    return SERVER_UNREACHABLE_MESSAGE;
-  }
-
-  return `LocalFin server request failed with status ${status}.`;
+function invalidServerResponse(): Error {
+  return new Error(INVALID_SERVER_RESPONSE_MESSAGE);
 }
 
 export async function api<T>(
   path: string,
   options?: RequestInit,
+  dataSchema?: z.ZodType<T>,
 ): Promise<ApiResponse<T>> {
   let res: Response;
-
   try {
     res = await fetch(`${API_BASE_PATH}${path}`, {
       headers: { "Content-Type": "application/json", ...options?.headers },
@@ -39,50 +34,64 @@ export async function api<T>(
   }
 
   const text = await res.text();
-  let json: unknown = null;
-
-  if (text) {
-    try {
-      json = JSON.parse(text);
-    } catch {
-      const message = res.ok
-        ? INVALID_SERVER_RESPONSE_MESSAGE
-        : fallbackErrorMessage(res.status);
-      throw new Error(message);
-    }
+  let parsed: unknown;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    throw invalidServerResponse();
   }
 
-  if (!isApiResponse<T>(json)) {
-    if (!res.ok) {
-      throw new Error(fallbackErrorMessage(res.status));
-    }
-    throw new Error(INVALID_SERVER_RESPONSE_MESSAGE);
+  const record = responseRecord(parsed);
+  if (!record || typeof record.success !== "boolean") {
+    throw invalidServerResponse();
   }
 
-  if (!res.ok || !json.success) {
-    throw new Error(json.error || fallbackErrorMessage(res.status));
+  if (!res.ok || !record.success) {
+    if (typeof record.error !== "string") throw invalidServerResponse();
+    throw new Error(record.error);
   }
 
-  return json;
+  if (dataSchema) {
+    const result = dataSchema.safeParse(record.data);
+    if (!result.success) throw invalidServerResponse();
+    return { success: true, data: result.data };
+  }
+
+  return parsed as ApiResponse<T>;
 }
 
-// Convenience methods
-export const apiGet = <T>(path: string) => api<T>(path);
-export const apiPost = <T>(path: string, body: unknown) =>
-  api<T>(path, { method: "POST", body: JSON.stringify(body) });
-export const apiPut = <T>(path: string, body: unknown) =>
-  api<T>(path, { method: "PUT", body: JSON.stringify(body) });
-export const apiDelete = <T>(path: string, body?: unknown) =>
-  api<T>(path, {
-    method: "DELETE",
-    body: body ? JSON.stringify(body) : undefined,
-  });
+export const apiGet = <T>(path: string, dataSchema?: z.ZodType<T>) =>
+  api<T>(path, undefined, dataSchema);
+export const apiPost = <T>(
+  path: string,
+  body: unknown,
+  dataSchema?: z.ZodType<T>,
+) => api<T>(path, { method: "POST", body: JSON.stringify(body) }, dataSchema);
+export const apiPut = <T>(
+  path: string,
+  body: unknown,
+  dataSchema?: z.ZodType<T>,
+) => api<T>(path, { method: "PUT", body: JSON.stringify(body) }, dataSchema);
+export const apiDelete = <T>(
+  path: string,
+  body?: unknown,
+  dataSchema?: z.ZodType<T>,
+) =>
+  api<T>(
+    path,
+    {
+      method: "DELETE",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    dataSchema,
+  );
 
 export async function apiStream<TEvent>(
   path: string,
   body: unknown,
   onEvent: (event: TEvent) => void,
   signal?: AbortSignal,
+  eventSchema?: z.ZodType<TEvent>,
 ): Promise<void> {
   const res = await fetch(`${API_BASE_PATH}${path}`, {
     method: "POST",
@@ -93,43 +102,51 @@ export async function apiStream<TEvent>(
 
   if (!res.ok) {
     const text = await res.text();
-    let message = text || `Request failed with status ${res.status}`;
-    if (text) {
-      try {
-        const json = JSON.parse(text) as { error?: unknown };
-        if (typeof json.error === "string") {
-          message = json.error;
-        }
-      } catch {
-        // Keep the raw response text when the server did not return JSON.
-      }
+    let parsed: unknown;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      throw invalidServerResponse();
     }
-    throw new Error(message);
+    const record = responseRecord(parsed);
+    if (!record || record.success !== false || typeof record.error !== "string") {
+      throw invalidServerResponse();
+    }
+    throw new Error(record.error);
   }
 
-  if (!res.body) {
-    throw new Error("Streaming response body is unavailable.");
-  }
+  if (!res.body) throw invalidServerResponse();
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
 
-  const processBlock = (block: string) => {
+  const processBlock = (block: string): void => {
     const data = block
       .split(/\r?\n/)
       .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trimStart())
       .join("\n");
-
     if (!data) return;
-    onEvent(JSON.parse(data) as TEvent);
+
+    let event: unknown;
+    try {
+      event = JSON.parse(data);
+    } catch {
+      throw invalidServerResponse();
+    }
+    if (eventSchema) {
+      const result = eventSchema.safeParse(event);
+      if (!result.success) throw invalidServerResponse();
+      onEvent(result.data);
+      return;
+    }
+    onEvent(event as TEvent);
   };
 
   while (true) {
     const { done, value } = await reader.read();
     buffer += decoder.decode(value, { stream: !done });
-
     let boundary = buffer.search(/\r?\n\r?\n/);
     while (boundary !== -1) {
       const block = buffer.slice(0, boundary);
@@ -139,11 +156,8 @@ export async function apiStream<TEvent>(
       processBlock(block);
       boundary = buffer.search(/\r?\n\r?\n/);
     }
-
     if (done) break;
   }
 
-  if (buffer.trim()) {
-    processBlock(buffer);
-  }
+  if (buffer.trim()) processBlock(buffer);
 }

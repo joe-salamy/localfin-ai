@@ -12,20 +12,15 @@ const parseStatementSchema = z.object({
 });
 
 router.post("/parse-statement", async (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(parseStatementSchema, req.body, res);
-    if (!body) return;
+  const body = parseRequest(parseStatementSchema, req.body);
 
-    const data = await parseStatement(
-      body.text,
-      body.accountId,
-      body.conversationId,
-    );
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(500).json({ success: false, error: message });
-  }
+
+  const data = await parseStatement(
+    body.text,
+    body.accountId,
+    body.conversationId,
+  );
+  res.json({ success: true, data });
 });
 
 export const parserRouter = router;

@@ -1,4 +1,5 @@
 import { ENV_KEYS, PROVIDER_CONFIG } from "../../config/app.js";
+import { UpstreamServiceError } from "../../errors.js";
 
 export interface AkoyaRuntimeConfig {
   clientId: string;
@@ -111,18 +112,37 @@ async function readResponseText(response: Response): Promise<string> {
   return response.text();
 }
 
+async function requestAkoya(
+  input: string | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    throw new UpstreamServiceError("Akoya request failed", { cause: error });
+  }
+}
+
 async function parseJsonResponse<T>(
   providerAction: string,
   response: Response,
 ): Promise<T> {
-  if (response.ok) {
-    return response.json() as Promise<T>;
-  }
+  try {
+    if (!response.ok) {
+      const body = await readResponseText(response);
+      throw new Error(
+        `Akoya ${providerAction} failed status ${response.status}: ${redactProviderText(body)}`,
+      );
+    }
 
-  const body = await readResponseText(response);
-  throw new Error(
-    `Akoya ${providerAction} failed status ${response.status}: ${redactProviderText(body)}`,
-  );
+    const data = (await response.json()) as unknown;
+    if (typeof data !== "object" || data === null) {
+      throw new Error(`Akoya ${providerAction} returned an empty or malformed response`);
+    }
+    return data as T;
+  } catch (error) {
+    throw new UpstreamServiceError("Akoya request failed", { cause: error });
+  }
 }
 
 function createBasicAuthHeader(clientId: string, clientSecret: string): string {
@@ -139,7 +159,7 @@ export async function exchangeCodeForTokens(
     code: input.code,
   });
 
-  const response = await fetch(`${config.authBaseUrl}/token`, {
+  const response = await requestAkoya(`${config.authBaseUrl}/token`, {
     method: "POST",
     headers: {
       Authorization: createBasicAuthHeader(
@@ -167,7 +187,7 @@ export async function refreshTokens(
     client_secret: config.clientSecret,
   });
 
-  const response = await fetch(`${config.authBaseUrl}/token`, {
+  const response = await requestAkoya(`${config.authBaseUrl}/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -181,7 +201,7 @@ export async function getBalances(
   const config = getAkoyaRuntimeConfig();
   const providerId = encodeURIComponent(input.providerId ?? config.providerId);
   const apiVersion = encodeURIComponent(config.apiVersion);
-  const response = await fetch(
+  const response = await requestAkoya(
     `${config.apiBaseUrl}/balances/${apiVersion}/${providerId}?mode=standard`,
     {
       headers: { Authorization: `Bearer ${input.idToken}` },
@@ -204,7 +224,7 @@ export async function getTransactions(
     limit: String(input.limit ?? 500),
     offset: String(input.offset ?? 0),
   });
-  const response = await fetch(
+  const response = await requestAkoya(
     `${config.apiBaseUrl}/transactions/${apiVersion}/${providerId}/${accountId}?${params.toString()}`,
     {
       headers: { Authorization: `Bearer ${input.idToken}` },
@@ -222,7 +242,7 @@ export async function revokeToken(input: RevokeTokenInput): Promise<void> {
     token_type_hint: "refresh_token",
   });
 
-  const response = await fetch(`${config.authBaseUrl}/revoke`, {
+  const response = await requestAkoya(`${config.authBaseUrl}/revoke`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -233,7 +253,9 @@ export async function revokeToken(input: RevokeTokenInput): Promise<void> {
   }
 
   const responseBody = await readResponseText(response);
-  throw new Error(
-    `Akoya token revocation failed status ${response.status}: ${redactProviderText(responseBody)}`,
-  );
+  throw new UpstreamServiceError("Akoya request failed", {
+    cause: new Error(
+      `Akoya token revocation failed status ${response.status}: ${redactProviderText(responseBody)}`,
+    ),
+  });
 }

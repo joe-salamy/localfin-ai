@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
-import type { Tag, TagType } from "../../src/types/index.js";
+import type { Tag, TagType } from "../../shared/contracts/index.js"
 import { getDb } from "../db/index.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../errors.js";
 
 interface TagRow {
   id: string;
@@ -41,7 +42,7 @@ function rowToTag(row: TagRow): Tag {
 function requireNormalizedName(name: string): string {
   const normalized = normalizeTagName(name);
   if (!normalized) {
-    throw new Error("Tag name is required");
+    throw new BadRequestError("Tag name is required")
   }
   return normalized;
 }
@@ -90,9 +91,7 @@ function checkTagUniqueness(
         .get(name, type);
 
   if (existing) {
-    throw new Error(
-      `A tag with the name "${name}" and type "${type}" already exists`,
-    );
+    throw new ConflictError(`A tag with the name "${name}" and type "${type}" already exists`)
   }
 }
 
@@ -146,7 +145,7 @@ export function updateTag(
     .get(id) as TagRow | undefined;
 
   if (!existing) {
-    throw new Error(`Tag with id "${id}" not found`);
+    throw new NotFoundError(`Tag with id "${id}" not found`)
   }
 
   const name =
@@ -179,7 +178,7 @@ export function deleteTag(id: string): void {
     .run(now, now, id);
 
   if (result.changes === 0) {
-    throw new Error(`Tag with id "${id}" not found`);
+    throw new NotFoundError(`Tag with id "${id}" not found`)
   }
 }
 
@@ -191,7 +190,7 @@ export function restoreTag(id: string): Tag {
     | TagRow
     | undefined;
   if (!existing || existing.deleted_at === null) {
-    throw new Error(`Tag with id "${id}" not found`);
+    throw new NotFoundError(`Tag with id "${id}" not found`)
   }
 
   checkTagUniqueness(existing.name, existing.type as TagType, id);
@@ -220,7 +219,7 @@ export function assertActiveTags(tagIds: string[]): string[] {
   );
   for (const id of uniqueIds) {
     if (!stmt.get(id)) {
-      throw new Error(`Tag with id "${id}" not found`);
+      throw new NotFoundError(`Tag with id "${id}" not found`)
     }
   }
 

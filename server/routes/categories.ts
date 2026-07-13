@@ -65,136 +65,81 @@ const categoryIdParamSchema = z.object({ categoryId: nonEmptyString });
 // --- Category routes ---
 
 categoryRouter.get("/", (_req: Request, res: Response) => {
-  try {
-    const data = getCategories();
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const data = getCategories();
+  res.json({ success: true, data });
 });
 
 categoryRouter.post("/", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(createCategorySchema, req.body, res);
-    if (!body) return;
-    const data = createCategory(body);
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(createCategorySchema, req.body);
+
+  const data = createCategory(body);
+  res.status(201).json({ success: true, data });
 });
 
 categoryRouter.put("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    const body = parseRequest(updateCategorySchema, req.body, res);
-    if (!params || !body) return;
-    const data = updateCategory(params.id, body);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+  const body = parseRequest(updateCategorySchema, req.body);
+
+  const data = updateCategory(params.id, body);
+  res.json({ success: true, data });
 });
 
 categoryRouter.post("/:id/restore", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    const data = restoreCategory(params.id);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  const data = restoreCategory(params.id);
+  res.json({ success: true, data });
 });
 
 categoryRouter.delete("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    deleteCategory(params.id);
-    res.json({ success: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  deleteCategory(params.id);
+  res.json({ success: true });
 });
 
 // --- Subcategory routes ---
 
 subcategoryRouter.get("/", (_req: Request, res: Response) => {
-  try {
-    const data = getSubcategories();
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const data = getSubcategories();
+  res.json({ success: true, data });
 });
 
 subcategoryRouter.get(
   "/by-category/:categoryId",
   (req: Request, res: Response) => {
-    try {
-      const params = parseRequest(categoryIdParamSchema, req.params, res);
-      if (!params) return;
-      const data = getSubcategoriesByCategory(params.categoryId);
-      res.json({ success: true, data });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      res.status(400).json({ success: false, error: message });
-    }
+    const params = parseRequest(categoryIdParamSchema, req.params);
+
+    const data = getSubcategoriesByCategory(params.categoryId);
+    res.json({ success: true, data });
   },
 );
 
 subcategoryRouter.post("/", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(createSubcategorySchema, req.body, res);
-    if (!body) return;
-    const data = createSubcategory(body);
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(createSubcategorySchema, req.body);
+
+  const data = createSubcategory(body);
+  res.status(201).json({ success: true, data });
 });
 
 subcategoryRouter.put("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    const body = parseRequest(updateSubcategorySchema, req.body, res);
-    if (!params || !body) return;
-    const data = updateSubcategory(params.id, body);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+  const body = parseRequest(updateSubcategorySchema, req.body);
+
+  const data = updateSubcategory(params.id, body);
+  res.json({ success: true, data });
 });
 
 subcategoryRouter.post("/:id/restore", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    const data = restoreSubcategory(params.id);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  const data = restoreSubcategory(params.id);
+  res.json({ success: true, data });
 });
 
 subcategoryRouter.delete("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    deleteSubcategory(params.id);
-    res.json({ success: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  deleteSubcategory(params.id);
+  res.json({ success: true });
 });

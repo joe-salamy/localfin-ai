@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Check, ChevronDown, Plus, X } from "lucide-react";
-import type { CreateTagData, Tag } from "@/types";
+import type { CreateTagData, Tag } from "@shared/contracts"
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { resolveEntityColor } from "@/lib/colors";

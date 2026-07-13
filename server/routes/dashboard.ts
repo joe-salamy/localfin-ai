@@ -45,87 +45,57 @@ const transactionReportQuerySchema = z
   );
 
 router.get("/account-summary", (req: Request, res: Response) => {
-  try {
-    const query = parseRequest(dateRangeQuerySchema, req.query, res);
-    if (!query) return;
-    const data = getAccountSummary(query.startDate, query.endDate);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const query = parseRequest(dateRangeQuerySchema, req.query);
+
+  const data = getAccountSummary(query.startDate, query.endDate);
+  res.json({ success: true, data });
 });
 
 router.get("/category-summary", (req: Request, res: Response) => {
-  try {
-    const query = parseRequest(transactionReportQuerySchema, req.query, res);
-    if (!query) return;
-    const data = getCategorySummary(
-      query.startDate,
-      query.endDate,
-      query.tagIds,
-    );
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const query = parseRequest(transactionReportQuerySchema, req.query);
+
+  const data = getCategorySummary(
+    query.startDate,
+    query.endDate,
+    query.tagIds,
+  );
+  res.json({ success: true, data });
 });
 
 router.get("/metrics", (req: Request, res: Response) => {
-  try {
-    const query = parseRequest(transactionReportQuerySchema, req.query, res);
-    if (!query) return;
-    const data = getDashboardMetrics(
-      query.startDate,
-      query.endDate,
-      query.tagIds,
-    );
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const query = parseRequest(transactionReportQuerySchema, req.query);
+
+  const data = getDashboardMetrics(
+    query.startDate,
+    query.endDate,
+    query.tagIds,
+  );
+  res.json({ success: true, data });
 });
 
 router.get("/charts/net-worth", (req: Request, res: Response) => {
-  try {
-    const query = parseRequest(dateRangeQuerySchema, req.query, res);
-    if (!query) return;
-    const data = prepareNetWorthData(query.startDate, query.endDate);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const query = parseRequest(dateRangeQuerySchema, req.query);
+
+  const data = prepareNetWorthData(query.startDate, query.endDate);
+  res.json({ success: true, data });
 });
 
 router.get("/charts/sankey", (req: Request, res: Response) => {
-  try {
-    const query = parseRequest(transactionReportQuerySchema, req.query, res);
-    if (!query) return;
-    const data = prepareSankeyData(
-      query.startDate,
-      query.endDate,
-      query.tagIds,
-    );
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const query = parseRequest(transactionReportQuerySchema, req.query);
+
+  const data = prepareSankeyData(
+    query.startDate,
+    query.endDate,
+    query.tagIds,
+  );
+  res.json({ success: true, data });
 });
 
 router.get("/tag-summary", (req: Request, res: Response) => {
-  try {
-    const query = parseRequest(transactionReportQuerySchema, req.query, res);
-    if (!query) return;
-    const data = getTagSummary(query.startDate, query.endDate, query.tagIds);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const query = parseRequest(transactionReportQuerySchema, req.query);
+
+  const data = getTagSummary(query.startDate, query.endDate, query.tagIds);
+  res.json({ success: true, data });
 });
 
 export const dashboardRouter = router;

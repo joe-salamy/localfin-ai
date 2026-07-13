@@ -1,9 +1,7 @@
 import { useState } from "react";
 import type { CSSProperties, HTMLAttributes } from "react";
-import type {
-  AccountSummary as AccountSummaryType,
-  NetWorthSummary,
-} from "@/types";
+import type { AccountSummary as AccountSummaryType,
+NetWorthSummary, } from "@shared/contracts"
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { EntityLabel } from "@/components/ui/EntityLabel";

@@ -11,6 +11,46 @@ import { aiRouter } from "./routes/ai.js";
 import { parserRouter } from "./routes/parser.js";
 import { accountLinkingRouter } from "./routes/account-linking.js";
 import { API_ROUTES, ENV_KEYS, SERVER_CONFIG } from "./config/app.js";
+import { ForbiddenError, OperationalError } from "./errors.js";
+
+function hasExpressBodyErrorType(
+  error: unknown,
+  type: "entity.parse.failed" | "entity.too.large",
+): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "type" in error &&
+    error.type === type
+  );
+}
+
+export const errorHandler: ErrorRequestHandler = (error, req, res, next) => {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+
+  if (error instanceof OperationalError) {
+    res
+      .status(error.statusCode)
+      .json({ success: false, error: error.message });
+    return;
+  }
+
+  if (hasExpressBodyErrorType(error, "entity.parse.failed")) {
+    res.status(400).json({ success: false, error: "Invalid JSON body" });
+    return;
+  }
+
+  if (hasExpressBodyErrorType(error, "entity.too.large")) {
+    res.status(413).json({ success: false, error: "Request body too large" });
+    return;
+  }
+
+  console.error(`Unhandled ${req.method} ${req.path}`, error);
+  res.status(500).json({ success: false, error: "Internal server error" });
+};
 
 export function createApp(): express.Express {
   const app = express();
@@ -28,7 +68,7 @@ export function createApp(): express.Express {
           callback(null, true);
           return;
         }
-        callback(new Error("Origin not allowed by CORS"));
+        callback(new ForbiddenError("Origin not allowed by CORS"));
       },
     }),
   );
@@ -49,15 +89,9 @@ export function createApp(): express.Express {
   app.use(API_ROUTES.parser, parserRouter);
   app.use(API_ROUTES.accountLinking, accountLinkingRouter);
 
-  const errorHandler: ErrorRequestHandler = (error, _req, res, next) => {
-    void next;
-    const message =
-      error instanceof Error ? error.message : "Internal server error";
-    res
-      .status(message === "Origin not allowed by CORS" ? 403 : 500)
-      .json({ success: false, error: message });
-  };
-
+  app.use((_req, res) => {
+    res.status(404).json({ success: false, error: "Route not found" });
+  });
   app.use(errorHandler);
   return app;
 }

@@ -54,7 +54,7 @@ async function startTestServer() {
   return { baseUrl: `http://127.0.0.1:${address.port}`, server };
 }
 
-test("GET account-linking connections returns an empty success envelope", async (t) => {
+void test("GET account-linking connections returns an empty success envelope", async (t) => {
   await useTempDatabase(t);
   const { baseUrl, server } = await startTestServer();
   t.after(() => {
@@ -69,7 +69,7 @@ test("GET account-linking connections returns an empty success envelope", async 
   assert.deepEqual(body.data, []);
 });
 
-test("POST Plaid link-token validates target institution before provider env lookup", async (t) => {
+void test("POST Plaid link-token validates target institution before provider env lookup", async (t) => {
   await useTempDatabase(t);
   const { baseUrl, server } = await startTestServer();
   t.after(() => {

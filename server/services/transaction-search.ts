@@ -1,4 +1,6 @@
-export class TransactionSearchSyntaxError extends Error {
+import { BadRequestError } from "../errors.js";
+
+export class TransactionSearchSyntaxError extends BadRequestError {
   constructor(message: string) {
     super(`Invalid transaction search: ${message}`);
     this.name = "TransactionSearchSyntaxError";

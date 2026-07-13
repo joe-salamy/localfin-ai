@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import type { AccountType } from "../../src/types/index.js";
-import { inferTransactionKindForAccount } from "../../src/lib/transactionAmounts.js";
+import type { AccountType } from "../../shared/contracts/index.js"
+import { inferTransactionKindForAccount } from "../../shared/finance/transactionAmounts.js"
 
 export interface PlaidTransaction {
   transaction_id?: string | null;

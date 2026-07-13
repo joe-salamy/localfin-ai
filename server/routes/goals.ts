@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { NotFoundError } from "../errors.js";
 import {
   createSpendingGoal,
   getSpendingGoalsWithDetails,
@@ -47,81 +48,46 @@ const progressQuerySchema = z.object({
 });
 
 router.get("/", (_req: Request, res: Response) => {
-  try {
-    const data = getSpendingGoalsWithDetails();
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const data = getSpendingGoalsWithDetails();
+  res.json({ success: true, data });
 });
 
 router.get("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    const data = getSpendingGoalById(params.id);
-    if (!data) {
-      res
-        .status(404)
-        .json({ success: false, error: "Spending goal not found" });
-      return;
-    }
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  const data = getSpendingGoalById(params.id);
+  if (!data) throw new NotFoundError("Spending goal not found");
+  res.json({ success: true, data });
 });
 
 router.get("/:id/progress", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    const query = parseRequest(progressQuerySchema, req.query, res);
-    if (!params || !query) return;
-    const data = getSpendingProgress(params.id, query.referenceDate);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+  const query = parseRequest(progressQuerySchema, req.query);
+
+  const data = getSpendingProgress(params.id, query.referenceDate);
+  res.json({ success: true, data });
 });
 
 router.post("/", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(createGoalSchema, req.body, res);
-    if (!body) return;
-    const data = createSpendingGoal(body);
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(createGoalSchema, req.body);
+
+  const data = createSpendingGoal(body);
+  res.status(201).json({ success: true, data });
 });
 
 router.put("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    const body = parseRequest(updateGoalSchema, req.body, res);
-    if (!params || !body) return;
-    const data = updateSpendingGoal(params.id, body);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+  const body = parseRequest(updateGoalSchema, req.body);
+
+  const data = updateSpendingGoal(params.id, body);
+  res.json({ success: true, data });
 });
 
 router.delete("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    deleteSpendingGoal(params.id);
-    res.json({ success: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  deleteSpendingGoal(params.id);
+  res.json({ success: true });
 });
 
 export const goalRouter = router;

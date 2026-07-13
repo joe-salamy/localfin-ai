@@ -1,5 +1,5 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+
+import { expect, test } from "vitest"
 import type { UndoableAction } from "./UndoRedoContext";
 import {
   emptyUndoRedoHistory,
@@ -25,19 +25,13 @@ test("successful execute pushes an undo action and clears redo history", () => {
   const historyAfterUndo = moveUndoActionToRedo(
     pushUndoAction(emptyUndoRedoHistory(), first),
   );
-  assert.deepEqual(
-    historyAfterUndo.redoStack.map((item) => item.id),
-    ["first"],
-  );
+  expect(historyAfterUndo.redoStack.map((item) => item.id)).toEqual(["first"]);
 
   const historyAfterNewExecute = pushUndoAction(historyAfterUndo, second);
 
-  assert.equal(peekUndoAction(historyAfterNewExecute), second);
-  assert.deepEqual(
-    historyAfterNewExecute.undoStack.map((item) => item.id),
-    ["second"],
-  );
-  assert.deepEqual(historyAfterNewExecute.redoStack, []);
+  expect(peekUndoAction(historyAfterNewExecute)).toBe(second);
+  expect(historyAfterNewExecute.undoStack.map((item) => item.id)).toEqual(["second"]);
+  expect(historyAfterNewExecute.redoStack).toEqual([]);
 });
 
 test("undo moves only the most recent action to the redo stack", () => {
@@ -50,21 +44,12 @@ test("undo moves only the most recent action to the redo stack", () => {
 
   const undone = moveUndoActionToRedo(history);
 
-  assert.deepEqual(
-    undone.undoStack.map((item) => item.id),
-    ["first"],
-  );
-  assert.deepEqual(
-    undone.redoStack.map((item) => item.id),
-    ["second"],
-  );
-  assert.equal(peekUndoAction(undone), first);
-  assert.equal(peekRedoAction(undone), second);
-  assert.deepEqual(
-    history.undoStack.map((item) => item.id),
-    ["first", "second"],
-  );
-  assert.deepEqual(history.redoStack, []);
+  expect(undone.undoStack.map((item) => item.id)).toEqual(["first"]);
+  expect(undone.redoStack.map((item) => item.id)).toEqual(["second"]);
+  expect(peekUndoAction(undone)).toBe(first);
+  expect(peekRedoAction(undone)).toBe(second);
+  expect(history.undoStack.map((item) => item.id)).toEqual(["first", "second"]);
+  expect(history.redoStack).toEqual([]);
 });
 
 test("redo moves the most recent redo action back to undo history", () => {
@@ -75,23 +60,14 @@ test("redo moves the most recent redo action back to undo history", () => {
       pushUndoAction(pushUndoAction(emptyUndoRedoHistory(), first), second),
     ),
   );
-  assert.deepEqual(
-    history.redoStack.map((item) => item.id),
-    ["second", "first"],
-  );
+  expect(history.redoStack.map((item) => item.id)).toEqual(["second", "first"]);
 
   const redone = moveRedoActionToUndo(history);
 
-  assert.deepEqual(
-    redone.undoStack.map((item) => item.id),
-    ["first"],
-  );
-  assert.deepEqual(
-    redone.redoStack.map((item) => item.id),
-    ["second"],
-  );
-  assert.equal(peekUndoAction(redone), first);
-  assert.equal(peekRedoAction(redone), second);
+  expect(redone.undoStack.map((item) => item.id)).toEqual(["first"]);
+  expect(redone.redoStack.map((item) => item.id)).toEqual(["second"]);
+  expect(peekUndoAction(redone)).toBe(first);
+  expect(peekRedoAction(redone)).toBe(second);
 });
 
 test("failed execute, undo, and redo attempts leave stacks unchanged", async () => {
@@ -104,33 +80,15 @@ test("failed execute, undo, and redo attempts leave stacks unchanged", async () 
     throw new Error("operation failed");
   };
 
-  await assert.rejects(rejecting, /operation failed/);
-  assert.deepEqual(
-    withUndoAndRedo.undoStack.map((item) => item.id),
-    ["first"],
-  );
-  assert.deepEqual(
-    withUndoAndRedo.redoStack.map((item) => item.id),
-    ["second"],
-  );
+  await expect(rejecting).rejects.toThrow(/operation failed/);
+  expect(withUndoAndRedo.undoStack.map((item) => item.id)).toEqual(["first"]);
+  expect(withUndoAndRedo.redoStack.map((item) => item.id)).toEqual(["second"]);
 
-  await assert.rejects(rejecting, /operation failed/);
-  assert.deepEqual(
-    withUndoAndRedo.undoStack.map((item) => item.id),
-    ["first"],
-  );
-  assert.deepEqual(
-    withUndoAndRedo.redoStack.map((item) => item.id),
-    ["second"],
-  );
+  await expect(rejecting).rejects.toThrow(/operation failed/);
+  expect(withUndoAndRedo.undoStack.map((item) => item.id)).toEqual(["first"]);
+  expect(withUndoAndRedo.redoStack.map((item) => item.id)).toEqual(["second"]);
 
-  await assert.rejects(rejecting, /operation failed/);
-  assert.deepEqual(
-    withUndoAndRedo.undoStack.map((item) => item.id),
-    ["first"],
-  );
-  assert.deepEqual(
-    withUndoAndRedo.redoStack.map((item) => item.id),
-    ["second"],
-  );
+  await expect(rejecting).rejects.toThrow(/operation failed/);
+  expect(withUndoAndRedo.undoStack.map((item) => item.id)).toEqual(["first"]);
+  expect(withUndoAndRedo.redoStack.map((item) => item.id)).toEqual(["second"]);
 });

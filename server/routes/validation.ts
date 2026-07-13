@@ -1,5 +1,5 @@
-import type { Response } from "express";
 import { z } from "zod";
+import { BadRequestError } from "../errors.js";
 
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -21,14 +21,11 @@ export const idParamSchema = z.object({ id: nonEmptyString });
 export function parseRequest<T>(
   schema: z.ZodType<T>,
   value: unknown,
-  res: Response,
-): T | null {
+): T {
   const result = schema.safeParse(value);
   if (result.success) return result.data;
 
-  res.status(400).json({
-    success: false,
-    error: result.error.issues.map((issue) => issue.message).join("; "),
-  });
-  return null;
+  throw new BadRequestError(
+    result.error.issues.map((issue) => issue.message).join("; "),
+  );
 }

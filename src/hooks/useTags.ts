@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
-import type { CreateTagData, Tag } from "@/types/index";
+import { invalidateFinanceQueries } from "@/lib/queryInvalidation";
+import type { CreateTagData, Tag } from "@shared/contracts"
 
 export function useTags() {
   const queryClient = useQueryClient();
@@ -13,12 +14,7 @@ export function useTags() {
     staleTime: Infinity,
   });
 
-  const invalidateRelated = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.tags.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
-    ]);
+  const invalidateRelated = () => invalidateFinanceQueries(queryClient, "tags");
 
   const createTag = useMutation({
     mutationFn: (data: CreateTagData) => apiPost<Tag>("/tags", data),

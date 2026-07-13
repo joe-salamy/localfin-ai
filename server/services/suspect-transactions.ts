@@ -1,16 +1,14 @@
 import crypto from "node:crypto";
-import type {
-  RunSuspectScanRequest,
-  RunSuspectScanResponse,
-  SuspectEvidence,
-  SuspectFindingFilters,
-  SuspectFindingStatus,
-  SuspectReasonCode,
-  SuspectSeverity,
-  SuspectTransactionFinding,
-  TransactionFilters,
-  TransactionWithDetails,
-} from "../../src/types/index.js";
+import type { RunSuspectScanRequest,
+RunSuspectScanResponse,
+SuspectEvidence,
+SuspectFindingFilters,
+SuspectFindingStatus,
+SuspectReasonCode,
+SuspectSeverity,
+SuspectTransactionFinding,
+TransactionFilters,
+TransactionWithDetails, } from "../../shared/contracts/index.js"
 import { getDb } from "../db/index.js";
 import {
   getTransactionsWithDetails,

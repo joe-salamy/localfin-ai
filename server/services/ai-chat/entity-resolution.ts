@@ -1,10 +1,8 @@
-import type {
-  Account,
-  Category,
-  SpendingGoalWithDetails,
-  Subcategory,
-  Tag,
-} from "../../../src/types/index.js";
+import type { Account,
+Category,
+SpendingGoalWithDetails,
+Subcategory,
+Tag, } from "../../../shared/contracts/index.js"
 import { asString, hasAnyField, optionalTagType } from "./input-validators.js";
 
 export function findByName<T extends { name: string }>(

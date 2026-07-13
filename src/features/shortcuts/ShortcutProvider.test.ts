@@ -1,15 +1,12 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+
+import { expect, test } from "vitest"
 import { shouldSkipShortcutDispatch } from "./dispatch";
 
 test("default-prevented shortcut events are not dispatched", () => {
-  assert.equal(
-    shouldSkipShortcutDispatch(
-      { defaultPrevented: true, target: null },
-      { key: "Ctrl+Z" },
-    ),
-    true,
-  );
+  expect(shouldSkipShortcutDispatch(
+    { defaultPrevented: true, target: null },
+    { key: "Ctrl+Z" },
+  )).toBe(true);
 });
 
 test("native control keys are skipped on interactive targets without suppressing modified undo keys", () => {
@@ -31,20 +28,14 @@ test("native control keys are skipped on interactive targets without suppressing
   const target = new FakeElement();
 
   try {
-    assert.equal(
-      shouldSkipShortcutDispatch(
-        { defaultPrevented: false, target },
-        { key: "Delete" },
-      ),
-      true,
-    );
-    assert.equal(
-      shouldSkipShortcutDispatch(
-        { defaultPrevented: false, target },
-        { key: "Ctrl+Z" },
-      ),
-      false,
-    );
+    expect(shouldSkipShortcutDispatch(
+      { defaultPrevented: false, target },
+      { key: "Delete" },
+    )).toBe(true);
+    expect(shouldSkipShortcutDispatch(
+      { defaultPrevented: false, target },
+      { key: "Ctrl+Z" },
+    )).toBe(false);
   } finally {
     if (originalElementDescriptor) {
       Object.defineProperty(globalThis, "Element", originalElementDescriptor);

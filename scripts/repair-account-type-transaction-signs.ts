@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
-import { normalizeTransactionAmount } from "../src/lib/transactionAmounts.js";
-import type { AccountType, TransactionKind } from "../src/types/index.js";
+import { normalizeTransactionAmount } from "../shared/finance/transactionAmounts.js"
+import type { AccountType, TransactionKind } from "../shared/contracts/index.js"
 
 interface RepairCandidateRow {
   id: string;

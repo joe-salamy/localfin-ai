@@ -59,7 +59,7 @@ export const ENV_KEYS = {
 export const DATABASE_CONFIG = {
   dataDirectory: path.resolve(process.cwd(), "data"),
   fileName: "budget.db",
-  schemaFileName: "schema.sql",
+  baselineSchemaFileName: "baseline.sql",
 } as const;
 
 export const PROVIDER_CONFIG = {

@@ -1,7 +1,4 @@
-/// <reference types="node" />
-
-import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, expect, test } from "vitest"
 import { shouldHandleFieldEditDoubleClick } from "./fieldEditDoubleClick";
 
 afterEach(() => {
@@ -35,19 +32,13 @@ function installFakeElement() {
 test("plain non-interactive targets are handled", () => {
   installFakeElement();
 
-  assert.equal(
-    shouldHandleFieldEditDoubleClick({
-      target: new FakeElement() as unknown as EventTarget,
-    }),
-    true,
-  );
+  expect(shouldHandleFieldEditDoubleClick({
+    target: new FakeElement() as unknown as EventTarget,
+  })).toBe(true);
 });
 
 test("defaultPrevented events are ignored", () => {
-  assert.equal(
-    shouldHandleFieldEditDoubleClick({ defaultPrevented: true, target: null }),
-    false,
-  );
+  expect(shouldHandleFieldEditDoubleClick({ defaultPrevented: true, target: null })).toBe(false);
 });
 
 test("nested ignored targets are ignored", () => {
@@ -66,21 +57,14 @@ test("nested ignored targets are ignored", () => {
   ];
 
   for (const ignoredSelector of ignoredSelectors) {
-    assert.equal(
-      shouldHandleFieldEditDoubleClick({
-        target: new FakeElement(ignoredSelector) as unknown as EventTarget,
-      }),
-      false,
-      ignoredSelector,
-    );
+    expect(shouldHandleFieldEditDoubleClick({
+      target: new FakeElement(ignoredSelector) as unknown as EventTarget,
+    }), ignoredSelector).toBe(false);
   }
 });
 
 test("plain object targets are handled without global Element", () => {
   Reflect.deleteProperty(globalThis, "Element");
 
-  assert.equal(
-    shouldHandleFieldEditDoubleClick({ target: {} as EventTarget }),
-    true,
-  );
+  expect(shouldHandleFieldEditDoubleClick({ target: {} as EventTarget })).toBe(true);
 });

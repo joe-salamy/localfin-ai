@@ -1,4 +1,4 @@
-import type { AccountType, TransactionKind } from "../types";
+import type { AccountType, TransactionKind } from "../contracts/index.js";
 
 function roundCurrencyAmount(amount: number): number {
   return Math.round(amount * 100) / 100;

@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-// @ts-expect-error TS5097: node --import tsx executes this required .ts test import directly.
 import {
   outputPathFor,
   parseLogText,
@@ -11,7 +10,7 @@ import {
   renderLogHtmlFile,
 } from "./render-log-html.ts";
 
-test("outputPathFor writes html logs under logs/html", () => {
+void test("outputPathFor writes html logs under logs/html", () => {
   assert.equal(
     outputPathFor("C:/tmp/log.json"),
     path.resolve("logs", "html", "log.html"),
@@ -22,7 +21,7 @@ test("outputPathFor writes html logs under logs/html", () => {
   );
 });
 
-test("JSON Lines render Markdown and semantic prompt sections", () => {
+void test("JSON Lines render Markdown and semantic prompt sections", () => {
   const event = {
     timestamp: "2026-06-27T00:00:00.000Z",
     status: "success",
@@ -68,7 +67,7 @@ test("JSON Lines render Markdown and semantic prompt sections", () => {
   assert.match(html, /create_transaction/);
 });
 
-test("system prompt headings consume their section content", () => {
+void test("system prompt headings consume their section content", () => {
   const event = {
     request: {
       messages: [
@@ -99,7 +98,7 @@ test("system prompt headings consume their section content", () => {
   assert.match(html, /<h4>Rules \/ constraints<\/h4>.*Use today&#x27;s date/s);
 });
 
-test("user prompt omits null and empty context metadata", () => {
+void test("user prompt omits null and empty context metadata", () => {
   const event = {
     request: {
       messages: [
@@ -128,7 +127,7 @@ test("user prompt omits null and empty context metadata", () => {
   assert.doesNotMatch(html, /<pre>{}<\/pre>/);
 });
 
-test("JSON messages shape parses one event per message object", () => {
+void test("JSON messages shape parses one event per message object", () => {
   const events = parseLogText(
     JSON.stringify({ messages: [{ id: 1 }, { id: 2 }] }),
     "log.json",
@@ -137,7 +136,7 @@ test("JSON messages shape parses one event per message object", () => {
   assert.deepEqual(events, [{ id: 1 }, { id: 2 }]);
 });
 
-test("invalid JSON Lines error reports the failing line", () => {
+void test("invalid JSON Lines error reports the failing line", () => {
   assert.throws(
     () => parseLogText('{"ok":true}\n{"broken"', "log.jsonl"),
     (error: unknown) => {
@@ -148,7 +147,7 @@ test("invalid JSON Lines error reports the failing line", () => {
   );
 });
 
-test("renderLogHtmlFile writes html under logs/html", async (t) => {
+void test("renderLogHtmlFile writes html under logs/html", async (t) => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-log-viewer-"));
   const inputPath = path.join(tempDir, `${path.basename(tempDir)}.jsonl`);
   const outputPath = outputPathFor(inputPath);

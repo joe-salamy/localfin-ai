@@ -1,16 +1,13 @@
-/// <reference types="node" />
-
-import assert from "node:assert/strict";
-import { test } from "node:test";
+import { expect, test } from "vitest"
 import { parsePastedDate } from "./transactionCellParsing";
 import { formatDateInput } from "./utils";
 
 test("formatDateInput formats eight typed digits as MM/DD/YYYY", () => {
-  assert.equal(formatDateInput("01012026"), "01/01/2026");
+  expect(formatDateInput("01012026")).toBe("01/01/2026");
 });
 
 test("formatDateInput normalizes single-digit month and day only when YYYY is present", () => {
-  assert.equal(formatDateInput("1/2/2026"), "01/02/2026");
+  expect(formatDateInput("1/2/2026")).toBe("01/02/2026");
 });
 
 test("formatDateInput keeps partial YYYY input usable while typing", () => {
@@ -25,33 +22,33 @@ test("formatDateInput keeps partial YYYY input usable while typing", () => {
   ];
 
   for (const { value, expected } of typedDigits) {
-    assert.equal(formatDateInput(value), expected, value);
+    expect(formatDateInput(value), value).toBe(expected);
   }
 });
 
 test("formatDateInput does not expand slash-delimited two-digit years", () => {
-  assert.equal(formatDateInput("1/2/26"), "1/2/26");
+  expect(formatDateInput("1/2/26")).toBe("1/2/26");
 });
 
 test("parsePastedDate accepts display dates with four-digit years", () => {
-  assert.deepEqual(parsePastedDate("1/2/2026"), {
+  expect(parsePastedDate("1/2/2026")).toEqual({
     displayDate: "01/02/2026",
     isoDate: "2026-01-02",
   });
 });
 
 test("parsePastedDate accepts ISO dates", () => {
-  assert.deepEqual(parsePastedDate("2026-01-02"), {
+  expect(parsePastedDate("2026-01-02")).toEqual({
     displayDate: "01/02/2026",
     isoDate: "2026-01-02",
   });
 });
 
 test("parsePastedDate rejects display dates with two-digit years", () => {
-  assert.equal(parsePastedDate("1/2/26"), null);
+  expect(parsePastedDate("1/2/26")).toBe(null);
 });
 
 test("parsePastedDate rejects invalid calendar dates", () => {
-  assert.equal(parsePastedDate("02/29/2025"), null);
-  assert.equal(parsePastedDate("2026-02-30"), null);
+  expect(parsePastedDate("02/29/2025")).toBe(null);
+  expect(parsePastedDate("2026-02-30")).toBe(null);
 });

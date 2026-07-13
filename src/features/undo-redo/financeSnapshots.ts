@@ -1,4 +1,4 @@
-import type { TransactionWithDetails, UpdateTransactionData } from "@/types";
+import type { TransactionWithDetails, UpdateTransactionData } from "@shared/contracts"
 
 export function transactionSnapshotToUpdate(
   transaction: TransactionWithDetails,

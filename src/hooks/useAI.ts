@@ -3,12 +3,33 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiDelete, apiGet, apiPost, apiStream } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
+import { invalidateFinanceQueries } from "@/lib/queryInvalidation";
 import { readAssistantSettings } from "@/features/assistant-settings/storage";
-import type {
-  AccountType,
-  EnrichedTransaction,
-  TransactionKind,
-} from "@/types";
+import {
+  agentConversationSchema,
+  agentMessageSchema,
+  categorizeResultSchema,
+  chatResultSchema,
+  chatStreamEventSchema,
+  parseStatementResultSchema,
+  type AccountType,
+  type AgentConversation,
+  type AgentMessage,
+  type CategorizeResult,
+  type ChatRequest,
+  type ChatResult,
+  type ChatStreamEvent,
+  type ParseStatementResult,
+} from "@shared/contracts";
+export type {
+  AgentConversation,
+  AgentMessage,
+  ChatActionResult,
+  ChatRequest,
+  ChatResult,
+  ChatStreamEvent,
+  PlannedChatAction,
+} from "@shared/contracts";
 
 interface CategorizeTransaction {
   name: string;
@@ -19,95 +40,12 @@ interface CategorizeTransaction {
   date?: string;
 }
 
-interface CategorizeResult {
-  transaction_name: string;
-  kind: TransactionKind;
-  subcategory_id: string | null;
-  subcategory_name: string | null;
-  category_name: string | null;
-  source: "lookup" | "transfer" | "ai" | "none";
-}
 
 interface ParseStatementRequest {
   text: string;
   accountId: string;
 }
 
-interface ParseStatementResult {
-  transactions: EnrichedTransaction[];
-  summary: {
-    total: number;
-    duplicates: number;
-    fromLookup: number;
-    fromAI: number;
-    uncategorized: number;
-    needsReview: number;
-  };
-  format: string | null;
-  parseSuccessRate: number;
-  errors: string[];
-}
-
-export interface ChatRequest {
-  conversationId: string;
-  message: string;
-  currentPage?: string;
-  maxAssistantTurns?: number;
-}
-
-export interface ChatActionResult {
-  type: string;
-  input: Record<string, unknown>;
-  status: "success" | "error";
-  result?: unknown;
-  error?: string;
-}
-
-export interface ChatResult {
-  conversationId: string;
-  requestId: string;
-  message: string;
-  actions: ChatActionResult[];
-  logFile: string;
-}
-
-export interface AgentConversation {
-  id: string;
-  title: string;
-  current_page: string | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
-}
-
-export interface AgentMessage {
-  id: string;
-  conversation_id: string;
-  role: "user" | "assistant";
-  content: string;
-  request_id: string | null;
-  actions: ChatActionResult[] | null;
-  log_file: string | null;
-  status: "success" | "partial" | "error";
-  created_at: string;
-}
-
-export type PlannedChatAction = Omit<
-  ChatActionResult,
-  "status" | "result" | "error"
->;
-
-export type ChatStreamEvent =
-  | { type: "started"; conversationId: string; requestId: string }
-  | { type: "thinking"; message: string }
-  | { type: "reasoning_delta"; message: string }
-  | { type: "reasoning_details"; details: Record<string, unknown>[] }
-  | { type: "response_delta"; content: string }
-  | { type: "actions_planned"; actions: PlannedChatAction[] }
-  | { type: "action_started"; index: number; action: PlannedChatAction }
-  | { type: "action_finished"; index: number; action: ChatActionResult }
-  | { type: "final"; data: ChatResult }
-  | { type: "error"; message: string };
 
 export function useAI() {
   const queryClient = useQueryClient();
@@ -122,17 +60,7 @@ export function useAI() {
   );
 
   const invalidateFinanceData = useCallback(
-    () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.subcategories.all,
-        }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.tags.all }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
-      ]),
+    () => invalidateFinanceQueries(queryClient, "all"),
     [queryClient],
   );
 
@@ -140,17 +68,30 @@ export function useAI() {
     mutationFn: (data: {
       transactions: CategorizeTransaction[];
       conversationId: string;
-    }) => apiPost<CategorizeResult[]>("/ai/categorize", data),
+    }) =>
+      apiPost<CategorizeResult[]>(
+        "/ai/categorize",
+        data,
+        categorizeResultSchema.array(),
+      ),
   });
 
   const parseStatement = useMutation({
     mutationFn: (data: ParseStatementRequest) =>
-      apiPost<ParseStatementResult>("/parser/parse-statement", data),
+      apiPost<ParseStatementResult>(
+        "/parser/parse-statement",
+        data,
+        parseStatementResultSchema,
+      ),
   });
 
   const chat = useMutation({
     mutationFn: (data: ChatRequest) =>
-      apiPost<ChatResult>("/ai/chat", withAssistantSettings(data)),
+      apiPost<ChatResult>(
+        "/ai/chat",
+        withAssistantSettings(data),
+        chatResultSchema,
+      ),
     onSuccess: () =>
       Promise.all([
         invalidateFinanceData(),
@@ -162,13 +103,21 @@ export function useAI() {
 
   const conversations = useQuery({
     queryKey: queryKeys.ai.conversations(),
-    queryFn: () => apiGet<AgentConversation[]>("/ai/conversations"),
+    queryFn: () =>
+      apiGet<AgentConversation[]>(
+        "/ai/conversations",
+        agentConversationSchema.array(),
+      ),
     select: (response) => response.data ?? [],
   });
 
   const createConversation = useMutation({
     mutationFn: (data: { currentPage?: string }) =>
-      apiPost<AgentConversation>("/ai/conversations", data),
+      apiPost<AgentConversation>(
+        "/ai/conversations",
+        data,
+        agentConversationSchema,
+      ),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.ai.conversations() }),
   });
@@ -199,6 +148,7 @@ export function useAI() {
         queryFn: async () => {
           const response = await apiGet<AgentMessage[]>(
             `/ai/conversations/${conversationId}/messages`,
+            agentMessageSchema.array(),
           );
           return response.data ?? [];
         },
@@ -237,6 +187,7 @@ export function useAI() {
           }
         },
         signal,
+        chatStreamEventSchema,
       );
     },
     [invalidateFinanceData, queryClient, withAssistantSettings],

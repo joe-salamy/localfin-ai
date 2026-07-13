@@ -1,13 +1,11 @@
 import { useState, useMemo, useCallback, useRef } from "react";
-import type {
-  BulkTransactionUpdateData,
-  CreateTagData,
-  Tag,
-  TransactionFilters,
-  TransactionKind,
-  TransactionWithDetails,
-  UpdateTransactionData,
-} from "@/types";
+import type { BulkTransactionUpdateData,
+CreateTagData,
+Tag,
+TransactionFilters,
+TransactionKind,
+TransactionWithDetails,
+UpdateTransactionData, } from "@shared/contracts"
 import { format, subDays } from "date-fns";
 import { toast } from "sonner";
 import {

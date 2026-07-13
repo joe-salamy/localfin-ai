@@ -1,8 +1,8 @@
 import { getDb } from "../db/index.js";
 import { callOpenRouter } from "../ai/openrouter.js";
 import { AI_CONFIG, AI_MODELS } from "../config/app.js";
-import type { AccountType, TransactionKind } from "../../src/types/index.js";
-import { inferTransactionKindForAccount } from "../../src/lib/transactionAmounts.js";
+import type { AccountType, TransactionKind } from "../../shared/contracts/index.js"
+import { inferTransactionKindForAccount } from "../../shared/finance/transactionAmounts.js"
 
 interface CategorizeRequest {
   transactions: {

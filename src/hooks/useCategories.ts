@@ -1,12 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
-import type {
-  Category,
-  Subcategory,
-  CreateCategoryData,
-  CreateSubcategoryData,
-} from "@/types/index";
+import { invalidateFinanceQueries } from "@/lib/queryInvalidation";
+import type { Category,
+Subcategory,
+CreateCategoryData,
+CreateSubcategoryData, } from "@shared/contracts"
 
 export function useCategories() {
   const queryClient = useQueryClient();
@@ -26,11 +25,7 @@ export function useCategories() {
   });
 
   const invalidateRelated = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.subcategories.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
-    ]);
+    invalidateFinanceQueries(queryClient, "categories");
 
   const createCategory = useMutation({
     mutationFn: (data: CreateCategoryData) =>

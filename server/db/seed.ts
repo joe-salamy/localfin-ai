@@ -2,13 +2,13 @@ import type Database from "better-sqlite3";
 
 export function seed(db: Database.Database): void {
   const insertCategory = db.prepare(
-    `INSERT OR IGNORE INTO categories (id, name, type, is_system, created_at)
-     VALUES (?, ?, ?, 1, datetime('now'))`,
+    `INSERT OR IGNORE INTO categories (id, name, type, is_system, created_at, updated_at)
+     VALUES (?, ?, ?, 1, datetime('now'), datetime('now'))`,
   );
 
   const insertSubcategory = db.prepare(
-    `INSERT OR IGNORE INTO subcategories (id, category_id, name, is_system, created_at)
-     VALUES (?, ?, ?, 1, datetime('now'))`,
+    `INSERT OR IGNORE INTO subcategories (id, category_id, name, is_system, created_at, updated_at)
+     VALUES (?, ?, ?, 1, datetime('now'), datetime('now'))`,
   );
 
   db.transaction(() => {

@@ -101,7 +101,7 @@ function deletedAtFor(
   return row.deleted_at;
 }
 
-test("tag migration preserves transaction_tags foreign key after transaction rebuild", async (t) => {
+void test("tag migration preserves transaction_tags foreign key after transaction rebuild", async (t) => {
   const dbPath = await useTempDatabase(t, "localfin-tag-migration-test-");
   const legacyDb = new Database(dbPath);
   legacyDb.exec(`
@@ -153,7 +153,7 @@ test("tag migration preserves transaction_tags foreign key after transaction reb
   );
 });
 
-test("create transaction normalizes signs by account type and kind", async (t) => {
+void test("create transaction normalizes signs by account type and kind", async (t) => {
   await useTempDatabase(t);
   const { assetAccountId, liabilityAccountId, subcategoryId } =
     createSubcategoryFixture();
@@ -195,7 +195,7 @@ test("create transaction normalizes signs by account type and kind", async (t) =
   assert.equal(liabilityIncome.amount, -7);
 });
 
-test("transaction updates normalize signs by account type and kind", async (t) => {
+void test("transaction updates normalize signs by account type and kind", async (t) => {
   await useTempDatabase(t);
   const { assetAccountId, liabilityAccountId, subcategoryId } =
     createSubcategoryFixture();
@@ -243,7 +243,7 @@ test("transaction updates normalize signs by account type and kind", async (t) =
   assert.equal(bulkUpdated?.amount, -45);
 });
 
-test("transfer and adjustment transactions remain uncategorized", async (t) => {
+void test("transfer and adjustment transactions remain uncategorized", async (t) => {
   await useTempDatabase(t);
   const { assetAccountId, subcategoryId } = createSubcategoryFixture();
 
@@ -270,7 +270,7 @@ test("transfer and adjustment transactions remain uncategorized", async (t) => {
   assert.equal(adjustment.subcategory_id, null);
 });
 
-test("updating a categorized transaction to transfer or adjustment clears its subcategory", async (t) => {
+void test("updating a categorized transaction to transfer or adjustment clears its subcategory", async (t) => {
   await useTempDatabase(t);
   const { assetAccountId, subcategoryId } = createSubcategoryFixture();
   const transferTarget = createTransaction({
@@ -306,7 +306,7 @@ test("updating a categorized transaction to transfer or adjustment clears its su
   assert.equal(adjustment?.subcategory_id, null);
 });
 
-test("transaction search treats SQL and LIKE metacharacters as literal parameters", async (t) => {
+void test("transaction search treats SQL and LIKE metacharacters as literal parameters", async (t) => {
   await useTempDatabase(t);
   const { assetAccountId } = createSubcategoryFixture();
   const percentTag = createTag({ name: "100%", type: "custom" });
@@ -347,7 +347,7 @@ test("transaction search treats SQL and LIKE metacharacters as literal parameter
   );
 });
 
-test("transaction tags create, read, replace, filter, search, and delete cleanly", async (t) => {
+void test("transaction tags create, read, replace, filter, search, and delete cleanly", async (t) => {
   await useTempDatabase(t);
   const { assetAccountId, subcategoryId } = createSubcategoryFixture();
   const cabo = createTag({ name: "Cabo Trip", type: "trip" });
@@ -403,7 +403,7 @@ test("transaction tags create, read, replace, filter, search, and delete cleanly
   assert.deepEqual(getTransactionById(tagged.id)?.tags, []);
 });
 
-test("bulk tag edits add and remove without replacing unrelated tags", async (t) => {
+void test("bulk tag edits add and remove without replacing unrelated tags", async (t) => {
   await useTempDatabase(t);
   const { assetAccountId, subcategoryId } = createSubcategoryFixture();
   const cabo = createTag({ name: "Cabo Trip", type: "trip" });
@@ -444,7 +444,7 @@ test("bulk tag edits add and remove without replacing unrelated tags", async (t)
   assert.deepEqual(secondTags, ["Cabo Trip", "Other Tag"]);
 });
 
-test("tag summary reports spend, income, net, and category breakdown", async (t) => {
+void test("tag summary reports spend, income, net, and category breakdown", async (t) => {
   await useTempDatabase(t);
   const account = createAccount({ name: "Checking", type: "asset" });
   const expenseCategory = createCategory({ name: "Travel", type: "expense" });
@@ -512,7 +512,7 @@ test("tag summary reports spend, income, net, and category breakdown", async (t)
   );
 });
 
-test("database migration allows adjustment kind and absorbs legacy initial balance transactions", async (t) => {
+void test("database migration allows adjustment kind and absorbs legacy initial balance transactions", async (t) => {
   const dbPath = await useTempDatabase(t, "localfin-migration-test-");
   const legacyDb = new Database(dbPath);
   legacyDb.exec(`
@@ -630,7 +630,7 @@ test("database migration allows adjustment kind and absorbs legacy initial balan
   assert.equal(initialBalanceRows.count, 0);
 });
 
-test("suspect transaction scan persists explainable duplicate, flagged, and missing category findings", async (t) => {
+void test("suspect transaction scan persists explainable duplicate, flagged, and missing category findings", async (t) => {
   await useTempDatabase(t, "localfin-suspect-scan-test-");
   const { assetAccountId, subcategoryId } = createSubcategoryFixture();
 
@@ -683,7 +683,7 @@ test("suspect transaction scan persists explainable duplicate, flagged, and miss
   assert.ok(openFindings.every((finding) => finding.transaction));
 });
 
-test("suspect transaction scan detects robust amount outliers and ignores soft-deleted transactions", async (t) => {
+void test("suspect transaction scan detects robust amount outliers and ignores soft-deleted transactions", async (t) => {
   await useTempDatabase(t, "localfin-suspect-outlier-test-");
   const { assetAccountId, subcategoryId } = createSubcategoryFixture();
 
@@ -730,7 +730,7 @@ test("suspect transaction scan detects robust amount outliers and ignores soft-d
   );
 });
 
-test("suspect finding status updates persist", async (t) => {
+void test("suspect finding status updates persist", async (t) => {
   await useTempDatabase(t, "localfin-suspect-status-test-");
   const { assetAccountId } = createSubcategoryFixture();
   createTransaction({
@@ -757,7 +757,7 @@ test("suspect finding status updates persist", async (t) => {
   );
 });
 
-test("suspect scan carries dismissed findings forward on later scans", async (t) => {
+void test("suspect scan carries dismissed findings forward on later scans", async (t) => {
   await useTempDatabase(t, "localfin-suspect-status-rerun-test-");
   const { assetAccountId } = createSubcategoryFixture();
   createTransaction({
@@ -784,7 +784,7 @@ test("suspect scan carries dismissed findings forward on later scans", async (t)
   assert.equal(getSuspectTransactionFindings({ status: "open" }).length, 0);
 });
 
-test("transaction restore preserves ids, tag associations, and bulk request order", async (t) => {
+void test("transaction restore preserves ids, tag associations, and bulk request order", async (t) => {
   await useTempDatabase(t, "localfin-transaction-restore-test-");
   const { assetAccountId, subcategoryId } = createSubcategoryFixture();
   const project = createTag({ name: "Restore Project" });
@@ -853,7 +853,7 @@ test("transaction restore preserves ids, tag associations, and bulk request orde
   );
 });
 
-test("entity restores preserve ids and retained tag associations", async (t) => {
+void test("entity restores preserve ids and retained tag associations", async (t) => {
   await useTempDatabase(t, "localfin-entity-restore-test-");
 
   const account = createAccount({ name: "Restorable Account", type: "asset" });
@@ -910,7 +910,7 @@ test("entity restores preserve ids and retained tag associations", async (t) => 
   );
 });
 
-test("same-key restore conflicts leave deleted rows deleted", async (t) => {
+void test("same-key restore conflicts leave deleted rows deleted", async (t) => {
   await useTempDatabase(t, "localfin-restore-conflict-test-");
 
   const deletedAccount = createAccount({

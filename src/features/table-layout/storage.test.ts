@@ -1,7 +1,4 @@
-/// <reference types="node" />
-
-import assert from "node:assert/strict";
-import { afterEach, beforeEach, test } from "node:test";
+import { afterEach, beforeEach, expect, test } from "vitest"
 import {
   resetAllTableColumnWidths,
   readAllTableColumnWidths,
@@ -61,8 +58,8 @@ test("invalid JSON falls back to defaults", () => {
 
   const result = readAllTableColumnWidths();
 
-  assert.equal(result.version, 1);
-  assert.deepEqual(result.tables, {});
+  expect(result.version).toBe(1);
+  expect(result.tables).toEqual({});
 });
 
 test("unavailable storage operations fall back without throwing", () => {
@@ -71,9 +68,9 @@ test("unavailable storage operations fall back without throwing", () => {
     value: new ThrowingStorage(),
   });
 
-  assert.deepEqual(readAllTableColumnWidths().tables, {});
-  assert.doesNotThrow(() => writeTableColumnWidths("manual", { name: 176 }));
-  assert.doesNotThrow(() => resetAllTableColumnWidths());
+  expect(readAllTableColumnWidths().tables).toEqual({});
+  expect(() => writeTableColumnWidths("manual", { name: 176 })).not.toThrow();
+  expect(() => resetAllTableColumnWidths()).not.toThrow();
 });
 
 test("resets all persisted widths and notifies subscribers", () => {
@@ -87,13 +84,13 @@ test("resets all persisted widths and notifies subscribers", () => {
 
   resetAllTableColumnWidths();
 
-  assert.deepEqual(readAllTableColumnWidths().tables, {});
-  assert.equal(storage.getItem(STORAGE_KEY), null);
-  assert.equal(resetCount, 1);
+  expect(readAllTableColumnWidths().tables).toEqual({});
+  expect(storage.getItem(STORAGE_KEY)).toBe(null);
+  expect(resetCount).toBe(1);
 
   unsubscribe();
   resetAllTableColumnWidths();
-  assert.equal(resetCount, 1);
+  expect(resetCount).toBe(1);
 });
 
 test("reset falls back to an empty width payload when removeItem is unavailable", () => {
@@ -117,16 +114,16 @@ test("reset falls back to an empty width payload when removeItem is unavailable"
   const payload = JSON.parse(
     storageWithoutRemoveItem.getItem(STORAGE_KEY) ?? "",
   );
-  assert.deepEqual(payload.tables, {});
-  assert.equal(payload.version, 1);
+  expect(payload.tables).toEqual({});
+  expect(payload.version).toBe(1);
 });
 
 test("persists widths per table without overwriting siblings", () => {
   writeTableColumnWidths("first", { name: 180, amount: 96 });
   writeTableColumnWidths("second", { date: 112 });
 
-  assert.deepEqual(readTableColumnWidths("first"), { name: 180, amount: 96 });
-  assert.deepEqual(readTableColumnWidths("second"), { date: 112 });
+  expect(readTableColumnWidths("first")).toEqual({ name: 180, amount: 96 });
+  expect(readTableColumnWidths("second")).toEqual({ date: 112 });
 });
 
 test("sanitizes non-finite writes before persistence", () => {
@@ -136,7 +133,7 @@ test("sanitizes non-finite writes before persistence", () => {
     infinite: Infinity,
   });
 
-  assert.deepEqual(readTableColumnWidths("manual"), { name: 176 });
+  expect(readTableColumnWidths("manual")).toEqual({ name: 176 });
 });
 
 test("sanitizes non-finite and undersized widths", () => {
@@ -156,5 +153,5 @@ test("sanitizes non-finite and undersized widths", () => {
     }),
   );
 
-  assert.deepEqual(readTableColumnWidths("manual"), { name: 176 });
+  expect(readTableColumnWidths("manual")).toEqual({ name: 176 });
 });

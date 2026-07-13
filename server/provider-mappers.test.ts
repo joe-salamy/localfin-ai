@@ -8,7 +8,7 @@ import {
   mapPlaidTransactionToLocal,
 } from "./services/provider-mappers.js";
 
-test("maps Plaid asset debit to LocalFin expense", () => {
+void test("maps Plaid asset debit to LocalFin expense", () => {
   const draft = mapPlaidTransactionToLocal({
     accountType: "asset",
     transaction: {
@@ -24,7 +24,7 @@ test("maps Plaid asset debit to LocalFin expense", () => {
   assert.equal(draft.kind, "expense");
 });
 
-test("maps Plaid asset credit to LocalFin income", () => {
+void test("maps Plaid asset credit to LocalFin income", () => {
   const draft = mapPlaidTransactionToLocal({
     accountType: "asset",
     transaction: {
@@ -40,7 +40,7 @@ test("maps Plaid asset credit to LocalFin income", () => {
   assert.equal(draft.kind, "income");
 });
 
-test("maps Plaid liability charge to LocalFin expense", () => {
+void test("maps Plaid liability charge to LocalFin expense", () => {
   const draft = mapPlaidTransactionToLocal({
     accountType: "liability",
     transaction: {
@@ -56,7 +56,7 @@ test("maps Plaid liability charge to LocalFin expense", () => {
   assert.equal(draft.kind, "expense");
 });
 
-test("maps Plaid liability payment to LocalFin income", () => {
+void test("maps Plaid liability payment to LocalFin income", () => {
   const draft = mapPlaidTransactionToLocal({
     accountType: "liability",
     transaction: {
@@ -72,7 +72,7 @@ test("maps Plaid liability payment to LocalFin income", () => {
   assert.equal(draft.kind, "income");
 });
 
-test("maps Akoya missing transaction ID to deterministic SHA-256 fallback", () => {
+void test("maps Akoya missing transaction ID to deterministic SHA-256 fallback", () => {
   const transaction = {
     postedTimestamp: "2026-06-05T12:30:00.000Z",
     description: "Dividend",
@@ -98,7 +98,7 @@ test("maps Akoya missing transaction ID to deterministic SHA-256 fallback", () =
   assert.equal(second.provider_transaction_id, expected);
 });
 
-test("maps provider account types to LocalFin account types", () => {
+void test("maps provider account types to LocalFin account types", () => {
   assert.equal(mapPlaidAccountTypeToLocal("credit"), "liability");
   assert.equal(mapPlaidAccountTypeToLocal("depository"), "asset");
   assert.equal(mapAkoyaAccountTypeToLocal("investment"), "asset");

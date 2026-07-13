@@ -1,4 +1,8 @@
-import type { AccountType, CategoryType, TransactionKind } from "../types";
+import type {
+  AccountType,
+  CategoryType,
+  TransactionKind,
+} from "../../shared/contracts/index.js";
 
 export function accountChangeScaleValue(
   amount: number,

@@ -1,24 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, KeyboardEvent, PointerEvent } from "react";
-import type {
-  CreateTagData,
-  SuspectTransactionFinding,
-  TransactionKind,
-  TransactionWithDetails,
-  Subcategory,
-  Tag,
-  UpdateTransactionData,
-} from "@/types";
+import type { CreateTagData,
+SuspectTransactionFinding,
+TransactionKind,
+TransactionWithDetails,
+Subcategory,
+Tag,
+UpdateTransactionData, } from "@shared/contracts"
 import { format, parseISO } from "date-fns";
-import {
-  Pencil,
-  Trash2,
-  Check,
-  X,
-  ArrowUp,
-  ArrowDown,
-  AlertTriangle,
-} from "lucide-react";
+import { Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
 import { TagChip, TagPicker } from "@/components/features/TagPicker";
@@ -31,16 +21,14 @@ import {
   formatSubcategoryLabel,
   formatNullableSubcategoryLabel,
 } from "@/lib/categoryLabels";
-import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import {
   useAmountGradient,
   useSuccessToast,
 } from "@/features/display-settings/hooks";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
-import type { Category } from "@/types";
+import type { Category } from "@shared/contracts"
 import { useResizableColumns } from "@/features/table-layout/useResizableColumns";
-import type { ResizableColumnDef } from "@/features/table-layout/useResizableColumns";
 import {
   expandRangesToCells,
   formatClipboardMatrix,
@@ -60,6 +48,7 @@ import type {
 import {
   isNativeEditableTarget,
 } from "@/features/spreadsheet-selection/domTargets";
+import { useSpreadsheetSelection } from "@/features/spreadsheet-selection/useSpreadsheetSelection";
 import {
   historyTransactionCellFields,
   kindHasSubcategory,
@@ -76,6 +65,10 @@ import {
 } from "@/lib/financialColorScale";
 import { handleEnterSave } from "@/lib/enterSave";
 import { shouldHandleFieldEditDoubleClick } from "@/lib/fieldEditDoubleClick";
+import { SortIcon } from "@/features/transaction-history/TransactionHistoryHeader";
+import { transactionHistoryColumns } from "@/features/transaction-history/transactionHistoryColumns";
+import { TransactionEditRow } from "@/features/transaction-history/TransactionEditRow";
+import { TransactionHistoryRow } from "@/features/transaction-history/TransactionHistoryRow";
 
 interface TransactionTableProps {
   transactions: TransactionWithDetails[];
@@ -114,52 +107,6 @@ interface EditState {
   tag_ids: string[];
 }
 
-function SortIcon({
-  column,
-  sortColumn,
-  sortDirection,
-}: {
-  column: string;
-  sortColumn: string;
-  sortDirection: "asc" | "desc";
-}) {
-  if (column !== sortColumn) return null;
-  return sortDirection === "asc" ? (
-    <ArrowUp className="inline h-3 w-3 ml-0.5" />
-  ) : (
-    <ArrowDown className="inline h-3 w-3 ml-0.5" />
-  );
-}
-
-const transactionHistoryColumns = [
-  { id: "select", label: "", defaultWidth: 48 },
-  { id: "date", label: "Date", defaultWidth: 128, sortable: true },
-  { id: "account", label: "Account", defaultWidth: 160 },
-  { id: "name", label: "Name", defaultWidth: 220, sortable: true },
-  {
-    id: "amount",
-    label: "Amount",
-    defaultWidth: 112,
-    sortable: true,
-    align: "right",
-  },
-  {
-    id: "balance",
-    label: "Balance",
-    defaultWidth: 112,
-    sortable: true,
-    align: "right",
-  },
-  { id: "category", label: "Category", defaultWidth: 160 },
-  { id: "kind", label: "Type", defaultWidth: 112 },
-  { id: "subcategory", label: "Subcategory", defaultWidth: 180 },
-  { id: "tags", label: "Tags", defaultWidth: 200 },
-  { id: "actions", label: "Actions", defaultWidth: 96 },
-] satisfies readonly (ResizableColumnDef & {
-  label: string;
-  sortable?: boolean;
-  align?: "right";
-})[];
 
 export function TransactionTable({
   transactions,
@@ -195,19 +142,35 @@ export function TransactionTable({
     transactions[0]?.id ?? null,
   );
   const [tableFocused, setTableFocused] = useState(false);
-  const [selectedRanges, setSelectedRanges] = useState<CellRange[]>([]);
-  const [anchorCell, setAnchorCell] = useState<CellCoord | null>(null);
-  const [activeCell, setActiveCell] = useState<CellCoord | null>(null);
-  const [copiedRanges, setCopiedRanges] = useState<CellRange[]>([]);
-  const copiedRangeTimeoutRef = useRef<number | null>(null);
-  const [dragSelection, setDragSelection] = useState<{
-    anchor: CellCoord;
-    additive: boolean;
-  } | null>(null);
-  const dragBaseRangesRef = useRef<CellRange[]>([]);
-  const pointerSelectingRef = useRef(false);
-  const programmaticCellFocusRef = useRef(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const {
+    selectedRanges,
+    setSelectedRanges,
+    anchorCell,
+    setAnchorCell,
+    activeCell,
+    setActiveCell,
+    copiedRanges,
+    setCopiedRanges,
+    dragSelection,
+    setDragSelection,
+    pointerSelectingRef,
+    programmaticFocusRef: programmaticCellFocusRef,
+  } = useSpreadsheetSelection({
+    rowCount: transactions.length,
+    columnCount: historyTransactionCellFields.length,
+    containerRef: tableContainerRef,
+    focusCell: (cell) => {
+      tableContainerRef.current
+        ?.querySelector<HTMLElement>(
+          `[data-row-index="${cell.row}"][data-col-index="${cell.col}"]`,
+        )
+        ?.focus();
+    },
+    copiedHighlightMs: 1200,
+  });
+  const copiedRangeTimeoutRef = useRef<number | null>(null);
+  const dragBaseRangesRef = useRef<CellRange[]>([]);
   const {
     columns,
     totalWidth,
@@ -267,7 +230,7 @@ export function TransactionTable({
     }
     copiedRangeTimeoutRef.current = null;
     setCopiedRanges([]);
-  }, []);
+  }, [setCopiedRanges]);
 
   const markCopiedRanges = useCallback(() => {
     clearCopiedRanges();
@@ -278,7 +241,7 @@ export function TransactionTable({
         1200,
       );
     }
-  }, [clearCopiedRanges, selectedRanges]);
+  }, [clearCopiedRanges, selectedRanges, setCopiedRanges]);
 
   useEffect(() => clearCopiedRanges, [clearCopiedRanges]);
 
@@ -594,7 +557,13 @@ export function TransactionTable({
       document.removeEventListener("pointercancel", stopDrag);
       document.body.style.userSelect = previousUserSelect;
     };
-  }, [dragSelection]);
+  }, [
+    dragSelection,
+    pointerSelectingRef,
+    setActiveCell,
+    setDragSelection,
+    setSelectedRanges,
+  ]);
 
   const expandSelectedCells = useCallback(
     (): CellCoord[] =>
@@ -610,7 +579,7 @@ export function TransactionTable({
     setSelectedRanges([rectangleFrom(cell, cell)]);
     setAnchorCell(cell);
     setActiveCell(cell);
-  }, []);
+  }, [setActiveCell, setAnchorCell, setSelectedRanges]);
 
   const toggleHistoryCell = useCallback(
     (cell: CellCoord) => {
@@ -631,7 +600,13 @@ export function TransactionTable({
       setAnchorCell(cell);
       setActiveCell(cell);
     },
-    [expandSelectedCells, selectedRanges],
+    [
+      expandSelectedCells,
+      selectedRanges,
+      setActiveCell,
+      setAnchorCell,
+      setSelectedRanges,
+    ],
   );
 
   const getHistoryCellSelectionHandlers = useCallback(
@@ -673,8 +648,12 @@ export function TransactionTable({
     [
       activeCell,
       anchorCell,
+      pointerSelectingRef,
       selectHistoryCell,
       selectedRanges,
+      setActiveCell,
+      setDragSelection,
+      setSelectedRanges,
       toggleHistoryCell,
     ],
   );
@@ -690,7 +669,14 @@ export function TransactionTable({
         setAnchorCell(cell);
       }
     },
-    [selectedRanges],
+    [
+      pointerSelectingRef,
+      programmaticCellFocusRef,
+      selectedRanges,
+      setActiveCell,
+      setAnchorCell,
+      setSelectedRanges,
+    ],
   );
 
   const focusHistoryGridCell = useCallback(
@@ -710,7 +696,7 @@ export function TransactionTable({
         }
       }
     },
-    [],
+    [programmaticCellFocusRef],
   );
 
   const getHistoryCellClassName = useCallback(
@@ -1232,6 +1218,9 @@ export function TransactionTable({
       editingId,
       expandSelectedCells,
       focusHistoryGridCell,
+      setActiveCell,
+      setAnchorCell,
+      setSelectedRanges,
       transactions.length,
     ],
   );
@@ -1349,7 +1338,7 @@ export function TransactionTable({
                   ? undefined
                   : getGradientStyle(amountScaleValue);
               return (
-                <tr
+                <TransactionHistoryRow
                   key={t.id}
                   ref={(node) => {
                     if (node) {
@@ -1358,7 +1347,10 @@ export function TransactionTable({
                       rowRefs.current.delete(t.id);
                     }
                   }}
-                  tabIndex={0}
+                  selected={selectedIds.has(t.id)}
+                  focused={focusedId === t.id}
+                  flagged={isFlagged}
+                  suspectSeverity={topSuspectSeverity}
                   onFocus={() => setFocusedId(t.id)}
                   title={
                     openSuspectFindings.length > 0
@@ -1370,19 +1362,6 @@ export function TransactionTable({
                         : undefined
                   }
                   onKeyDown={isEditing ? handleEditRowKeyDown : undefined}
-                  className={cn(
-                    "outline-none hover:bg-secondary/30 focus-visible:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring",
-                    selectedIds.has(t.id) && "bg-secondary/20",
-                    focusedId === t.id && "bg-secondary/30",
-                    topSuspectSeverity === "low" &&
-                      "bg-amber-500/10 hover:bg-amber-500/15 focus-visible:bg-amber-500/15",
-                    topSuspectSeverity === "medium" &&
-                      "bg-amber-500/20 hover:bg-amber-500/25 focus-visible:bg-amber-500/25",
-                    topSuspectSeverity === "high" &&
-                      "bg-red-500/25 hover:bg-red-500/30 focus-visible:bg-red-500/30",
-                    isFlagged &&
-                      "bg-red-500/25 hover:bg-red-500/30 focus-visible:bg-red-500/30",
-                  )}
                 >
                   <td className={cellClass}>
                     <input
@@ -1675,26 +1654,11 @@ export function TransactionTable({
                   </td>
                   <td className={cellClass}>
                     {isEditing ? (
-                      <div className="flex gap-1">
-                        <button
-                          onClick={saveEdit}
-                          disabled={saving}
-                          className="p-1 rounded hover:bg-secondary text-green-400"
-                          title="Save"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                          <ShortcutHint commandId="transactionHistory.saveEdit" />
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          disabled={saving}
-                          className="p-1 rounded hover:bg-secondary text-muted-foreground"
-                          title="Cancel"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                          <ShortcutHint commandId="transactionHistory.cancelEdit" />
-                        </button>
-                      </div>
+                      <TransactionEditRow
+                        saving={saving}
+                        onSave={() => void saveEdit()}
+                        onCancel={cancelEdit}
+                      />
                     ) : (
                       <div className="flex gap-1">
                         <button
@@ -1714,7 +1678,7 @@ export function TransactionTable({
                       </div>
                     )}
                   </td>
-                </tr>
+                </TransactionHistoryRow>
               );
             })}
           </tbody>

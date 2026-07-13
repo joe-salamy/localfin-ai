@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CreateTagData, Subcategory, Tag, TransactionKind } from "@/types";
+import type { CreateTagData, Subcategory, Tag, TransactionKind } from "@shared/contracts"
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { SimpleSelect } from "@/components/ui/SimpleSelect";
@@ -11,7 +11,7 @@ import { TagPicker } from "@/components/features/TagPicker";
 import type { TagPickerCreateOptions } from "@/components/features/TagPicker";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
-import type { Category } from "@/types";
+import type { Category } from "@shared/contracts"
 
 interface BulkEditModalProps {
   isOpen: boolean;

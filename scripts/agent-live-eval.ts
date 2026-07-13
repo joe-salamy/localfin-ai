@@ -9,12 +9,10 @@ import type {
   ChatResult,
   ChatStreamEvent,
 } from "../server/services/ai-chat.js";
-import type {
-  Account,
-  CategoryType,
-  GoalPeriod,
-  Subcategory,
-} from "../src/types/index.js";
+import type { Account,
+CategoryType,
+GoalPeriod,
+Subcategory, } from "../shared/contracts/index.js"
 
 dotenv.config();
 
@@ -543,6 +541,7 @@ function assertMatchingTransactionsSubcategory(expected: {
       }
       const mismatches = matches.filter(
         (item) =>
+          item.subcategory_name === null ||
           normalize(item.subcategory_name) !== normalize(expected.subcategory),
       );
       return mismatches.length === 0

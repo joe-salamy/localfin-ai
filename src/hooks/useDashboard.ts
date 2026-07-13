@@ -1,15 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
-import type {
-  AccountSummaryResponse,
-  CategorySummary,
-  DashboardMetrics,
-  NetWorthDataPoint,
-  NetWorthSummary,
-  SankeyData,
-  TagSummary,
-} from "@/types/index";
+import {
+  accountSummaryResponseSchema,
+  categorySummarySchema,
+  dashboardMetricsSchema,
+  netWorthDataPointSchema,
+  sankeyDataSchema,
+  tagSummarySchema,
+  type AccountSummaryResponse,
+  type CategorySummary,
+  type DashboardMetrics,
+  type NetWorthDataPoint,
+  type NetWorthSummary,
+  type SankeyData,
+  type TagSummary,
+} from "@shared/contracts";
 
 const EMPTY_NET_WORTH: NetWorthSummary = {
   total_assets: 0,
@@ -35,7 +41,10 @@ export function useDashboard(
   const accountSummaryQuery = useQuery({
     queryKey: queryKeys.dashboard.accountSummary(startDate, endDate),
     queryFn: () =>
-      apiGet<AccountSummaryResponse>(`/dashboard/account-summary${dateParams}`),
+      apiGet<AccountSummaryResponse>(
+        `/dashboard/account-summary${dateParams}`,
+        accountSummaryResponseSchema,
+      ),
     select: (res) => res.data ?? { accounts: [], netWorth: EMPTY_NET_WORTH },
   });
 
@@ -48,6 +57,7 @@ export function useDashboard(
     queryFn: () =>
       apiGet<CategorySummary[]>(
         `/dashboard/category-summary${transactionReportQuery}`,
+        categorySummarySchema.array(),
       ),
     select: (res) => res.data ?? [],
   });
@@ -59,14 +69,20 @@ export function useDashboard(
       transactionReportFilters,
     ),
     queryFn: () =>
-      apiGet<DashboardMetrics>(`/dashboard/metrics${transactionReportQuery}`),
+      apiGet<DashboardMetrics>(
+        `/dashboard/metrics${transactionReportQuery}`,
+        dashboardMetricsSchema,
+      ),
     select: (res) => res.data,
   });
 
   const netWorthChartQuery = useQuery({
     queryKey: queryKeys.dashboard.netWorthChart(startDate, endDate),
     queryFn: () =>
-      apiGet<NetWorthDataPoint[]>(`/dashboard/charts/net-worth${dateParams}`),
+      apiGet<NetWorthDataPoint[]>(
+        `/dashboard/charts/net-worth${dateParams}`,
+        netWorthDataPointSchema.array(),
+      ),
     select: (res) => res.data ?? [],
   });
 
@@ -77,7 +93,10 @@ export function useDashboard(
       transactionReportFilters,
     ),
     queryFn: () =>
-      apiGet<SankeyData>(`/dashboard/charts/sankey${transactionReportQuery}`),
+      apiGet<SankeyData>(
+        `/dashboard/charts/sankey${transactionReportQuery}`,
+        sankeyDataSchema,
+      ),
     select: (res) => res.data,
   });
 
@@ -88,7 +107,10 @@ export function useDashboard(
       transactionReportFilters,
     ),
     queryFn: () =>
-      apiGet<TagSummary[]>(`/dashboard/tag-summary${transactionReportQuery}`),
+      apiGet<TagSummary[]>(
+        `/dashboard/tag-summary${transactionReportQuery}`,
+        tagSummarySchema.array(),
+      ),
     select: (res) => res.data ?? [],
   });
 

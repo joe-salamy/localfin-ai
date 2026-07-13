@@ -1,5 +1,5 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+
+import { expect, test } from "vitest"
 import {
   normalizeShortcutParts,
   parseShortcut,
@@ -36,28 +36,19 @@ test("shortcut normalization emits exact undo and redo key names", () => {
   ] as const;
 
   for (const { name, parts, expected } of cases) {
-    assert.deepEqual({ key: normalizeShortcutParts(parts) }, expected, name);
+    expect({ key: normalizeShortcutParts(parts) }, name).toEqual(expected);
   }
 });
 
 test("Cmd+Shift+Z parses to the same normalized redo key as keyboard events", () => {
-  assert.deepEqual(parseShortcut("Cmd+Shift+Z"), { key: "Shift+Meta+Z" });
+  expect(parseShortcut("Cmd+Shift+Z")).toEqual({ key: "Shift+Meta+Z" });
 });
 
 test("shortcut binding lists only match when every key matches in order", () => {
-  assert.equal(
-    shortcutBindingsMatch([{ key: "Ctrl+K" }], [{ key: "Ctrl+K" }]),
-    true,
-  );
-  assert.equal(
-    shortcutBindingsMatch([{ key: "Ctrl+K" }], [{ key: "Ctrl+J" }]),
-    false,
-  );
-  assert.equal(
-    shortcutBindingsMatch(
-      [{ key: "Ctrl+K" }, { key: "Ctrl+Shift+K" }],
-      [{ key: "Ctrl+K" }],
-    ),
-    false,
-  );
+  expect(shortcutBindingsMatch([{ key: "Ctrl+K" }], [{ key: "Ctrl+K" }])).toBe(true);
+  expect(shortcutBindingsMatch([{ key: "Ctrl+K" }], [{ key: "Ctrl+J" }])).toBe(false);
+  expect(shortcutBindingsMatch(
+    [{ key: "Ctrl+K" }, { key: "Ctrl+Shift+K" }],
+    [{ key: "Ctrl+K" }],
+  )).toBe(false);
 });

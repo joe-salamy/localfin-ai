@@ -1,10 +1,8 @@
-import type {
-  AccountType,
-  CategoryType,
-  GoalPeriod,
-  TagType,
-  TransactionKind,
-} from "../../../src/types/index.js";
+import type { AccountType,
+CategoryType,
+GoalPeriod,
+TagType,
+TransactionKind, } from "../../../shared/contracts/index.js"
 
 export function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;

@@ -1,4 +1,4 @@
-import type { CreateTagData, Tag } from "../../types";
+import type { CreateTagData, Tag } from "@shared/contracts";
 
 export interface TagPickerCreateOptions {
   onUndo?: (tag: Tag) => void;

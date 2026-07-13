@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { getDb } from "../db/index.js";
+import { NotFoundError } from "../errors.js";
 
 export interface PersistedAgentAction {
   type: string;
@@ -127,7 +128,7 @@ export function ensureAgentConversation(
 
   if (existing) {
     if (existing.deleted_at) {
-      throw new Error("Assistant conversation was deleted.");
+      throw new NotFoundError("Assistant conversation was deleted.")
     }
     return existing;
   }
@@ -173,7 +174,7 @@ export function getAgentMessages(conversationId: string): AgentMessage[] {
   const db = getDb();
   const conversation = getAgentConversation(conversationId);
   if (!conversation) {
-    throw new Error("Assistant conversation not found.");
+    throw new NotFoundError("Assistant conversation not found.")
   }
 
   const rows = db
@@ -286,6 +287,6 @@ export function softDeleteAgentConversation(id: string): void {
     .run(now, now, id);
 
   if (result.changes === 0) {
-    throw new Error("Assistant conversation not found.");
+    throw new NotFoundError("Assistant conversation not found.")
   }
 }

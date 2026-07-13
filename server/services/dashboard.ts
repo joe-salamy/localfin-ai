@@ -1,17 +1,15 @@
 import { differenceInDays, parseISO } from "date-fns";
 import { getDb } from "../db/index.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
-import type {
-  AccountSummary,
-  AccountTransaction,
-  AccountType,
-  CategorySummary,
-  CategoryType,
-  DashboardMetrics,
-  NetWorthSummary,
-  SubcategorySummary,
-  TagSummary,
-} from "../../src/types/index.js";
+import type { AccountSummary,
+AccountTransaction,
+AccountType,
+CategorySummary,
+CategoryType,
+DashboardMetrics,
+NetWorthSummary,
+SubcategorySummary,
+TagSummary, } from "../../shared/contracts/index.js"
 
 // === Row types for query results ===
 

@@ -5,7 +5,14 @@ import path from "node:path";
 import test from "node:test";
 import type { TestContext } from "node:test";
 import { closeDbForTests, getDb } from "./db/index.js";
-import * as service from "./services/account-linking.js";
+import {
+  accountLinkingService,
+  createAccountLinkingService,
+  type AccountLinkingService,
+} from "./services/account-linking.js";
+import * as plaidClient from "./services/providers/plaid-client.js";
+import * as akoyaClient from "./services/providers/akoya-client.js";
+import { UpstreamServiceError } from "./errors.js";
 
 const originalDbPath = process.env.LOCALFIN_DB_PATH;
 const originalProviderSecret = process.env.LOCALFIN_PROVIDER_SECRET;
@@ -46,6 +53,8 @@ interface StatusRow {
   status: string;
 }
 
+
+let service: AccountLinkingService = accountLinkingService;
 const plaidState: PlaidFixtureState = {
   balances: { accounts: [] },
   syncPages: [
@@ -141,18 +150,24 @@ function resetProviderState() {
 }
 
 function installProviderClientMocks(t: TestContext) {
-  const restore = service.setProviderClientsForTests({
+  service = createAccountLinkingService({
     plaid: {
+      ...plaidClient,
       createPlaidLinkToken: async () => ({
         link_token: "link-token",
         expiration: null,
       }),
       exchangePublicToken: async () => plaidState.exchange,
       getBalances: async () => plaidState.balances,
-      syncTransactions: async () => plaidState.syncPages.shift(),
+      syncTransactions: async () => {
+        const next = plaidState.syncPages.shift();
+        if (next instanceof Error) throw next;
+        return next;
+      },
       removeItem: async () => undefined,
     },
     akoya: {
+      ...akoyaClient,
       exchangeCodeForTokens: async () => akoyaState.exchange,
       refreshTokens: async () => akoyaState.refresh,
       getBalances: async (input: { providerId?: string }) => {
@@ -167,10 +182,12 @@ function installProviderClientMocks(t: TestContext) {
       revokeToken: async () => undefined,
     },
   });
-  t.after(restore);
+  t.after(() => {
+    service = accountLinkingService;
+  });
 }
 
-test("Plaid linking creates encrypted connection, provider accounts, and local accounts", async (t) => {
+void test("Plaid linking creates encrypted connection, provider accounts, and local accounts", async (t) => {
   await useTempDatabase(t);
   resetProviderState();
   installProviderClientMocks(t);
@@ -206,7 +223,7 @@ test("Plaid linking creates encrypted connection, provider accounts, and local a
   assert.equal(providerAccountCount.count, 1);
 });
 
-test("first Plaid sync imports transactions, cursor, and provider balance adjustment", async (t) => {
+void test("first Plaid sync imports transactions, cursor, and provider balance adjustment", async (t) => {
   await useTempDatabase(t);
   resetProviderState();
   installProviderClientMocks(t);
@@ -262,7 +279,49 @@ test("first Plaid sync imports transactions, cursor, and provider balance adjust
   assert.equal(plaidTransactionCount.count, 3);
 });
 
-test("repeating the same Plaid sync does not duplicate transactions or adjustments", async (t) => {
+void test("Plaid sync retries a wrapped pagination-mutation failure from the client boundary", async (t) => {
+  await useTempDatabase(t);
+  resetProviderState();
+  installProviderClientMocks(t);
+  const connection = await service.exchangePlaidPublicToken({
+    publicToken: "public-token",
+    targetInstitution: "us_bank",
+    metadata: { institution: { name: "US Bank" } },
+  });
+  const providerFailure = Object.assign(
+    new Error("TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION"),
+    { error_code: "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION" },
+  );
+  plaidState.syncPages = [
+    new UpstreamServiceError("Plaid request failed", {
+      cause: new Error("Plaid transaction sync failed", {
+        cause: providerFailure,
+      }),
+    }),
+    {
+      added: [],
+      modified: [],
+      removed: [],
+      next_cursor: "cursor-after-retry",
+      has_more: false,
+    },
+  ];
+
+  const [result] = await service.syncProviderConnections({
+    connectionId: connection.id,
+  });
+
+  assert.equal(result.connectionId, connection.id);
+  assert.equal(plaidState.syncPages.length, 0);
+  const cursor = getDb()
+    .prepare(
+      "SELECT transactions_cursor FROM provider_connections WHERE id = ?",
+    )
+    .get(connection.id) as CursorRow;
+  assert.equal(cursor.transactions_cursor, "cursor-after-retry");
+});
+
+void test("repeating the same Plaid sync does not duplicate transactions or adjustments", async (t) => {
   await useTempDatabase(t);
   resetProviderState();
   installProviderClientMocks(t);
@@ -310,7 +369,7 @@ test("repeating the same Plaid sync does not duplicate transactions or adjustmen
   assert.equal(adjustmentCount.count, 1);
 });
 
-test("Plaid removed transaction soft-deletes the provider transaction without deleting local account", async (t) => {
+void test("Plaid removed transaction soft-deletes the provider transaction without deleting local account", async (t) => {
   await useTempDatabase(t);
   resetProviderState();
   installProviderClientMocks(t);
@@ -365,7 +424,7 @@ test("Plaid removed transaction soft-deletes the provider transaction without de
   assert.equal(accountCount.count, 1);
 });
 
-test("Akoya 401 after refresh marks connection needs_reauth and preserves local rows", async (t) => {
+void test("Akoya 401 after refresh marks connection needs_reauth and preserves local rows", async (t) => {
   await useTempDatabase(t);
   resetProviderState();
   installProviderClientMocks(t);
@@ -395,13 +454,15 @@ test("Akoya 401 after refresh marks connection needs_reauth and preserves local 
        'income', 0, 0, 'akoya', ?, 'akoya-account-1', 'akoya-existing', ?, ?
      )`,
   ).run(connection.id, timestamp, timestamp);
-  akoyaState.balances = Object.assign(new Error("Akoya returned 401"), {
-    status: 401,
+  akoyaState.balances = new UpstreamServiceError("Akoya request failed", {
+    cause: Object.assign(new Error("Akoya returned 401"), { status: 401 }),
   });
 
   await assert.rejects(
     service.syncProviderConnections({ connectionId: connection.id }),
-    /401/,
+    (error: unknown) =>
+      error instanceof UpstreamServiceError &&
+      error.message === "Akoya request failed",
   );
 
   const statusRow = db
@@ -422,7 +483,7 @@ test("Akoya 401 after refresh marks connection needs_reauth and preserves local 
   assert.equal(transactionCount.count, 1);
 });
 
-test("Akoya sync uses the provider id stored on the connection", async (t) => {
+void test("Akoya sync uses the provider id stored on the connection", async (t) => {
   await useTempDatabase(t);
   resetProviderState();
   installProviderClientMocks(t);
@@ -452,7 +513,7 @@ test("Akoya sync uses the provider id stored on the connection", async (t) => {
   ]);
 });
 
-test("Plaid sync skips null provider balances instead of zeroing accounts", async (t) => {
+void test("Plaid sync skips null provider balances instead of zeroing accounts", async (t) => {
   await useTempDatabase(t);
   resetProviderState();
   installProviderClientMocks(t);
@@ -488,7 +549,7 @@ test("Plaid sync skips null provider balances instead of zeroing accounts", asyn
   assert.equal(adjustmentCount.count, 0);
 });
 
-test("syncing an inactive requested connection rejects instead of returning an empty success", async (t) => {
+void test("syncing an inactive requested connection rejects instead of returning an empty success", async (t) => {
   await useTempDatabase(t);
   resetProviderState();
   installProviderClientMocks(t);
@@ -509,7 +570,7 @@ test("syncing an inactive requested connection rejects instead of returning an e
   );
 });
 
-test("Akoya 403 after refresh marks connection needs_reauth", async (t) => {
+void test("Akoya 403 after refresh marks connection needs_reauth", async (t) => {
   await useTempDatabase(t);
   resetProviderState();
   installProviderClientMocks(t);

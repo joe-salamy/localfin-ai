@@ -2,6 +2,12 @@ import crypto from "node:crypto";
 import type Database from "better-sqlite3";
 import { ENV_KEYS, PROVIDER_CONFIG } from "../config/app.js";
 import { getDb } from "../db/index.js";
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  UpstreamServiceError,
+} from "../errors.js";
 import { decryptSecret, encryptSecret } from "./secret-encryption.js";
 import {
   mapAkoyaAccountTypeToLocal,
@@ -14,92 +20,90 @@ import {
 } from "./provider-mappers.js";
 import * as akoyaClient from "./providers/akoya-client.js";
 import * as plaidClient from "./providers/plaid-client.js";
-import type { AccountType } from "../../src/types/index.js";
+import type {
+  AccountLinkProvider,
+  AccountType,
+  AkoyaAuthorizationResult,
+  PlaidLinkTokenResult,
+  ProviderAccountSummary,
+  ProviderConnectionStatus,
+  ProviderConnectionSummary,
+  ProviderSyncResult,
+  TargetInstitution,
+} from "../../shared/contracts/index.js";
+export type {
+  AccountLinkProvider,
+  AkoyaAuthorizationResult,
+  PlaidLinkTokenResult,
+  ProviderAccountSummary,
+  ProviderConnectionStatus,
+  ProviderConnectionSummary,
+  ProviderSyncResult,
+  TargetInstitution,
+} from "../../shared/contracts/index.js";
 
-type PlaidProviderClient = typeof plaidClient;
-type AkoyaProviderClient = typeof akoyaClient;
-
-let plaidProviderClient: PlaidProviderClient = plaidClient;
-let akoyaProviderClient: AkoyaProviderClient = akoyaClient;
-
-export function setProviderClientsForTests(clients: {
-  plaid?: Partial<Record<keyof PlaidProviderClient, unknown>>;
-  akoya?: Partial<Record<keyof AkoyaProviderClient, unknown>>;
-}): () => void {
-  const previousPlaid = plaidProviderClient;
-  const previousAkoya = akoyaProviderClient;
-  plaidProviderClient = {
-    ...plaidClient,
-    ...clients.plaid,
-  } as PlaidProviderClient;
-  akoyaProviderClient = {
-    ...akoyaClient,
-    ...clients.akoya,
-  } as AkoyaProviderClient;
-  return () => {
-    plaidProviderClient = previousPlaid;
-    akoyaProviderClient = previousAkoya;
-  };
+export interface PlaidProviderClient {
+  createPlaidLinkToken(): Promise<unknown>;
+  exchangePublicToken(publicToken: string): Promise<unknown>;
+  getBalances(accessToken: string): Promise<unknown>;
+  syncTransactions(input: {
+    accessToken: string;
+    cursor?: string | null;
+    count?: number;
+  }): Promise<unknown>;
+  removeItem(accessToken: string): Promise<void>;
 }
 
-export type AccountLinkProvider = "plaid" | "akoya";
-export type TargetInstitution = "us_bank" | "discover" | "fidelity";
-export type ProviderConnectionStatus =
-  | "active"
-  | "needs_reauth"
-  | "error"
-  | "revoked";
-
-export interface ProviderConnectionSummary {
-  id: string;
-  provider: AccountLinkProvider;
-  target_institution: TargetInstitution;
-  institution_id: string | null;
-  institution_name: string;
-  status: ProviderConnectionStatus;
-  last_sync_at: string | null;
-  last_error: string | null;
-  accounts: ProviderAccountSummary[];
-  created_at: string;
-  updated_at: string;
+export interface AkoyaProviderClient {
+  exchangeCodeForTokens(input: {
+    code: string;
+    redirectUri?: string;
+  }): Promise<unknown>;
+  refreshTokens(input: { refreshToken: string }): Promise<unknown>;
+  getBalances(input: {
+    idToken: string;
+    providerId?: string;
+  }): Promise<unknown>;
+  getTransactions(input: {
+    idToken: string;
+    accountId: string;
+    startTime: string;
+    endTime: string;
+    limit?: number;
+    offset?: number;
+    providerId?: string;
+  }): Promise<unknown>;
+  revokeToken(input: { refreshToken: string }): Promise<void>;
 }
 
-export interface ProviderAccountSummary {
-  id: string;
-  local_account_id: string;
-  provider_account_id: string;
-  name: string;
-  mask: string | null;
-  type: "asset" | "liability";
-  provider_type: string | null;
-  provider_subtype: string | null;
-  current_balance: number | null;
-  available_balance: number | null;
-  iso_currency_code: string | null;
-  last_balance_at: string | null;
+export interface AccountLinkingDependencies {
+  plaid: PlaidProviderClient;
+  akoya: AkoyaProviderClient;
 }
 
-export interface PlaidLinkTokenResult {
-  link_token: string;
-  expiration: string | null;
+export interface AccountLinkingService {
+  listProviderConnections(): ProviderConnectionSummary[];
+  createPlaidLinkToken(
+    targetInstitution: "us_bank" | "discover",
+  ): Promise<PlaidLinkTokenResult>;
+  exchangePlaidPublicToken(input: {
+    publicToken: string;
+    targetInstitution: "us_bank" | "discover";
+    metadata: unknown;
+  }): Promise<ProviderConnectionSummary>;
+  createAkoyaAuthorizationUrl(
+    targetInstitution: "fidelity",
+  ): AkoyaAuthorizationResult;
+  handleAkoyaCallback(input: {
+    code: string;
+    state: string;
+  }): Promise<ProviderConnectionSummary>;
+  syncProviderConnections(input?: {
+    connectionId?: string;
+  }): Promise<ProviderSyncResult[]>;
+  disconnectProviderConnection(connectionId: string): Promise<void>;
 }
 
-export interface AkoyaAuthorizationResult {
-  authorizationUrl: string;
-  state: string;
-}
-
-export interface ProviderSyncResult {
-  connectionId: string;
-  provider: AccountLinkProvider;
-  accountsUpserted: number;
-  transactionsAdded: number;
-  transactionsUpdated: number;
-  transactionsRemoved: number;
-  balanceAdjustmentsCreated: number;
-  warnings: string[];
-  syncedAt: string;
-}
 
 interface ProviderConnectionRow {
   id: string;
@@ -223,6 +227,25 @@ function readNumber(value: unknown, key: string): number | null {
   if (field === null || field === undefined || field === "") return null;
   const numberValue = typeof field === "number" ? field : Number(field);
   return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function errorChain(error: unknown): unknown[] {
+  const chain: unknown[] = [];
+  const seen = new Set<object>();
+  let current: unknown = error;
+  while (isRecord(current) && !seen.has(current)) {
+    chain.push(current);
+    seen.add(current);
+    current = current.cause;
+  }
+  return chain;
+}
+
+function providerErrorMessage(error: unknown, fallback: string): string {
+  const messages = errorChain(error)
+    .map((item) => (item instanceof Error ? item.message : readString(item, "message")))
+    .filter((message): message is string => Boolean(message));
+  return messages.length > 0 ? messages.join(": ") : fallback;
 }
 
 function readArray(value: unknown, key: string): unknown[] {
@@ -668,7 +691,7 @@ function createBalanceAdjustmentIfNeeded(
     )
     .get(localAccountId) as AccountRow | undefined;
   if (!localAccount)
-    throw new Error(`Local account ${localAccountId} not found`);
+    throw new NotFoundError(`Local account ${localAccountId} not found`)
 
   const balanceRow = db
     .prepare(
@@ -827,9 +850,10 @@ function applyNetworkPayload(
 
 async function fetchPlaidPayload(
   connection: ProviderConnectionRow,
+  client: PlaidProviderClient,
 ): Promise<NetworkPayload> {
   const accessToken = decryptAccessToken(connection);
-  const balances = await plaidProviderClient.getBalances(accessToken);
+  const balances = await client.getBalances(accessToken);
   const accounts = normalizePlaidAccounts(balances);
   const startingCursor = connection.transactions_cursor;
   const collectPages = async () => {
@@ -838,7 +862,7 @@ async function fetchPlaidPayload(
     const modified: unknown[] = [];
     const removedIds: string[] = [];
     for (;;) {
-      const page = await plaidProviderClient.syncTransactions({
+      const page = await client.syncTransactions({
         accessToken,
         cursor,
         count: 500,
@@ -860,11 +884,14 @@ async function fetchPlaidPayload(
     const transactions = await collectPages();
     return { accounts, ...transactions };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown Plaid error";
-    const errorRecord = readRecord(error);
-    const errorCode =
-      readString(errorRecord, "error_code") ?? readString(errorRecord, "code");
+    const causes = errorChain(error);
+    const message = providerErrorMessage(error, "Unknown Plaid error");
+    const errorCode = causes
+      .map(
+        (cause) =>
+          readString(cause, "error_code") ?? readString(cause, "code"),
+      )
+      .find((code) => code !== null);
     if (
       errorCode !== "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION" &&
       !message.includes("TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION")
@@ -875,8 +902,7 @@ async function fetchPlaidPayload(
       const transactions = await collectPages();
       return { accounts, ...transactions };
     } catch (retryError) {
-      const retryMessage =
-        retryError instanceof Error ? retryError.message : message;
+      const retryMessage = providerErrorMessage(retryError, message);
       markConnectionError(connection.id, retryMessage, "error");
       throw retryError;
     }
@@ -885,10 +911,11 @@ async function fetchPlaidPayload(
 
 async function fetchAkoyaPayload(
   connection: ProviderConnectionRow,
+  client: AkoyaProviderClient,
 ): Promise<NetworkPayload> {
   const refreshToken = decryptRefreshToken(connection);
   try {
-    const refreshed = await akoyaProviderClient.refreshTokens({ refreshToken });
+    const refreshed = await client.refreshTokens({ refreshToken });
     const refreshedRecord = readRecord(refreshed);
     const idToken =
       readString(refreshedRecord, "id_token") ??
@@ -896,10 +923,10 @@ async function fetchAkoyaPayload(
     const nextRefreshToken =
       readString(refreshedRecord, "refresh_token") ?? refreshToken;
     if (!idToken)
-      throw new Error("Akoya refresh response did not include an id_token");
+      throw new UpstreamServiceError("Akoya request failed", { cause: new Error("Akoya refresh response did not include an id_token") })
 
     const akoyaProviderId = connection.akoya_provider_id ?? undefined;
-    const balances = await akoyaProviderClient.getBalances({
+    const balances = await client.getBalances({
       idToken,
       providerId: akoyaProviderId,
     });
@@ -915,7 +942,7 @@ async function fetchAkoyaPayload(
       let offset = 0;
       const limit = 500;
       for (;;) {
-        const page = await akoyaProviderClient.getTransactions({
+        const page = await client.getTransactions({
           idToken,
           accountId: account.providerAccountId,
           startTime,
@@ -953,9 +980,11 @@ async function fetchAkoyaPayload(
       refreshedRefreshToken: nextRefreshToken,
     };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown Akoya error";
-    const status = readNumber(error, "status");
+    const causes = errorChain(error);
+    const message = providerErrorMessage(error, "Unknown Akoya error");
+    const status = causes
+      .map((cause) => readNumber(cause, "status"))
+      .find((value) => value !== null);
     if (
       status === 401 ||
       status === 403 ||
@@ -968,7 +997,7 @@ async function fetchAkoyaPayload(
   }
 }
 
-export function listProviderConnections(): ProviderConnectionSummary[] {
+function listProviderConnections(): ProviderConnectionSummary[] {
   const db = getDb();
   const rows = db
     .prepare(
@@ -982,31 +1011,35 @@ export function listProviderConnections(): ProviderConnectionSummary[] {
   );
 }
 
-export async function createPlaidLinkToken(
+async function createPlaidLinkToken(
   targetInstitution: "us_bank" | "discover",
+  dependencies: AccountLinkingDependencies,
 ): Promise<PlaidLinkTokenResult> {
   if (!PLAID_TARGETS.has(targetInstitution)) {
-    throw new Error("Plaid linking is only supported for US Bank and Discover");
+    throw new BadRequestError("Plaid linking is only supported for US Bank and Discover")
   }
-  const result = await plaidProviderClient.createPlaidLinkToken();
+  const result = await dependencies.plaid.createPlaidLinkToken();
   const linkToken = readString(result, "link_token");
   if (!linkToken)
-    throw new Error("Plaid link token response did not include a link_token");
+    throw new UpstreamServiceError("Plaid request failed", { cause: new Error("Plaid link token response did not include a link_token") })
   return {
     link_token: linkToken,
     expiration: readString(result, "expiration"),
   };
 }
 
-export async function exchangePlaidPublicToken(input: {
-  publicToken: string;
-  targetInstitution: "us_bank" | "discover";
-  metadata: unknown;
-}): Promise<ProviderConnectionSummary> {
+async function exchangePlaidPublicToken(
+  input: {
+    publicToken: string;
+    targetInstitution: "us_bank" | "discover";
+    metadata: unknown;
+  },
+  dependencies: AccountLinkingDependencies,
+): Promise<ProviderConnectionSummary> {
   if (!PLAID_TARGETS.has(input.targetInstitution)) {
-    throw new Error("Plaid linking is only supported for US Bank and Discover");
+    throw new BadRequestError("Plaid linking is only supported for US Bank and Discover")
   }
-  const exchange = await plaidProviderClient.exchangePublicToken(
+  const exchange = await dependencies.plaid.exchangePublicToken(
     input.publicToken,
   );
   const exchangeRecord = readRecord(exchange);
@@ -1017,11 +1050,9 @@ export async function exchangePlaidPublicToken(input: {
     readString(exchangeRecord, "item_id") ??
     readString(exchangeRecord, "itemId");
   if (!accessToken || !itemId) {
-    throw new Error(
-      "Plaid public token exchange did not return an access token and item id",
-    );
+    throw new UpstreamServiceError("Plaid request failed", { cause: new Error("Plaid public token exchange did not return an access token and item id") })
   }
-  const balances = await plaidProviderClient.getBalances(accessToken);
+  const balances = await dependencies.plaid.getBalances(accessToken);
   const accounts = normalizePlaidAccounts(balances);
   const institution = inferInstitutionFromPlaidMetadata(input.metadata);
   const [ciphertext, iv, tag] = encryptedColumns(accessToken);
@@ -1064,11 +1095,11 @@ export async function exchangePlaidPublicToken(input: {
   );
 }
 
-export function createAkoyaAuthorizationUrl(
+function createAkoyaAuthorizationUrl(
   targetInstitution: "fidelity",
 ): AkoyaAuthorizationResult {
   if (!AKOYA_TARGETS.has(targetInstitution)) {
-    throw new Error("Akoya linking is only supported for Fidelity");
+    throw new BadRequestError("Akoya linking is only supported for Fidelity")
   }
   const clientId = requireEnv(ENV_KEYS.akoyaClientId);
   const redirectUri = requireEnv(ENV_KEYS.akoyaRedirectUri);
@@ -1094,10 +1125,13 @@ export function createAkoyaAuthorizationUrl(
   return { authorizationUrl, state };
 }
 
-export async function handleAkoyaCallback(input: {
-  code: string;
-  state: string;
-}): Promise<ProviderConnectionSummary> {
+async function handleAkoyaCallback(
+  input: {
+    code: string;
+    state: string;
+  },
+  dependencies: AccountLinkingDependencies,
+): Promise<ProviderConnectionSummary> {
   const db = getDb();
   const stateRow = db
     .prepare(
@@ -1107,13 +1141,13 @@ export async function handleAkoyaCallback(input: {
     .get(input.state) as
     | { state: string; expires_at: string; consumed_at: string | null }
     | undefined;
-  if (!stateRow || stateRow.consumed_at) throw new Error("Invalid Akoya state");
+  if (!stateRow || stateRow.consumed_at) throw new BadRequestError("Invalid Akoya state")
   if (new Date(stateRow.expires_at).getTime() < Date.now()) {
-    throw new Error("Akoya state expired");
+    throw new BadRequestError("Akoya state expired")
   }
 
   const redirectUri = requireEnv(ENV_KEYS.akoyaRedirectUri);
-  const tokens = await akoyaProviderClient.exchangeCodeForTokens({
+  const tokens = await dependencies.akoya.exchangeCodeForTokens({
     code: input.code,
     redirectUri,
   });
@@ -1123,9 +1157,7 @@ export async function handleAkoyaCallback(input: {
     readString(tokenRecord, "access_token");
   const refreshToken = readString(tokenRecord, "refresh_token");
   if (!idToken || !refreshToken) {
-    throw new Error(
-      "Akoya token exchange did not return id_token and refresh_token",
-    );
+    throw new UpstreamServiceError("Akoya request failed", { cause: new Error("Akoya token exchange did not return id_token and refresh_token") })
   }
 
   const [accessCiphertext, accessIv, accessTag] = encryptedColumns(idToken);
@@ -1167,8 +1199,9 @@ export async function handleAkoyaCallback(input: {
   );
 }
 
-export async function syncProviderConnections(
+async function syncProviderConnections(
   input: { connectionId?: string } = {},
+  dependencies: AccountLinkingDependencies,
 ): Promise<ProviderSyncResult[]> {
   const db = getDb();
   const connections = input.connectionId
@@ -1185,14 +1218,10 @@ export async function syncProviderConnections(
         .all() as ProviderConnectionRow[]);
 
   if (input.connectionId && connections.length === 0) {
-    throw new Error(
-      `Provider connection with id "${input.connectionId}" not found`,
-    );
+    throw new NotFoundError(`Provider connection with id "${input.connectionId}" not found`)
   }
   if (input.connectionId && connections[0]?.status !== "active") {
-    throw new Error(
-      `Provider connection with id "${input.connectionId}" is not active; reconnect the account before syncing`,
-    );
+    throw new ConflictError(`Provider connection with id "${input.connectionId}" is not active; reconnect the account before syncing`)
   }
 
   const results: ProviderSyncResult[] = [];
@@ -1201,8 +1230,8 @@ export async function syncProviderConnections(
     const syncedAt = nowIso();
     const payload =
       connection.provider === "plaid"
-        ? await fetchPlaidPayload(connection)
-        : await fetchAkoyaPayload(connection);
+        ? await fetchPlaidPayload(connection, dependencies.plaid)
+        : await fetchAkoyaPayload(connection, dependencies.akoya);
     const counts = applyNetworkPayload(connection, payload, syncedAt, warnings);
     results.push({
       connectionId: connection.id,
@@ -1215,19 +1244,20 @@ export async function syncProviderConnections(
   return results;
 }
 
-export async function disconnectProviderConnection(
+async function disconnectProviderConnection(
   connectionId: string,
+  dependencies: AccountLinkingDependencies,
 ): Promise<void> {
   const connection = getConnectionById(connectionId);
   if (!connection) {
-    throw new Error(`Provider connection with id "${connectionId}" not found`);
+    throw new NotFoundError(`Provider connection with id "${connectionId}" not found`)
   }
 
   if (connection.provider === "plaid") {
-    await plaidProviderClient.removeItem(decryptAccessToken(connection));
+    await dependencies.plaid.removeItem(decryptAccessToken(connection));
   } else {
     try {
-      await akoyaProviderClient.revokeToken({
+      await dependencies.akoya.revokeToken({
         refreshToken: decryptRefreshToken(connection),
       });
     } catch (error) {
@@ -1263,3 +1293,26 @@ export async function disconnectProviderConnection(
       .run(timestamp, timestamp, connectionId);
   })();
 }
+
+export function createAccountLinkingService(
+  dependencies: AccountLinkingDependencies,
+): AccountLinkingService {
+  return {
+    listProviderConnections,
+    createPlaidLinkToken: (targetInstitution) =>
+      createPlaidLinkToken(targetInstitution, dependencies),
+    exchangePlaidPublicToken: (input) =>
+      exchangePlaidPublicToken(input, dependencies),
+    createAkoyaAuthorizationUrl,
+    handleAkoyaCallback: (input) => handleAkoyaCallback(input, dependencies),
+    syncProviderConnections: (input) =>
+      syncProviderConnections(input, dependencies),
+    disconnectProviderConnection: (connectionId) =>
+      disconnectProviderConnection(connectionId, dependencies),
+  };
+}
+
+export const accountLinkingService = createAccountLinkingService({
+  plaid: plaidClient,
+  akoya: akoyaClient,
+});

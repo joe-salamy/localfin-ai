@@ -5,19 +5,9 @@ import type {
   KeyboardEvent,
   PointerEvent,
 } from "react";
-import { format, isValid, parse } from "date-fns";
-import {
-  X,
-  AlertTriangle,
-  Plus,
-  Trash2,
-  Save,
-  Sparkles,
-  FileText,
-} from "lucide-react";
+import { X, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAI } from "@/hooks/useAI";
@@ -27,17 +17,14 @@ import { useTags } from "@/hooks/useTags";
 import { TagPicker } from "@/components/features/TagPicker";
 import type { TagPickerCreateOptions } from "@/components/features/TagPicker";
 import { cn, formatDateInput } from "@/lib/utils";
-import { normalizeTransactionAmount } from "@/lib/transactionAmounts";
 import type {
-  AccountType,
   Category,
   CreateTagData,
   Subcategory,
   Tag,
   CreateTransactionData,
   TransactionKind,
-} from "@/types";
-import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
+} from "@shared/contracts";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import { useSuccessToast } from "@/features/display-settings/hooks";
 import { useUndoRedo } from "@/features/undo-redo/hooks";
@@ -65,15 +52,10 @@ import {
   hasSelectedInputText,
   isNativeEditableTarget,
 } from "@/features/spreadsheet-selection/domTargets";
+import { useSpreadsheetSelection } from "@/features/spreadsheet-selection/useSpreadsheetSelection";
 import {
   addTransactionCellFields,
   kindHasSubcategory,
-  parsePastedAmount,
-  parsePastedDate,
-  resolveAccountId,
-  resolveKind,
-  resolveSubcategoryId,
-  resolveTagIds,
 } from "@/lib/transactionCellParsing";
 import type { TransactionCellField } from "@/lib/transactionCellParsing";
 import {
@@ -82,265 +64,27 @@ import {
   formatSubcategoryLabel,
 } from "@/lib/categoryLabels";
 import { handleEnterSave } from "@/lib/enterSave";
+import {
+  applyCellValue,
+  cloneRows,
+  displayAmountToNumber,
+  emptyRow,
+  formatAmountDisplay,
+  getAccountType,
+  initialRows,
+  isRowFilled,
+  isRowValid,
+  normalizeRowAmountDisplay,
+  parseDisplayDate,
+  toApiDate,
+  type CellApplyMode,
+  type TransactionRow,
+} from "@/features/transaction-entry/draft";
+import { useTransactionDraft } from "@/features/transaction-entry/useTransactionDraft";
+import { StatementImportPanel } from "@/features/transaction-entry/StatementImportPanel";
+import { TransactionDraftActions } from "@/features/transaction-entry/TransactionDraftActions";
+import { TransactionDraftRow } from "@/features/transaction-entry/TransactionDraftRow";
 
-// ── Row type ──────────────────────────────────────────────────────────
-
-interface TransactionRow {
-  id: string;
-  date: string;
-  name: string;
-  amount: string;
-  kind: TransactionKind;
-  account_id: string;
-  subcategory_id: string;
-  tag_ids: string[];
-  comment: string;
-  isDuplicate: boolean;
-  transferMatch: unknown | null;
-  categorizationSource: "lookup" | "transfer" | "ai" | "none" | "manual";
-  aiSuggestedSubcategoryId: string | null;
-}
-
-interface DraftSnapshot {
-  rows: TransactionRow[];
-  duplicatesChecked: boolean;
-  parseSummary: string | null;
-  statementText: string;
-  statementAccountId: string;
-}
-
-function emptyRow(): TransactionRow {
-  return {
-    id: crypto.randomUUID(),
-    date: "",
-    name: "",
-    amount: "",
-    kind: "expense",
-    account_id: "",
-    subcategory_id: "",
-    tag_ids: [],
-    comment: "",
-    isDuplicate: false,
-    transferMatch: null,
-    categorizationSource: "manual",
-    aiSuggestedSubcategoryId: null,
-  };
-}
-
-function initialRows(count = 5): TransactionRow[] {
-  return Array.from({ length: count }, () => emptyRow());
-}
-
-function cloneRows(rows: TransactionRow[]): TransactionRow[] {
-  return rows.map((row) => ({ ...row, tag_ids: [...row.tag_ids] }));
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────
-
-function isRowFilled(row: TransactionRow) {
-  return row.date || row.name || row.amount || row.account_id;
-}
-
-function isRowValid(row: TransactionRow) {
-  return row.date && row.name && row.amount && row.account_id;
-}
-
-function parseDisplayDate(displayDate: string): Date | null {
-  const parsed = parse(displayDate, "MM/dd/yyyy", new Date());
-  return isValid(parsed) && format(parsed, "MM/dd/yyyy") === displayDate
-    ? parsed
-    : null;
-}
-
-function displayAmountToNumber(val: string): number {
-  const cleaned = val.replace(/[$,\s]/g, "");
-  return parseFloat(cleaned) || 0;
-}
-
-function formatAmountDisplay(
-  val: string,
-  accountType?: AccountType,
-  kind: TransactionKind = "expense",
-): string {
-  const num = accountType
-    ? normalizeTransactionAmount(displayAmountToNumber(val), accountType, kind)
-    : displayAmountToNumber(val);
-  if (!num && val === "") return "";
-  const negative = num < 0;
-  const abs = Math.abs(num).toFixed(2);
-  return negative ? `-${abs}` : abs;
-}
-
-function toApiDate(displayDate: string): string {
-  const parsed = parseDisplayDate(displayDate);
-  if (!parsed) {
-    throw new Error("Invalid transaction date.");
-  }
-  return format(parsed, "yyyy-MM-dd");
-}
-
-function getAccountType(
-  accountId: string,
-  accounts: { id: string; type: AccountType }[],
-): AccountType | undefined {
-  return accounts.find((account) => account.id === accountId)?.type;
-}
-
-function normalizeRowAmountDisplay(
-  row: TransactionRow,
-  accounts: { id: string; type: AccountType }[],
-): string {
-  return formatAmountDisplay(
-    row.amount,
-    getAccountType(row.account_id, accounts),
-    row.kind,
-  );
-}
-
-type CellApplyMode = "paste" | "clear";
-
-interface CellApplyResult {
-  row: TransactionRow;
-  applied: boolean;
-}
-
-function applyCellValue(
-  row: TransactionRow,
-  field: TransactionCellField,
-  value: string,
-  accounts: { id: string; name: string; type: AccountType }[],
-  categories: Category[],
-  subcategories: Subcategory[],
-  tags: Tag[],
-  mode: CellApplyMode,
-): CellApplyResult {
-  if (mode === "clear") {
-    if (field === "kind") return { row, applied: false };
-    if (field === "date")
-      return { row: { ...row, date: "" }, applied: row.date !== "" };
-    if (field === "name")
-      return { row: { ...row, name: "" }, applied: row.name !== "" };
-    if (field === "amount")
-      return { row: { ...row, amount: "" }, applied: row.amount !== "" };
-    if (field === "account_id") {
-      return {
-        row: { ...row, account_id: "" },
-        applied: row.account_id !== "",
-      };
-    }
-    if (field === "subcategory_id") {
-      return {
-        row: {
-          ...row,
-          subcategory_id: "",
-          categorizationSource:
-            row.categorizationSource === "ai"
-              ? "manual"
-              : row.categorizationSource,
-        },
-        applied: row.subcategory_id !== "",
-      };
-    }
-    if (field === "tag_ids") {
-      return { row: { ...row, tag_ids: [] }, applied: row.tag_ids.length > 0 };
-    }
-    return { row: { ...row, comment: "" }, applied: row.comment !== "" };
-  }
-
-  if (field === "date") {
-    const parsedDate = parsePastedDate(value);
-    return parsedDate
-      ? { row: { ...row, date: parsedDate.displayDate }, applied: true }
-      : { row, applied: false };
-  }
-
-  if (field === "name") {
-    const name = value.trim();
-    return name
-      ? { row: { ...row, name }, applied: true }
-      : { row, applied: false };
-  }
-
-  if (field === "amount") {
-    const amount = parsePastedAmount(value);
-    return amount === null
-      ? { row, applied: false }
-      : {
-          row: {
-            ...row,
-            amount: formatAmountDisplay(
-              String(amount),
-              getAccountType(row.account_id, accounts),
-              row.kind,
-            ),
-          },
-          applied: true,
-        };
-  }
-
-  if (field === "kind") {
-    const kind = resolveKind(value);
-    return kind
-      ? {
-          row: {
-            ...row,
-            kind,
-            amount: formatAmountDisplay(
-              row.amount,
-              getAccountType(row.account_id, accounts),
-              kind,
-            ),
-            subcategory_id: kindHasSubcategory(kind) ? row.subcategory_id : "",
-          },
-          applied: true,
-        }
-      : { row, applied: false };
-  }
-
-  if (field === "comment") {
-    return { row: { ...row, comment: value }, applied: true };
-  }
-
-  if (field === "account_id") {
-    const accountId = resolveAccountId(value, accounts);
-    return accountId
-      ? {
-          row: {
-            ...row,
-            account_id: accountId,
-            amount: formatAmountDisplay(
-              row.amount,
-              getAccountType(accountId, accounts),
-              row.kind,
-            ),
-          },
-          applied: true,
-        }
-      : { row, applied: false };
-  }
-
-  if (field === "tag_ids") {
-    const tagIds = resolveTagIds(value, tags);
-    return tagIds.length > 0
-      ? { row: { ...row, tag_ids: tagIds }, applied: true }
-      : { row, applied: false };
-  }
-
-  const subcategoryId = resolveSubcategoryId(value, categories, subcategories);
-  return subcategoryId && kindHasSubcategory(row.kind)
-    ? {
-        row: {
-          ...row,
-          subcategory_id: subcategoryId,
-          categorizationSource:
-            row.categorizationSource === "ai"
-              ? "manual"
-              : row.categorizationSource,
-        },
-        applied: true,
-      }
-    : { row, applied: false };
-}
 
 // ── Grouped subcategory select ────────────────────────────────────────
 
@@ -447,35 +191,57 @@ export function MultiTransactionTable() {
   const successToast = useSuccessToast();
   const { execute } = useUndoRedo();
 
-  const [rows, setRows] = useState<TransactionRow[]>(initialRows);
+  const {
+    rows,
+    setRows,
+    duplicatesChecked,
+    setDuplicatesChecked,
+    statementText,
+    setStatementText,
+    statementAccountId,
+    setStatementAccountId,
+    parseSummary,
+    captureSnapshot: captureDraftSnapshot,
+    executeSnapshotAction: executeDraftSnapshotAction,
+  } = useTransactionDraft();
   const [saving, setSaving] = useState(false);
   const [flaggedWarningMatches, setFlaggedWarningMatches] = useState<
     FlaggedWordMatch[]
   >([]);
-  const [duplicatesChecked, setDuplicatesChecked] = useState(false);
-  const [statementText, setStatementText] = useState("");
-  const [statementAccountId, setStatementAccountId] = useState("");
   const [lastRunId, setLastRunId] = useState<string | null>(null);
-  const [parseSummary, setParseSummary] = useState<string | null>(null);
   const statementAccountRef = useRef<HTMLSelectElement>(null);
   const statementTextRef = useRef<HTMLTextAreaElement>(null);
   const cellRefs = useRef<Array<HTMLElement | null>>([]);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const [gridFocused, setGridFocused] = useState(false);
-  const [selectedRanges, setSelectedRanges] = useState<CellRange[]>([]);
-  const [anchorCell, setAnchorCell] = useState<CellCoord | null>(null);
-  const [activeCell, setActiveCell] = useState<CellCoord | null>(null);
+  const {
+    selectedRanges,
+    setSelectedRanges,
+    anchorCell,
+    setAnchorCell,
+    activeCell,
+    setActiveCell,
+    copiedRanges,
+    setCopiedRanges,
+    dragSelection,
+    setDragSelection,
+    pointerSelectingRef,
+    programmaticFocusRef: programmaticCellFocusRef,
+  } = useSpreadsheetSelection({
+    rowCount: rows.length,
+    columnCount: addTransactionCellFields.length,
+    containerRef: gridContainerRef,
+    focusCell: (cell) => {
+      cellRefs.current[
+        cell.row * addTransactionCellFields.length + cell.col
+      ]?.focus();
+    },
+    copiedHighlightMs: 1200,
+  });
   const [editingCell, setEditingCell] = useState<CellCoord | null>(null);
-  const [copiedRanges, setCopiedRanges] = useState<CellRange[]>([]);
   const copiedRangeTimeoutRef = useRef<number | null>(null);
-  const [dragSelection, setDragSelection] = useState<{
-    anchor: CellCoord;
-    additive: boolean;
-  } | null>(null);
   const dragBaseRangesRef = useRef<CellRange[]>([]);
-  const pointerSelectingRef = useRef(false);
-  const programmaticCellFocusRef = useRef(false);
   const {
     columns,
     totalWidth,
@@ -487,47 +253,6 @@ export function MultiTransactionTable() {
     manualTransactionColumns,
   );
 
-  const captureDraftSnapshot = useCallback(
-    (overrides?: Partial<DraftSnapshot>): DraftSnapshot => ({
-      rows: cloneRows(overrides?.rows ?? rows),
-      duplicatesChecked: overrides?.duplicatesChecked ?? duplicatesChecked,
-      parseSummary:
-        overrides && "parseSummary" in overrides
-          ? (overrides.parseSummary ?? null)
-          : parseSummary,
-      statementText: overrides?.statementText ?? statementText,
-      statementAccountId: overrides?.statementAccountId ?? statementAccountId,
-    }),
-    [duplicatesChecked, parseSummary, rows, statementAccountId, statementText],
-  );
-
-  const restoreDraftSnapshot = useCallback((snapshot: DraftSnapshot) => {
-    setRows(cloneRows(snapshot.rows));
-    setDuplicatesChecked(snapshot.duplicatesChecked);
-    setParseSummary(snapshot.parseSummary);
-    setStatementText(snapshot.statementText);
-    setStatementAccountId(snapshot.statementAccountId);
-  }, []);
-
-  const executeDraftSnapshotAction = useCallback(
-    (
-      label: string,
-      before: DraftSnapshot,
-      after: DraftSnapshot,
-      onInitialApply?: () => void,
-    ) =>
-      execute({
-        id: crypto.randomUUID(),
-        label,
-        apply: () => {
-          restoreDraftSnapshot(after);
-          onInitialApply?.();
-        },
-        undo: () => restoreDraftSnapshot(before),
-        redo: () => restoreDraftSnapshot(after),
-      }),
-    [execute, restoreDraftSnapshot],
-  );
 
   useShortcutScope("transactionInput");
   useShortcutScope("transactionInputGrid", gridFocused);
@@ -541,7 +266,7 @@ export function MultiTransactionTable() {
     }
     copiedRangeTimeoutRef.current = null;
     setCopiedRanges([]);
-  }, []);
+  }, [setCopiedRanges]);
 
   const markCopiedRanges = useCallback(() => {
     clearCopiedRanges();
@@ -552,7 +277,7 @@ export function MultiTransactionTable() {
         1200,
       );
     }
-  }, [clearCopiedRanges, selectedRanges]);
+  }, [clearCopiedRanges, selectedRanges, setCopiedRanges]);
 
   useEffect(() => clearCopiedRanges, [clearCopiedRanges]);
 
@@ -571,7 +296,7 @@ export function MultiTransactionTable() {
       );
       setDuplicatesChecked(false);
     },
-    [],
+    [setDuplicatesChecked, setRows],
   );
 
   const addRow = useCallback(() => {
@@ -600,7 +325,7 @@ export function MultiTransactionTable() {
         ),
       );
     },
-    [updateRow],
+    [setRows, updateRow],
   );
 
   const handleKindChange = useCallback(
@@ -625,7 +350,7 @@ export function MultiTransactionTable() {
       );
       setDuplicatesChecked(false);
     },
-    [accounts],
+    [accounts, setDuplicatesChecked, setRows],
   );
 
   const removeRow = useCallback(
@@ -726,7 +451,13 @@ export function MultiTransactionTable() {
       document.removeEventListener("pointercancel", stopDrag);
       document.body.style.userSelect = previousUserSelect;
     };
-  }, [dragSelection]);
+  }, [
+    dragSelection,
+    pointerSelectingRef,
+    setActiveCell,
+    setDragSelection,
+    setSelectedRanges,
+  ]);
 
   const selectSingleCell = useCallback((cell: CellCoord) => {
     const range = rectangleFrom(cell, cell);
@@ -734,7 +465,7 @@ export function MultiTransactionTable() {
     setAnchorCell(cell);
     setActiveCell(cell);
     setEditingCell(null);
-  }, []);
+  }, [setActiveCell, setAnchorCell, setSelectedRanges]);
 
   const expandSelectedCells = useCallback(
     (): CellCoord[] =>
@@ -767,7 +498,13 @@ export function MultiTransactionTable() {
       setAnchorCell(cell);
       setEditingCell(null);
     },
-    [expandSelectedCells, selectedRanges],
+    [
+      expandSelectedCells,
+      selectedRanges,
+      setActiveCell,
+      setAnchorCell,
+      setSelectedRanges,
+    ],
   );
 
   const focusEditableCell = useCallback(
@@ -784,7 +521,7 @@ export function MultiTransactionTable() {
         programmaticCellFocusRef.current = false;
       }
     },
-    [],
+    [programmaticCellFocusRef],
   );
 
   const enterCellEditMode = useCallback(
@@ -814,7 +551,13 @@ export function MultiTransactionTable() {
       }
       return true;
     },
-    [activeCell, focusEditableCell],
+    [
+      activeCell,
+      focusEditableCell,
+      setActiveCell,
+      setAnchorCell,
+      setSelectedRanges,
+    ],
   );
 
   const getCellSelectionHandlers = useCallback(
@@ -866,7 +609,11 @@ export function MultiTransactionTable() {
       focusEditableCell,
       selectSingleCell,
       selectedRanges,
+      pointerSelectingRef,
       toggleCellSelection,
+      setActiveCell,
+      setDragSelection,
+      setSelectedRanges,
     ],
   );
 
@@ -883,7 +630,14 @@ export function MultiTransactionTable() {
         setEditingCell(null);
       }
     },
-    [selectedRanges],
+    [
+      pointerSelectingRef,
+      programmaticCellFocusRef,
+      selectedRanges,
+      setActiveCell,
+      setAnchorCell,
+      setSelectedRanges,
+    ],
   );
 
   const getCellClassName = useCallback(
@@ -1410,6 +1164,9 @@ export function MultiTransactionTable() {
       expandSelectedCells,
       focusEditableCell,
       rows.length,
+      setActiveCell,
+      setAnchorCell,
+      setSelectedRanges,
     ],
   );
 
@@ -1674,6 +1431,8 @@ export function MultiTransactionTable() {
     filledRows,
     findTransactionMatches,
     rows,
+    setDuplicatesChecked,
+    setRows,
     successToast,
   ]);
 
@@ -1807,88 +1566,29 @@ export function MultiTransactionTable() {
 
   return (
     <div className="space-y-3">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={addRow}>
-          <Plus className="mr-1 h-3.5 w-3.5" />
-          Add Row
-          <ShortcutHint commandId="transactionInput.addRow" />
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={handleAICategorize}
-          loading={categorize.isPending}
-        >
-          <Sparkles className="mr-1 h-3.5 w-3.5" />
-          AI Categorize
-          <ShortcutHint commandId="transactionInput.aiCategorize" />
-        </Button>
-        <Button size="sm" variant="ghost" onClick={clearAll}>
-          <Trash2 className="mr-1 h-3.5 w-3.5" />
-          Clear All
-          <ShortcutHint commandId="transactionInput.clearAll" />
-        </Button>
-        <div className="flex-1" />
-        <span className="text-xs text-muted-foreground">
-          {filledRows.length} row(s) to save
-        </span>
-        <Button size="sm" onClick={handleSave} loading={saving}>
-          <Save className="mr-1 h-3.5 w-3.5" />
-          Save All
-          <ShortcutHint commandId="transactionInput.saveAll" />
-        </Button>
-      </div>
+      <TransactionDraftActions
+        filledRowCount={filledRows.length}
+        categorizing={categorize.isPending}
+        saving={saving}
+        onAddRow={addRow}
+        onCategorize={() => void handleAICategorize()}
+        onClear={clearAll}
+        onSave={() => void handleSave()}
+      />
 
-      <Card className="p-3">
-        <CardHeader className="mb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <FileText className="h-4 w-4" />
-            Statement Import
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            <select
-              ref={statementAccountRef}
-              value={statementAccountId}
-              onChange={(e) => setStatementAccountId(e.target.value)}
-              className="h-8 rounded border border-border bg-input px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">Select account</option>
-              {accountOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={handleParseStatement}
-              loading={parseStatement.isPending}
-            >
-              Parse Statement
-              <ShortcutHint commandId="transactionInput.parseStatement" />
-            </Button>
-            {lastRunId && (
-              <span className="self-center text-xs text-muted-foreground">
-                log: logs/jsonl/*-{lastRunId}.jsonl
-              </span>
-            )}
-          </div>
-          <textarea
-            ref={statementTextRef}
-            value={statementText}
-            onChange={(e) => setStatementText(e.target.value)}
-            placeholder="Paste statement lines here"
-            className="min-h-20 w-full rounded border border-border bg-input px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-          {parseSummary && (
-            <p className="text-xs text-muted-foreground">{parseSummary}</p>
-          )}
-        </CardContent>
-      </Card>
+      <StatementImportPanel
+        accountOptions={accountOptions}
+        accountId={statementAccountId}
+        text={statementText}
+        parseSummary={parseSummary}
+        lastRunId={lastRunId}
+        parsing={parseStatement.isPending}
+        accountRef={statementAccountRef}
+        textRef={statementTextRef}
+        onAccountChange={setStatementAccountId}
+        onTextChange={setStatementText}
+        onParse={() => void handleParseStatement()}
+      />
 
       {/* Table */}
       <div
@@ -1965,12 +1665,9 @@ export function MultiTransactionTable() {
           </thead>
           <tbody>
             {rows.map((row, idx) => (
-              <tr
+              <TransactionDraftRow
                 key={row.id}
-                className={cn(
-                  "border-b border-border last:border-b-0",
-                  row.isDuplicate && "bg-yellow-500/10",
-                )}
+                duplicate={row.isDuplicate}
               >
                 {/* Duplicate indicator */}
                 <td className="px-1 py-0.5 text-center">
@@ -2228,7 +1925,7 @@ export function MultiTransactionTable() {
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </td>
-              </tr>
+              </TransactionDraftRow>
             ))}
           </tbody>
         </table>

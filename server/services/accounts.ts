@@ -1,12 +1,11 @@
 import crypto from "node:crypto";
 import { getDb, toBool } from "../db/index.js";
-import type {
-  Account,
-  AccountType,
-  AccountWithBalance,
-  ReconcileAccountResult,
-  Transaction,
-} from "../../src/types/index.js";
+import { ConflictError, NotFoundError } from "../errors.js";
+import type { Account,
+AccountType,
+AccountWithBalance,
+ReconcileAccountResult,
+Transaction, } from "../../shared/contracts/index.js"
 
 interface AccountRow {
   id: string;
@@ -103,14 +102,14 @@ function checkNameUniqueness(name: string, excludeId?: string): void {
         .get(name);
 
   if (accountExists) {
-    throw new Error(`An account with the name "${name}" already exists`);
+    throw new ConflictError(`An account with the name "${name}" already exists`)
   }
 
   const categoryExists = db
     .prepare("SELECT 1 FROM categories WHERE name = ? AND deleted_at IS NULL")
     .get(name);
   if (categoryExists) {
-    throw new Error(`A category with the name "${name}" already exists`);
+    throw new ConflictError(`A category with the name "${name}" already exists`)
   }
 
   const subcategoryExists = db
@@ -119,7 +118,7 @@ function checkNameUniqueness(name: string, excludeId?: string): void {
     )
     .get(name);
   if (subcategoryExists) {
-    throw new Error(`A subcategory with the name "${name}" already exists`);
+    throw new ConflictError(`A subcategory with the name "${name}" already exists`)
   }
 }
 
@@ -204,7 +203,7 @@ export function updateAccount(
     .prepare("SELECT * FROM accounts WHERE id = ? AND deleted_at IS NULL")
     .get(id) as AccountRow | undefined;
   if (!existing) {
-    throw new Error(`Account with id "${id}" not found`);
+    throw new NotFoundError(`Account with id "${id}" not found`)
   }
 
   if (updates.name !== undefined) {
@@ -239,7 +238,7 @@ export function reconcileAccount(
       .get(id) as AccountRow | undefined;
 
     if (!account) {
-      throw new Error(`Account with id "${id}" not found`);
+      throw new NotFoundError(`Account with id "${id}" not found`)
     }
 
     const balanceRow = db
@@ -307,7 +306,7 @@ export function deleteAccount(id: string): void {
     .prepare("SELECT * FROM accounts WHERE id = ? AND deleted_at IS NULL")
     .get(id) as AccountRow | undefined;
   if (!existing) {
-    throw new Error(`Account with id "${id}" not found`);
+    throw new NotFoundError(`Account with id "${id}" not found`)
   }
 
   db.prepare("UPDATE accounts SET deleted_at = ? WHERE id = ?").run(now, id);
@@ -321,7 +320,7 @@ export function restoreAccount(id: string): Account {
     | AccountRow
     | undefined;
   if (!existing || existing.deleted_at === null) {
-    throw new Error(`Account with id "${id}" not found`);
+    throw new NotFoundError(`Account with id "${id}" not found`)
   }
 
   const conflict = db
@@ -330,9 +329,7 @@ export function restoreAccount(id: string): Account {
     )
     .get(existing.name, id);
   if (conflict) {
-    throw new Error(
-      `An account with the name "${existing.name}" already exists`,
-    );
+    throw new ConflictError(`An account with the name "${existing.name}" already exists`)
   }
 
   db.prepare(

@@ -41,60 +41,35 @@ const updateTagSchema = z
   );
 
 tagRouter.get("/", (_req: Request, res: Response) => {
-  try {
-    const data = getTags();
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const data = getTags();
+  res.json({ success: true, data });
 });
 
 tagRouter.post("/", (req: Request, res: Response) => {
-  try {
-    const body = parseRequest(createTagSchema, req.body, res);
-    if (!body) return;
-    const data = createTag(body);
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const body = parseRequest(createTagSchema, req.body);
+
+  const data = createTag(body);
+  res.status(201).json({ success: true, data });
 });
 
 tagRouter.put("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    const body = parseRequest(updateTagSchema, req.body, res);
-    if (!params || !body) return;
-    const data = updateTag(params.id, body);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+  const body = parseRequest(updateTagSchema, req.body);
+
+  const data = updateTag(params.id, body);
+  res.json({ success: true, data });
 });
 
 tagRouter.post("/:id/restore", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    const data = restoreTag(params.id);
-    res.json({ success: true, data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  const data = restoreTag(params.id);
+  res.json({ success: true, data });
 });
 
 tagRouter.delete("/:id", (req: Request, res: Response) => {
-  try {
-    const params = parseRequest(idParamSchema, req.params, res);
-    if (!params) return;
-    deleteTag(params.id);
-    res.json({ success: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    res.status(400).json({ success: false, error: message });
-  }
+  const params = parseRequest(idParamSchema, req.params);
+
+  deleteTag(params.id);
+  res.json({ success: true });
 });

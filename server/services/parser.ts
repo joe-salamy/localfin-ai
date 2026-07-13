@@ -1,9 +1,7 @@
-import type {
-  AccountType,
-  EnrichedTransaction,
-  ParsedTransaction,
-} from "../../src/types/index.js";
-import { normalizeTransactionAmount } from "../../src/lib/transactionAmounts.js";
+import type { AccountType,
+EnrichedTransaction,
+ParsedTransaction, } from "../../shared/contracts/index.js"
+import { normalizeTransactionAmount } from "../../shared/finance/transactionAmounts.js"
 import { getDb } from "../db/index.js";
 import { categorizeTransactions } from "./ai.js";
 

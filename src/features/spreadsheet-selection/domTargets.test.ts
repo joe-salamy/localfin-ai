@@ -1,7 +1,4 @@
-/// <reference types="node" />
-
-import assert from "node:assert/strict";
-import { afterEach, beforeEach, test } from "node:test";
+import { afterEach, beforeEach, expect, test } from "vitest"
 import { hasSelectedInputText, isNativeEditableTarget } from "./domTargets";
 
 const constructorNames = [
@@ -41,9 +38,9 @@ afterEach(() => {
 });
 
 test("plain event targets are not editable when DOM constructors are absent", () => {
-  assert.equal(isNativeEditableTarget({} as EventTarget), false);
+  expect(isNativeEditableTarget({} as EventTarget)).toBe(false);
 });
 
 test("plain event targets have no selected text when DOM constructors are absent", () => {
-  assert.equal(hasSelectedInputText({} as EventTarget), false);
+  expect(hasSelectedInputText({} as EventTarget)).toBe(false);
 });

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { NetWorthDataPoint } from "@/types";
+import type { NetWorthDataPoint } from "@shared/contracts"
 import {
   LineChart,
   Line,
