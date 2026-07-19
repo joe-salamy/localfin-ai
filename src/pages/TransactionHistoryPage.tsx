@@ -681,7 +681,38 @@ export function TransactionHistoryPage() {
 
   return (
     <div className="space-y-3">
-      <h1 className="text-lg font-bold">Transaction History</h1>
+      <div className="grid min-h-16 grid-rows-[1.75rem_1.75rem] gap-2 sm:min-h-7 sm:grid-cols-[1fr_auto] sm:grid-rows-1">
+        <h1 className="flex h-7 items-center text-lg font-bold">
+          Transaction History
+        </h1>
+        <div className="flex h-7 items-center gap-2 text-xs sm:justify-end">
+          {selectedIds.size > 0 && (
+            <>
+              <span className="text-muted-foreground">
+                {selectedIds.size} selected
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setBulkEditOpen(true)}
+                className="h-7 text-xs"
+              >
+                Bulk Edit
+                <ShortcutHint commandId="transactionHistory.bulkEdit" />
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setBulkDeleteOpen(true)}
+                className="h-7 text-xs"
+              >
+                Bulk Delete
+                <ShortcutHint commandId="transactionHistory.bulkDelete" />
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-2">
@@ -904,32 +935,6 @@ export function TransactionHistoryPage() {
         )}
       </div>
 
-      {/* Action bar */}
-      {selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">
-            {selectedIds.size} selected
-          </span>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setBulkEditOpen(true)}
-            className="h-7 text-xs"
-          >
-            Bulk Edit
-            <ShortcutHint commandId="transactionHistory.bulkEdit" />
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={() => setBulkDeleteOpen(true)}
-            className="h-7 text-xs"
-          >
-            Bulk Delete
-            <ShortcutHint commandId="transactionHistory.bulkDelete" />
-          </Button>
-        </div>
-      )}
 
       {/* Loading state */}
       {isLoading ? (

@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 import type {
   Category,
@@ -65,6 +66,12 @@ const transaction: TransactionWithDetails = {
   deleted_at: null,
   tags: [tag],
 };
+const secondTransaction: TransactionWithDetails = {
+  ...transaction,
+  id: "transaction-two",
+  name: "Fuel Stop",
+  date: "2026-07-02",
+};
 
 const suspectFinding: SuspectTransactionFinding = {
   id: "finding-one",
@@ -79,13 +86,15 @@ const suspectFinding: SuspectTransactionFinding = {
   updated_at: "2026-07-01",
 };
 
-function renderTable(overrides: Partial<React.ComponentProps<typeof TransactionTable>> = {}) {
-  const props: React.ComponentProps<typeof TransactionTable> = {
+function createTableProps(
+  overrides: Partial<React.ComponentProps<typeof TransactionTable>> = {},
+) {
+  return {
     transactions: [transaction],
-    selectedIds: new Set(),
+    selectedIds: new Set<string>(),
     onSelectionChange: vi.fn(),
     sortColumn: "date",
-    sortDirection: "desc",
+    sortDirection: "desc" as const,
     onSort: vi.fn(),
     onEdit: vi.fn(async () => true),
     onEditMany: vi.fn(async () => true),
@@ -96,14 +105,48 @@ function renderTable(overrides: Partial<React.ComponentProps<typeof TransactionT
     suspectFindings: [suspectFinding],
     onCreateTag: vi.fn(async () => tag),
     ...overrides,
-  };
+  } satisfies React.ComponentProps<typeof TransactionTable>;
+}
+
+function renderTable(
+  overrides: Partial<React.ComponentProps<typeof TransactionTable>> = {},
+) {
+  const props = createTableProps(overrides);
   return { ...renderWithProviders(<TransactionTable {...props} />), props };
+}
+
+function SelectionHarness({
+  props,
+}: {
+  props: React.ComponentProps<typeof TransactionTable>;
+}) {
+  const [showPartialSelection, setShowPartialSelection] = useState(false);
+
+  return (
+    <>
+      <button onClick={() => setShowPartialSelection(true)}>
+        Show partial selection
+      </button>
+      <TransactionTable
+        {...props}
+        transactions={
+          showPartialSelection
+            ? [transaction, secondTransaction]
+            : [transaction]
+        }
+        selectedIds={
+          showPartialSelection ? new Set([transaction.id]) : new Set()
+        }
+      />
+    </>
+  );
 }
 
 describe("TransactionTable", () => {
   test("renders finance metadata and emits sorting and controlled selection", async () => {
     const user = userEvent.setup();
-    const { props } = renderTable();
+    const props = createTableProps();
+    renderWithProviders(<SelectionHarness props={props} />);
 
     expect(screen.getByText("Corner Market")).toBeVisible();
     expect(screen.getByText("Checking")).toBeVisible();
@@ -114,15 +157,37 @@ describe("TransactionTable", () => {
     await user.click(screen.getByText("Amount"));
     expect(props.onSort).toHaveBeenCalledWith("amount");
 
-    const checkboxes = screen.getAllByRole("checkbox");
-    await user.click(checkboxes[1]!);
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select Corner Market" }),
+    );
     expect(props.onSelectionChange).toHaveBeenCalledWith(
       new Set([transaction.id]),
     );
-    await user.click(checkboxes[0]!);
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select all transactions" }),
+    );
     expect(props.onSelectionChange).toHaveBeenLastCalledWith(
       new Set([transaction.id]),
     );
+
+    await user.click(screen.getByRole("button", { name: "Show partial selection" }));
+    const selectAll = screen.getByRole("checkbox", {
+      name: "Select all transactions",
+    });
+    expect(selectAll).toBePartiallyChecked();
+
+    await user.click(selectAll);
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(
+      new Set([transaction.id, secondTransaction.id]),
+    );
+  });
+
+  test("disables select-all when the table is empty", () => {
+    renderTable({ transactions: [] });
+
+    expect(
+      screen.getByRole("checkbox", { name: "Select all transactions" }),
+    ).toBeDisabled();
   });
 
   test("double click and Enter save edited values while Escape cancels", async () => {

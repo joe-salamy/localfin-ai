@@ -14,6 +14,7 @@ import { ConfirmDeleteModal } from "@/components/features/ConfirmDeleteModal";
 import { TagChip, TagPicker } from "@/components/features/TagPicker";
 import type { TagPickerCreateOptions } from "@/components/features/TagPicker";
 import { EntityLabel } from "@/components/ui/EntityLabel";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { formatCurrency, cn } from "@/lib/utils";
 import { DISPLAY_DATE_FORMAT } from "@/config/constants";
 import {
@@ -210,6 +211,8 @@ export function TransactionTable({
 
   const allSelected =
     transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
+  const someSelected =
+    !allSelected && transactions.some((t) => selectedIds.has(t.id));
   const focusedTransaction =
     transactions.find((transaction) => transaction.id === focusedId) ??
     transactions[0] ??
@@ -1245,11 +1248,12 @@ export function TransactionTable({
         onClick={sortable ? () => onSort(col.id) : undefined}
       >
         {col.id === "select" ? (
-          <input
-            type="checkbox"
+          <Checkbox
             checked={allSelected}
+            indeterminate={someSelected}
+            disabled={transactions.length === 0}
             onChange={toggleAll}
-            className="rounded border-border"
+            aria-label="Select all transactions"
           />
         ) : (
           <>
@@ -1364,11 +1368,10 @@ export function TransactionTable({
                   onKeyDown={isEditing ? handleEditRowKeyDown : undefined}
                 >
                   <td className={cellClass}>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={selectedIds.has(t.id)}
                       onChange={() => toggleOne(t.id)}
-                      className="rounded border-border"
+                      aria-label={`Select ${t.name}`}
                     />
                   </td>
                   <td

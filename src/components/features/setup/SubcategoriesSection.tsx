@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Pencil, Trash2, Plus, Lock } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { SimpleSelect } from "@/components/ui/SimpleSelect";
 import { ColorPicker } from "@/components/ui/ColorPicker";
 import { EntityLabel } from "@/components/ui/EntityLabel";
@@ -432,29 +433,36 @@ export function SubcategoriesSection() {
         }
       }}
     >
-      {selectedCount > 0 && (
-        <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
-          <span className="text-muted-foreground">
-            {selectedCount} subcategor{selectedCount === 1 ? "y" : "ies"}{" "}
-            selected
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            className="h-7"
-            onClick={() => setShowBulkDelete(true)}
-          >
-            <Trash2 size={14} className="mr-1" /> Delete Selected
-            <ShortcutHint commandId="setup.subcategories.bulkDelete" />
-          </Button>
-        </div>
-      )}
       <div className="overflow-x-auto">
         <table
           className="w-full text-sm"
           style={{ minWidth: totalWidth, tableLayout: "fixed" }}
         >
+          <caption className="pb-2 text-left">
+            <div className="flex h-7 items-center justify-between gap-3">
+              <span className="font-medium text-foreground">Subcategories</span>
+              <div className="flex h-7 items-center gap-2 text-sm">
+                {selectedCount > 0 && (
+                  <>
+                    <span className="text-muted-foreground">
+                      {selectedCount} subcategor
+                      {selectedCount === 1 ? "y" : "ies"} selected
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      className="h-7"
+                      onClick={() => setShowBulkDelete(true)}
+                    >
+                      <Trash2 size={14} className="mr-1" /> Delete Selected
+                      <ShortcutHint commandId="setup.subcategories.bulkDelete" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </caption>
           <colgroup>
             {columns.map((column) => (
               <col key={column.id} style={getColStyle(column.id)} />
@@ -466,13 +474,12 @@ export function SubcategoriesSection() {
                 className="relative pb-1 font-medium"
                 style={getHeaderStyle("select")}
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={allSelected}
+                  indeterminate={selectedCount > 0 && !allSelected}
                   disabled={selectableIds.length === 0}
                   onChange={toggleAllSelected}
                   aria-label="Select all subcategories"
-                  className="h-4 w-4 rounded border-border bg-background"
                 />
                 <span
                   {...getResizeHandleProps("select")}
@@ -624,12 +631,10 @@ export function SubcategoriesSection() {
                     <>
                       <td className="py-1.5">
                         {!s.is_system && (
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={selectedIds.has(s.id)}
                             onChange={() => toggleSelected(s.id)}
                             aria-label={`Select ${s.name}`}
-                            className="h-4 w-4 rounded border-border bg-background"
                           />
                         )}
                       </td>

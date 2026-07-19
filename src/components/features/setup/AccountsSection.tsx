@@ -5,6 +5,7 @@ import { Pencil, Trash2, Plus, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { SimpleSelect } from "@/components/ui/SimpleSelect";
 import { ColorPicker } from "@/components/ui/ColorPicker";
 import { EntityLabel } from "@/components/ui/EntityLabel";
@@ -510,23 +511,6 @@ export function AccountsSection() {
         }
       }}
     >
-      {selectedCount > 0 && (
-        <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
-          <span className="text-muted-foreground">
-            {selectedCount} account{selectedCount === 1 ? "" : "s"} selected
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            className="h-7"
-            onClick={() => setShowBulkDelete(true)}
-          >
-            <Trash2 size={14} className="mr-1" /> Delete Selected
-            <ShortcutHint commandId="setup.accounts.bulkDelete" />
-          </Button>
-        </div>
-      )}
       <Card className="mb-4">
         <CardHeader className="mb-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -680,6 +664,31 @@ export function AccountsSection() {
           className="w-full text-sm"
           style={{ minWidth: totalWidth, tableLayout: "fixed" }}
         >
+          <caption className="pb-2 text-left">
+            <div className="flex h-7 items-center justify-between gap-3">
+              <span className="font-medium text-foreground">Accounts</span>
+              <div className="flex h-7 items-center gap-2 text-sm">
+                {selectedCount > 0 && (
+                  <>
+                    <span className="text-muted-foreground">
+                      {selectedCount} account{selectedCount === 1 ? "" : "s"}{" "}
+                      selected
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      className="h-7"
+                      onClick={() => setShowBulkDelete(true)}
+                    >
+                      <Trash2 size={14} className="mr-1" /> Delete Selected
+                      <ShortcutHint commandId="setup.accounts.bulkDelete" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </caption>
           <colgroup>
             {columns.map((column) => (
               <col key={column.id} style={getColStyle(column.id)} />
@@ -691,13 +700,12 @@ export function AccountsSection() {
                 className="relative pb-1 font-medium"
                 style={getHeaderStyle("select")}
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={allSelected}
+                  indeterminate={selectedCount > 0 && !allSelected}
                   disabled={selectableIds.length === 0}
                   onChange={toggleAllSelected}
                   aria-label="Select all accounts"
-                  className="h-4 w-4 rounded border-border bg-background"
                 />
                 <span
                   {...getResizeHandleProps("select")}
@@ -863,12 +871,10 @@ export function AccountsSection() {
                 ) : (
                   <>
                     <td className="py-1.5">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selectedIds.has(a.id)}
                         onChange={() => toggleSelected(a.id)}
                         aria-label={`Select ${a.name}`}
-                        className="h-4 w-4 rounded border-border bg-background"
                       />
                     </td>
                     <td

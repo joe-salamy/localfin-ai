@@ -3,6 +3,7 @@ import { AlertTriangle, RotateCcw, Save, Search, Trash2 } from "lucide-react";
 import { CollapsibleCard } from "@/components/ui/CollapsibleCard";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { ColorPicker } from "@/components/ui/ColorPicker";
 import type {
   CommandDefinition,
@@ -271,15 +272,13 @@ export function SettingsPage() {
         contentClassName="space-y-3"
       >
           <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={displaySettings.successConfirmationPopupsEnabled}
               onChange={(event) =>
                 displaySettings.setSuccessConfirmationPopupsEnabled(
                   event.target.checked,
                 )
               }
-              className="h-4 w-4 rounded border-border bg-background"
             />
             Show success confirmation popups
           </label>
@@ -405,13 +404,11 @@ export function SettingsPage() {
         contentClassName="space-y-3"
       >
           <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={displaySettings.amountGradientEnabled}
               onChange={(event) =>
                 displaySettings.setAmountGradientEnabled(event.target.checked)
               }
-              className="h-4 w-4 rounded border-border bg-background"
             />
             Color transaction rows by amount
           </label>
@@ -522,22 +519,18 @@ export function SettingsPage() {
               />
             </div>
             <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={showShortcutHints}
                 onChange={(event) => setShowShortcutHints(event.target.checked)}
-                className="h-4 w-4 rounded border-border bg-background"
               />
               Show shortcut hints
             </label>
             <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={disableSingleKeyShortcuts}
                 onChange={(event) =>
                   setDisableSingleKeyShortcuts(event.target.checked)
                 }
-                className="h-4 w-4 rounded border-border bg-background"
               />
               Disable single-key shortcuts
             </label>
