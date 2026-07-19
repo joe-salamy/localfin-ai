@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, RotateCcw, Save, Search, Trash2 } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { CollapsibleCard } from "@/components/ui/CollapsibleCard";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ColorPicker } from "@/components/ui/ColorPicker";
@@ -80,6 +80,12 @@ export function SettingsPage() {
   const [flaggedWordsMessage, setFlaggedWordsMessage] = useState("");
   const [tableLayoutMessage, setTableLayoutMessage] = useState("");
   const [shortcutsTableFocused, setShortcutsTableFocused] = useState(false);
+  const [apiKeyOpen, setApiKeyOpen] = useState(true);
+  const [interfaceOpen, setInterfaceOpen] = useState(true);
+  const [assistantOpen, setAssistantOpen] = useState(true);
+  const [flaggedWordsOpen, setFlaggedWordsOpen] = useState(true);
+  const [amountColorsOpen, setAmountColorsOpen] = useState(true);
+  const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(true);
   const {
     columns,
     totalWidth,
@@ -130,8 +136,16 @@ export function SettingsPage() {
   }, [filteredCommands]);
 
   const focusSection = useCallback(() => {
-    sectionRef.current?.focus();
-    sectionRef.current?.scrollIntoView({ block: "start" });
+    setKeyboardShortcutsOpen(true);
+    window.setTimeout(() => {
+      sectionRef.current?.focus();
+      sectionRef.current?.scrollIntoView({ block: "start" });
+    }, 0);
+  }, []);
+
+  const focusShortcutSearch = useCallback(() => {
+    setKeyboardShortcutsOpen(true);
+    window.setTimeout(() => searchRef.current?.focus(), 0);
   }, []);
 
   useEffect(() => {
@@ -174,10 +188,7 @@ export function SettingsPage() {
   }, [resetShortcut, selectedCommand]);
 
   useShortcut("settings.focusShortcuts", focusSection);
-  useShortcut(
-    "settings.focusShortcutSearch",
-    useCallback(() => searchRef.current?.focus(), []),
-  );
+  useShortcut("settings.focusShortcutSearch", focusShortcutSearch);
   useShortcut(
     "settings.editSelectedShortcut",
     useCallback(() => {
@@ -228,11 +239,11 @@ export function SettingsPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-bold">Settings</h1>
 
-      <Card>
-        <CardHeader className="mb-2">
-          <CardTitle>API Key (OpenRouter)</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <CollapsibleCard
+        title="API Key (OpenRouter)"
+        open={apiKeyOpen}
+        onOpenChange={setApiKeyOpen}
+      >
           <p className="text-sm text-muted-foreground">
             The OpenRouter API key is configured via the{" "}
             <code className="bg-secondary px-1 py-0.5 rounded text-xs font-mono">
@@ -251,14 +262,14 @@ export function SettingsPage() {
             </code>{" "}
             and restart the server.
           </p>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
 
-      <Card>
-        <CardHeader className="mb-2">
-          <CardTitle>Interface</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <CollapsibleCard
+        title="Interface"
+        open={interfaceOpen}
+        onOpenChange={setInterfaceOpen}
+        contentClassName="space-y-3"
+      >
           <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
             <input
               type="checkbox"
@@ -302,14 +313,14 @@ export function SettingsPage() {
               {tableLayoutMessage}
             </p>
           )}
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
 
-      <Card>
-        <CardHeader className="mb-2">
-          <CardTitle>Assistant</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <CollapsibleCard
+        title="Assistant"
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        contentClassName="space-y-3"
+      >
           <Input
             type="number"
             min={MIN_MAX_ASSISTANT_TURNS}
@@ -330,18 +341,20 @@ export function SettingsPage() {
             <RotateCcw className="mr-1 h-3.5 w-3.5" />
             Reset
           </Button>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
 
 
-      <Card>
-        <CardHeader className="mb-2">
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-red-300" />
+      <CollapsibleCard
+        title={
+          <>
+            <AlertTriangle className="mr-2 h-4 w-4 text-red-300" />
             Flagged Transaction Words
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+          </>
+        }
+        open={flaggedWordsOpen}
+        onOpenChange={setFlaggedWordsOpen}
+        contentClassName="space-y-3"
+      >
           <label className="block space-y-1">
             <span className="text-sm font-medium text-muted-foreground">
               Words or phrases
@@ -383,14 +396,14 @@ export function SettingsPage() {
               Reset
             </Button>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
 
-      <Card>
-        <CardHeader className="mb-2">
-          <CardTitle>Transaction Amount Colors</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <CollapsibleCard
+        title="Transaction Amount Colors"
+        open={amountColorsOpen}
+        onOpenChange={setAmountColorsOpen}
+        contentClassName="space-y-3"
+      >
           <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
             <input
               type="checkbox"
@@ -480,14 +493,14 @@ export function SettingsPage() {
               Reset
             </Button>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
 
-      <Card>
-        <CardHeader className="mb-2">
-          <CardTitle>Keyboard Shortcuts</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <CollapsibleCard
+        title="Keyboard Shortcuts"
+        open={keyboardShortcutsOpen}
+        onOpenChange={setKeyboardShortcutsOpen}
+        contentClassName="space-y-4"
+      >
           <div
             id="keyboard-shortcuts"
             ref={sectionRef}
@@ -759,8 +772,7 @@ export function SettingsPage() {
               ))}
             </table>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
     </div>
   );
 }

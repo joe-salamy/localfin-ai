@@ -3,7 +3,8 @@ import { format, subDays } from "date-fns";
 import { TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useTags } from "@/hooks/useTags";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { Card } from "@/components/ui/Card";
+import { CollapsibleCard } from "@/components/ui/CollapsibleCard";
 import { Button } from "@/components/ui/Button";
 import { AccountSummaryTable } from "@/components/features/AccountSummary";
 import { CategorySummaryTable } from "@/components/features/CategorySummary";
@@ -33,6 +34,11 @@ export function DashboardPage() {
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(today);
   const [tagIds, setTagIds] = useState<string[]>([]);
+  const [accountSummaryOpen, setAccountSummaryOpen] = useState(true);
+  const [categorySummaryOpen, setCategorySummaryOpen] = useState(true);
+  const [tagSummaryOpen, setTagSummaryOpen] = useState(true);
+  const [netWorthChartOpen, setNetWorthChartOpen] = useState(true);
+  const [moneyFlowOpen, setMoneyFlowOpen] = useState(true);
   const startInputRef = useRef<HTMLInputElement>(null);
   const endInputRef = useRef<HTMLInputElement>(null);
 
@@ -235,64 +241,54 @@ export function DashboardPage() {
             />
           </div>
 
-          {/* Account Summary */}
-          <Card>
-            <CardHeader className="mb-2">
-              <CardTitle>Account Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <AccountSummaryTable
-                accounts={accountSummary}
-                netWorth={netWorth}
-              />
-            </CardContent>
-          </Card>
+          <CollapsibleCard
+            title="Account Summary"
+            open={accountSummaryOpen}
+            onOpenChange={setAccountSummaryOpen}
+          >
+            <AccountSummaryTable
+              accounts={accountSummary}
+              netWorth={netWorth}
+            />
+          </CollapsibleCard>
 
-          {/* Category Summary */}
-          <Card>
-            <CardHeader className="mb-2">
-              <CardTitle>Category Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CategorySummaryTable categories={categorySummary} />
-            </CardContent>
-          </Card>
+          <CollapsibleCard
+            title="Category Summary"
+            open={categorySummaryOpen}
+            onOpenChange={setCategorySummaryOpen}
+          >
+            <CategorySummaryTable categories={categorySummary} />
+          </CollapsibleCard>
 
-          {/* Tag Summary */}
-          <Card>
-            <CardHeader className="mb-2">
-              <CardTitle>Tag Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TagSummaryTable tags={tagSummary} />
-            </CardContent>
-          </Card>
+          <CollapsibleCard
+            title="Tag Summary"
+            open={tagSummaryOpen}
+            onOpenChange={setTagSummaryOpen}
+          >
+            <TagSummaryTable tags={tagSummary} />
+          </CollapsibleCard>
 
-          {/* Net Worth Chart */}
-          <Card>
-            <CardHeader className="mb-2">
-              <CardTitle>Net Worth Over Time</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <NetWorthChart data={netWorthChart} />
-            </CardContent>
-          </Card>
+          <CollapsibleCard
+            title="Net Worth Over Time"
+            open={netWorthChartOpen}
+            onOpenChange={setNetWorthChartOpen}
+          >
+            <NetWorthChart data={netWorthChart} />
+          </CollapsibleCard>
 
-          {/* Sankey Diagram */}
-          <Card>
-            <CardHeader className="mb-2">
-              <CardTitle>Money Flow</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {sankeyChart ? (
-                <SankeyDiagram data={sankeyChart} />
-              ) : (
-                <p className="text-sm text-muted-foreground py-4">
-                  No flow data available.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          <CollapsibleCard
+            title="Money Flow"
+            open={moneyFlowOpen}
+            onOpenChange={setMoneyFlowOpen}
+          >
+            {sankeyChart ? (
+              <SankeyDiagram data={sankeyChart} />
+            ) : (
+              <p className="py-4 text-sm text-muted-foreground">
+                No flow data available.
+              </p>
+            )}
+          </CollapsibleCard>
         </>
       )}
     </div>
