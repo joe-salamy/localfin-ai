@@ -248,16 +248,6 @@ export function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Tag Summary */}
-          <Card>
-            <CardHeader className="mb-2">
-              <CardTitle>Tag Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TagSummaryTable tags={tagSummary} />
-            </CardContent>
-          </Card>
-
           {/* Category Summary */}
           <Card>
             <CardHeader className="mb-2">
@@ -265,6 +255,16 @@ export function DashboardPage() {
             </CardHeader>
             <CardContent>
               <CategorySummaryTable categories={categorySummary} />
+            </CardContent>
+          </Card>
+
+          {/* Tag Summary */}
+          <Card>
+            <CardHeader className="mb-2">
+              <CardTitle>Tag Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TagSummaryTable tags={tagSummary} />
             </CardContent>
           </Card>
 
