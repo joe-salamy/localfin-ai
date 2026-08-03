@@ -73,11 +73,18 @@ export function shouldContinueToolLoop(
         action.type === "search_transactions" && action.status === "success",
     ) &&
     !turnActions.some(actionCompletesMutation);
+  const shouldContinueAfterCalculation = turnActions.some(
+    (action) => action.type === "calculate" && action.status === "success",
+  );
   const shouldRepairFailure =
     turnActions.some(actionFailureCanBeRetried) &&
     !turnActions.some(actionCompletesCreate);
 
-  return shouldContinueAfterSearch || shouldRepairFailure;
+  return (
+    shouldContinueAfterSearch ||
+    shouldContinueAfterCalculation ||
+    shouldRepairFailure
+  );
 }
 
 export async function runAssistantChat(

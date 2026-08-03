@@ -25,6 +25,7 @@ import {
   resolveOrCreateTagsByName,
   updateTag,
 } from "../tags.js";
+import { calculateExpression } from "./calculator.js";
 import type { CreateTransactionData,
 Tag,
 TagType, } from "../../../shared/contracts/index.js"
@@ -179,6 +180,18 @@ export function executeAction(action: AIAction): ExecutedAction {
         throw new Error(
           asString(input.reason) ?? "Assistant reported an action failure",
         );
+      }
+      case "calculate": {
+        const expression = asString(input.expression);
+        if (!expression) throw new Error("calculate requires expression");
+        return {
+          ...action,
+          status: "success",
+          result: {
+            expression,
+            result: calculateExpression(expression),
+          },
+        };
       }
       case "create_account": {
         const name = asString(input.name);

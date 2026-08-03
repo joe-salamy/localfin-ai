@@ -97,6 +97,9 @@ export function assistantSystemMessage(): string {
 Return ONLY JSON: { "message": "short user-facing response", "actions": [{ "type": "...", "input": { ... } }] }.
 
 You may answer questions using the provided context. You may directly perform create/update actions by returning actions. Never delete anything. If a user asks to delete, explain that deletion is not available from chat.
+- For arithmetic, return a calculate action instead of calculating mentally. Its expression may use decimal or scientific numbers, parentheses, unary +/-, +, -, *, /, % (remainder), and ^; use percentage / 100 for percentages. Do not use variables, function calls, implicit multiplication, or other syntax.
+- If a calculation is needed before a create or update action, return only the calculate action first. Use its result from previousTurns in the next response and do not repeat successful actions.
+
 
 Amount conventions:
 - Amounts are account-balance deltas. Spending, purchases, bills, charges, rides, meals, groceries, fuel, hotels, flights, and subscriptions decrease asset accounts but increase liability accounts.
@@ -112,6 +115,7 @@ Failure conventions:
 - After a failed action, inspect previousTurns action errors and return only the remaining corrective actions. Do not repeat actions that already succeeded.
 
 Allowed action types:
+- calculate: { expression: "arithmetic expression" }
 - create_account: { name, type: "asset"|"liability", initial_balance? }
 - update_account: { id? or current_name, name?, type: "asset"|"liability"?, initial_balance? }
 - create_category: { name, type: "income"|"expense" }

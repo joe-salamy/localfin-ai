@@ -231,6 +231,45 @@ void test("agent creates budget structure and captures a transaction through the
   );
 });
 
+void test("agent uses calculator results in a follow-up response", async (t) => {
+  await createFixture(t);
+  const calls = installOpenRouterMock((_body, callNumber) =>
+    callNumber === 1
+      ? {
+          message: "I will calculate that first.",
+          actions: [
+            {
+              type: "calculate",
+              input: { expression: "(12.5 * 4) + 3" },
+            },
+          ],
+        }
+      : {
+          message: "The result is 53.",
+          actions: [],
+        },
+  );
+
+  const result = await chatWithAssistant({
+    conversationId: "test-calculator",
+    message: "What is (12.5 * 4) + 3?",
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(result.message, "The result is 53.");
+  assert.deepEqual(result.actions, [
+    {
+      type: "calculate",
+      input: { expression: "(12.5 * 4) + 3" },
+      status: "success",
+      result: {
+        expression: "(12.5 * 4) + 3",
+        result: 53,
+      },
+    },
+  ]);
+});
+
 void test("agent searches before updating a described transaction and finishes in a follow-up turn", async (t) => {
   const { db } = await createFixture(t);
   createAccount({

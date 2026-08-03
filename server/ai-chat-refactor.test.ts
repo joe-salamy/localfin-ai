@@ -130,6 +130,14 @@ void test("shouldContinueToolLoop continues after search-only updates and retria
       error: "update_subcategory requires id or current_name",
     },
   ];
+  const calculated: ExecutedAction[] = [
+    {
+      type: "calculate",
+      input: { expression: "2 + 2" },
+      status: "success",
+      result: { expression: "2 + 2", result: 4 },
+    },
+  ];
 
   assert.equal(
     shouldContinueToolLoop("Find Uber and update its comment.", searchOnly),
@@ -144,6 +152,10 @@ void test("shouldContinueToolLoop continues after search-only updates and retria
   );
   assert.equal(
     shouldContinueToolLoop("Move Groceries.", retriableFailure),
+    true,
+  );
+  assert.equal(
+    shouldContinueToolLoop("What is 2 + 2?", calculated),
     true,
   );
 });
