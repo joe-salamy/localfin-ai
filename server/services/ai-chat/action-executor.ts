@@ -176,11 +176,7 @@ export function executeAction(action: AIAction): ExecutedAction {
 
   try {
     switch (action.type) {
-      case "report_failure": {
-        throw new Error(
-          asString(input.reason) ?? "Assistant reported an action failure",
-        );
-      }
+      // intentionally no delete tools; unsupported types fall through to default
       case "calculate": {
         const expression = asString(input.expression);
         if (!expression) throw new Error("calculate requires expression");

@@ -1,14 +1,10 @@
 import type { OpenRouterReasoningDetail } from "../../ai/openrouter.js";
-import type { Account,
-AccountType,
-Category,
-CategoryType,
-GoalPeriod,
-SpendingGoalWithDetails,
-Subcategory,
-Tag,
-TagType,
-TransactionWithDetails, } from "../../../shared/contracts/index.js"
+import type {
+  AccountType,
+  CategoryType,
+  GoalPeriod,
+  TagType,
+} from "../../../shared/contracts/index.js";
 
 export interface ChatRequest {
   conversationId: string;
@@ -22,26 +18,12 @@ export interface AIAction {
   input: Record<string, unknown>;
 }
 
-export interface AIChatResponse {
-  message: string;
-  actions?: AIAction[];
-}
-
 export interface ExecutedAction {
   type: string;
   input: Record<string, unknown>;
   status: "success" | "error";
   result?: unknown;
   error?: string;
-}
-
-export interface PlanningContext {
-  accounts: Account[];
-  categories: Category[];
-  subcategories: Subcategory[];
-  goals: SpendingGoalWithDetails[];
-  tags: Tag[];
-  recentTransactions: TransactionWithDetails[];
 }
 
 export interface AssistantContext {
@@ -77,17 +59,6 @@ export interface AssistantContext {
     start_date: string;
     end_date: string | null;
   }>;
-}
-
-export interface SearchActionResult {
-  action: AIAction;
-  executedAction: ExecutedAction;
-}
-
-export interface ToolLoopState {
-  turn: number;
-  assistantMessage: string;
-  actions: ExecutedAction[];
 }
 
 export interface ChatResult {

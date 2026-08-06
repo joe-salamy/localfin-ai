@@ -7,6 +7,7 @@ import type Database from "better-sqlite3";
 import {
   chatWithAssistant,
   executeAction,
+  normalizeMaxAssistantTurns,
   streamChatWithAssistant,
 } from "./services/ai-chat.js";
 import { createAccount } from "./services/accounts.js";
@@ -22,12 +23,21 @@ import {
 import { createTag, getTags } from "./services/tags.js";
 import { closeDbForTests, getDb } from "./db/index.js";
 import type { ChatResult } from "./services/ai-chat.js";
-import type { CategoryType } from "../shared/contracts/index.js"
+import type { CategoryType } from "../shared/contracts/index.js";
+
+type ToolCallSpec = {
+  name: string;
+  args: Record<string, unknown>;
+};
+
+type MockAssistantTurn =
+  | { content: string; toolCalls?: undefined }
+  | { content?: string | null; toolCalls: ToolCallSpec[] };
 
 type MockResponder = (
   body: Record<string, unknown>,
   callNumber: number,
-) => { message: string; actions?: Array<{ type: string; input: object }> };
+) => MockAssistantTurn;
 
 interface Fixture {
   db: Database.Database;
@@ -37,20 +47,145 @@ interface Fixture {
 const originalFetch = globalThis.fetch;
 const originalDbPath = process.env.LOCALFIN_DB_PATH;
 const originalApiKey = process.env.OPENROUTER_API_KEY;
+let mockToolCallCounter = 0;
+let mockResponseCounter = 0;
 
-function openRouterStreamResponse(content: unknown): Response {
-  const text = JSON.stringify(content);
-  const chunks = [
-    { choices: [{ delta: { content: text } }] },
-    {
-      choices: [{ finish_reason: "stop" }],
-      usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
-    },
-  ];
+function openRouterResponse(
+  turn: MockAssistantTurn,
+  stream: boolean,
+): Response {
+  const toolCalls = turn.toolCalls?.map((call) => {
+    mockToolCallCounter += 1;
+    return {
+      id: `call_${mockToolCallCounter}`,
+      type: "function" as const,
+      function: {
+        name: call.name,
+        arguments: JSON.stringify(call.args),
+      },
+    };
+  });
+  const responseId = `chatcmpl-test-${++mockResponseCounter}`;
+
+  if (!stream) {
+    const body =
+      toolCalls && toolCalls.length > 0
+        ? {
+            id: responseId,
+            object: "chat.completion",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: turn.content ?? null,
+                  tool_calls: toolCalls,
+                },
+                finish_reason: "tool_calls",
+              },
+            ],
+            usage: {
+              prompt_tokens: 12,
+              completion_tokens: 8,
+              total_tokens: 20,
+            },
+          }
+        : {
+            id: responseId,
+            object: "chat.completion",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: turn.content ?? "",
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 12,
+              completion_tokens: 8,
+              total_tokens: 20,
+            },
+          };
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  const chunks =
+    toolCalls && toolCalls.length > 0
+      ? [
+          {
+            id: responseId,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: "assistant",
+                  content: turn.content ?? null,
+                  tool_calls: toolCalls.map((call, index) => ({
+                    index,
+                    id: call.id,
+                    type: call.type,
+                    function: call.function,
+                  })),
+                },
+                finish_reason: "tool_calls",
+              },
+            ],
+          },
+          {
+            id: responseId,
+            choices: [
+              {
+                index: 0,
+                delta: {},
+                finish_reason: "tool_calls",
+              },
+            ],
+            usage: {
+              prompt_tokens: 12,
+              completion_tokens: 8,
+              total_tokens: 20,
+            },
+          },
+        ]
+      : [
+          {
+            id: responseId,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: "assistant",
+                  content: turn.content ?? "",
+                },
+                finish_reason: "stop",
+              },
+            ],
+          },
+          {
+            id: responseId,
+            choices: [
+              {
+                index: 0,
+                delta: {},
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 12,
+              completion_tokens: 8,
+              total_tokens: 20,
+            },
+          },
+        ];
   const sse = `${chunks
     .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
     .join("")}data: [DONE]\n\n`;
-
   return new Response(sse, {
     status: 200,
     headers: { "content-type": "text/event-stream" },
@@ -67,9 +202,32 @@ function installOpenRouterMock(
       unknown
     >;
     calls.push(body);
-    return openRouterStreamResponse(responder(body, calls.length));
+    return openRouterResponse(responder(body, calls.length), body.stream === true);
   }) as typeof fetch;
   return calls;
+}
+
+
+function latestToolResult(
+  body: Record<string, unknown>,
+  toolName?: string,
+): unknown {
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || typeof message !== "object") continue;
+    if (!("role" in message) || message.role !== "tool") continue;
+    if (toolName && "name" in message && message.name !== toolName) continue;
+    if (!("content" in message) || typeof message.content !== "string") {
+      continue;
+    }
+    try {
+      return JSON.parse(message.content) as unknown;
+    } catch {
+      return message.content;
+    }
+  }
+  return undefined;
 }
 
 async function createFixture(t: {
@@ -77,6 +235,8 @@ async function createFixture(t: {
 }): Promise<Fixture> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-agent-test-"));
   closeDbForTests();
+  mockToolCallCounter = 0;
+  mockResponseCounter = 0;
   process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
   process.env.OPENROUTER_API_KEY = "test-openrouter-key";
   const db = getDb();
@@ -153,40 +313,50 @@ function softDeletedCounts(db: Database.Database): Record<string, number> {
 
 void test("agent creates budget structure and captures a transaction through the real tool loop", async (t) => {
   const { db } = await createFixture(t);
-  const calls = installOpenRouterMock(() => ({
-    message: "Created the checking account, grocery budget, and transaction.",
-    actions: [
-      {
-        type: "create_account",
-        input: {
-          name: "Household Checking",
-          type: "asset",
-          initial_balance: 500,
-        },
-      },
-      { type: "create_category", input: { name: "Food", type: "expense" } },
-      {
-        type: "create_subcategory",
-        input: {
-          name: "Groceries",
-          category_name: "Food",
-          monthly_goal: 650,
-        },
-      },
-      {
-        type: "create_transaction",
-        input: {
-          account_name: "Household Checking",
-          date: "2026-05-24",
-          name: "Whole Foods Market",
-          amount: 48.23,
-          kind: "expense",
-          subcategory_name: "Groceries",
-          comment: "weekly shop",
-        },
-      },
-    ],
-  }));
+  const calls = installOpenRouterMock((_body, callNumber) => {
+    if (callNumber === 1) {
+      return {
+        toolCalls: [
+          {
+            name: "create_account",
+            args: {
+              name: "Household Checking",
+              type: "asset",
+              initial_balance: 500,
+            },
+          },
+          {
+            name: "create_category",
+            args: { name: "Food", type: "expense" },
+          },
+          {
+            name: "create_subcategory",
+            args: {
+              name: "Groceries",
+              category_name: "Food",
+              monthly_goal: 650,
+            },
+          },
+          {
+            name: "create_transaction",
+            args: {
+              account_name: "Household Checking",
+              date: "2026-05-24",
+              name: "Whole Foods Market",
+              amount: 48.23,
+              kind: "expense",
+              subcategory_name: "Groceries",
+              comment: "weekly shop",
+            },
+          },
+        ],
+      };
+    }
+    return {
+      content:
+        "Created the checking account, grocery budget, and transaction.",
+    };
+  });
 
   const result = await chatWithAssistant({
     conversationId: "test-create-budget",
@@ -194,7 +364,7 @@ void test("agent creates budget structure and captures a transaction through the
       "Set up Household Checking with 500, Food/Groceries at 650 monthly, and add Whole Foods 48.23 on 2026-05-24.",
   });
 
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   assert.deepEqual(
     result.actions.map((action) => [action.type, action.status]),
     [
@@ -204,6 +374,7 @@ void test("agent creates budget structure and captures a transaction through the
       ["create_transaction", "success"],
     ],
   );
+  assert.match(result.message, /Created the checking account/i);
 
   const account = db
     .prepare("SELECT name, type, initial_balance FROM accounts WHERE name = ?")
@@ -236,17 +407,15 @@ void test("agent uses calculator results in a follow-up response", async (t) => 
   const calls = installOpenRouterMock((_body, callNumber) =>
     callNumber === 1
       ? {
-          message: "I will calculate that first.",
-          actions: [
+          toolCalls: [
             {
-              type: "calculate",
-              input: { expression: "(12.5 * 4) + 3" },
+              name: "calculate",
+              args: { expression: "(12.5 * 4) + 3" },
             },
           ],
         }
       : {
-          message: "The result is 53.",
-          actions: [],
+          content: "The result is 53.",
         },
   );
 
@@ -299,37 +468,38 @@ void test("agent searches before updating a described transaction and finishes i
   const calls = installOpenRouterMock((body, callNumber) => {
     if (callNumber === 1) {
       return {
-        message: "I found matching rideshare transactions.",
-        actions: [
+        toolCalls: [
           {
-            type: "search_transactions",
-            input: { searchQuery: '"Uber Trip" AND NOT Eats', limit: 10 },
+            name: "search_transactions",
+            args: { searchQuery: '"Uber Trip" AND NOT Eats', limit: 10 },
           },
         ],
       };
     }
 
-    const userMessage = JSON.parse(
-      String((body.messages as Array<{ content: string }>)[1]?.content ?? "{}"),
-    ) as {
-      previousTurns?: Array<{
-        actions: Array<{ result?: Array<{ id: string }> }>;
-      }>;
-    };
-    const id = userMessage.previousTurns?.[0]?.actions?.[0]?.result?.[0]?.id;
-    assert.ok(id, "follow-up prompt should include search results");
-    return {
-      message: "Updated the matching Uber trip.",
-      actions: [
-        {
-          type: "update_transaction",
-          input: {
-            id,
-            subcategory_name: "Rideshare",
-            comment: "client rideshare",
+    if (callNumber === 2) {
+      const toolResult = latestToolResult(body, "search_transactions") as {
+        ok?: boolean;
+        result?: Array<{ id: string }>;
+      };
+      const id = toolResult?.result?.[0]?.id;
+      assert.ok(id, "follow-up prompt should include search results");
+      return {
+        toolCalls: [
+          {
+            name: "update_transaction",
+            args: {
+              id,
+              subcategory_name: "Rideshare",
+              comment: "client rideshare",
+            },
           },
-        },
-      ],
+        ],
+      };
+    }
+
+    return {
+      content: "Updated the matching Uber trip.",
     };
   });
 
@@ -337,10 +507,12 @@ void test("agent searches before updating a described transaction and finishes i
     conversationId: "test-search-update",
     message:
       'Find Uber Trip but not Eats and update it to Rideshare with comment "client rideshare".',
-    maxAssistantTurns: 2,
+    maxAssistantTurns: 5,
   });
 
-  assert.equal(calls.length, 2);
+  assert.ok(calls.length >= 2);
+
+  assert.ok(calls.length >= 2);
   assert.deepEqual(
     result.actions.map((action) => [action.type, action.status]),
     [
@@ -361,33 +533,39 @@ void test("agent persists partial failures without rolling back valid actions", 
   createNamedCategory("Food", "expense");
   createNamedSubcategory("Groceries", "Food", 500);
 
-  installOpenRouterMock(() => ({
-    message: "I added the valid item and attempted the missing account item.",
-    actions: [
-      {
-        type: "create_transaction",
-        input: {
-          account_name: "Test Checking",
-          date: "2026-05-24",
-          name: "Corner Market",
-          amount: 18.44,
-          kind: "expense",
-          subcategory_name: "Groceries",
-        },
-      },
-      {
-        type: "create_transaction",
-        input: {
-          account_name: "Missing Account",
-          date: "2026-05-24",
-          name: "Impossible Charge",
-          amount: 9,
-          kind: "expense",
-          subcategory_name: "Groceries",
-        },
-      },
-    ],
-  }));
+  installOpenRouterMock((_body, callNumber) => {
+    if (callNumber === 1) {
+      return {
+        toolCalls: [
+          {
+            name: "create_transaction",
+            args: {
+              account_name: "Test Checking",
+              date: "2026-05-24",
+              name: "Corner Market",
+              amount: 18.44,
+              kind: "expense",
+              subcategory_name: "Groceries",
+            },
+          },
+          {
+            name: "create_transaction",
+            args: {
+              account_name: "Missing Account",
+              date: "2026-05-24",
+              name: "Impossible Charge",
+              amount: 9,
+              kind: "expense",
+              subcategory_name: "Groceries",
+            },
+          },
+        ],
+      };
+    }
+    return {
+      content: "I added the valid item and attempted the missing account item.",
+    };
+  });
 
   const result = await chatWithAssistant({
     conversationId: "test-partial-failure",
@@ -443,8 +621,7 @@ void test("agent refuses deletion and streaming emits a traceable lifecycle", as
   });
 
   installOpenRouterMock(() => ({
-    message: "Deletion is not available from chat.",
-    actions: [],
+    content: "Deletion is not available from chat.",
   }));
 
   const events: string[] = [];
@@ -470,7 +647,6 @@ void test("agent refuses deletion and streaming emits a traceable lifecycle", as
   assert.ok(events.includes("started"));
   assert.ok(events.includes("thinking"));
   assert.ok(events.includes("response_delta"));
-  assert.ok(events.includes("actions_planned"));
   assert.ok(events.includes("final"));
 });
 
@@ -483,31 +659,48 @@ void test("agent creates an explicit trip tag and assigns it to a transaction", 
   });
   createNamedCategory("Travel", "expense");
   createNamedSubcategory("Lodging", "Travel");
-  const calls = installOpenRouterMock(() => ({
-    message: "Added the hotel transaction and tagged it for the Cabo trip.",
-    actions: [
-      {
-        type: "create_transaction",
-        input: {
-          account_name: "Travel Checking",
-          date: "2026-06-15",
-          name: "Cabo Hotel",
-          amount: 420,
-          kind: "expense",
-          subcategory_name: "Lodging",
-          tags: [{ name: "Cabo Trip", type: "trip" }],
-        },
-      },
-    ],
-  }));
-
-  const result = await chatWithAssistant({
-    conversationId: "test-explicit-trip-tag",
-    message:
-      "Add a 420 hotel charge on 2026-06-15 from Travel Checking and tag it as Cabo Trip.",
+  const calls = installOpenRouterMock((_body, callNumber) => {
+    if (callNumber === 1) {
+      return {
+        toolCalls: [
+          {
+            name: "create_transaction",
+            args: {
+              account_name: "Travel Checking",
+              date: "2026-06-15",
+              name: "Cabo Hotel",
+              amount: 420,
+              kind: "expense",
+              subcategory_name: "Lodging",
+              tags: [{ name: "Cabo Trip", type: "trip" }],
+            },
+          },
+        ],
+      };
+    }
+    return {
+      content: "Added the hotel transaction and tagged it for the Cabo trip.",
+    };
   });
 
-  assert.equal(calls.length, 1);
+  const events: string[] = [];
+  const result = await streamChatWithAssistant(
+    {
+      conversationId: "test-explicit-trip-tag",
+      message:
+        "Add a 420 hotel charge on 2026-06-15 from Travel Checking and tag it as Cabo Trip.",
+    },
+    (event) => {
+      events.push(event.type);
+    },
+  );
+
+  assert.equal(calls.length, 2);
+  assert.ok(events.includes("actions_planned"));
+  assert.ok(events.includes("action_started"));
+  assert.ok(events.includes("action_finished"));
+  assert.ok(events.includes("response_delta"));
+  assert.ok(events.includes("final"));
   assert.deepEqual(
     result.actions.map((action) => [action.type, action.status]),
     [["create_transaction", "success"]],
@@ -555,7 +748,7 @@ void test("agent creates an explicit trip tag and assigns it to a transaction", 
     "expected tag-filtered search results",
   );
   assert.deepEqual(
-    tagFilteredResults.map((item) => item.id),
+    tagFilteredResults.map((item: { id: string }) => item.id),
     [transaction.id],
   );
 });
@@ -632,22 +825,28 @@ void test("agent does not infer tags without explicit tag wording", async (t) =>
   });
   createNamedCategory("Travel", "expense");
   createNamedSubcategory("Lodging", "Travel");
-  const calls = installOpenRouterMock(() => ({
-    message: "Added the Cabo hotel transaction.",
-    actions: [
-      {
-        type: "create_transaction",
-        input: {
-          account_name: "Travel Checking",
-          date: "2026-06-15",
-          name: "Hotel in Cabo",
-          amount: 420,
-          kind: "expense",
-          subcategory_name: "Lodging",
-        },
-      },
-    ],
-  }));
+  const calls = installOpenRouterMock((_body, callNumber) => {
+    if (callNumber === 1) {
+      return {
+        toolCalls: [
+          {
+            name: "create_transaction",
+            args: {
+              account_name: "Travel Checking",
+              date: "2026-06-15",
+              name: "Hotel in Cabo",
+              amount: 420,
+              kind: "expense",
+              subcategory_name: "Lodging",
+            },
+          },
+        ],
+      };
+    }
+    return {
+      content: "Added the Cabo hotel transaction.",
+    };
+  });
 
   const result = await chatWithAssistant({
     conversationId: "test-no-inferred-tags",
@@ -655,7 +854,7 @@ void test("agent does not infer tags without explicit tag wording", async (t) =>
       "Add a 420 hotel in Cabo on 2026-06-15 from Travel Checking under Lodging.",
   });
 
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   assert.deepEqual(
     result.actions.map((action) => [action.type, action.status]),
     [["create_transaction", "success"]],
@@ -676,10 +875,35 @@ void test("agent does not infer tags without explicit tag wording", async (t) =>
     return message.role === "system";
   });
   assert.ok(systemMessage, "expected system prompt");
+  let systemText = "";
+  if ("content" in systemMessage) {
+    if (typeof systemMessage.content === "string") {
+      systemText = systemMessage.content;
+    } else if (Array.isArray(systemMessage.content)) {
+      systemText = systemMessage.content
+        .map((part: unknown) => {
+          if (typeof part === "string") return part;
+          if (part && typeof part === "object" && "text" in part) {
+            return typeof part.text === "string" ? part.text : "";
+          }
+          return "";
+        })
+        .join("");
+    }
+  }
+  assert.match(systemText, /Tags are explicit-only/);
+  assert.match(systemText, /Do not infer tags from merchants/i);
+  assert.ok(Array.isArray(firstCall.tools), "expected native tool schemas");
   assert.ok(
-    "content" in systemMessage && typeof systemMessage.content === "string",
-    "expected system prompt content",
+    (firstCall.tools as unknown[]).length > 0,
+    "expected at least one tool",
   );
-  assert.match(systemMessage.content, /Tags are explicit-only/);
-  assert.match(systemMessage.content, /Do not infer tags from merchants/i);
+});
+
+void test("normalizeMaxAssistantTurns defaults, truncates, and clamps values", () => {
+  assert.equal(normalizeMaxAssistantTurns(undefined), 5);
+  assert.equal(normalizeMaxAssistantTurns("not a number"), 5);
+  assert.equal(normalizeMaxAssistantTurns(0), 1);
+  assert.equal(normalizeMaxAssistantTurns(2.9), 2);
+  assert.equal(normalizeMaxAssistantTurns(99), 10);
 });

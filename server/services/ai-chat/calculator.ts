@@ -1,213 +1,133 @@
+import { Parser } from "expr-eval";
+
 const MAX_EXPRESSION_LENGTH = 256;
 const MAX_PARENTHESIS_DEPTH = 32;
 const MAX_TOKEN_COUNT = 128;
 
-function isDigit(value: string | undefined): boolean {
-  return value !== undefined && value >= "0" && value <= "9";
-}
+const parser = new Parser({
+  operators: {
+    add: true,
+    concatenate: false,
+    conditional: false,
+    divide: true,
+    factorial: false,
+    multiply: true,
+    power: true,
+    remainder: true,
+    subtract: true,
+    logical: false,
+    comparison: false,
+    in: false,
+    assignment: false,
+  },
+});
 
 function finiteResult(value: number): number {
   if (!Number.isFinite(value)) {
     throw new Error("calculate expression result must be finite");
   }
-  return value;
+  // Avoid presenting -0 to callers/tests.
+  return Object.is(value, -0) ? 0 : value;
 }
 
-class ExpressionParser {
-  private index = 0;
-  private tokenCount = 0;
-  private parenthesisDepth = 0;
-
-  private readonly expression: string;
-  constructor(expression: string) {
-    this.expression = expression;
+function assertComplexityLimits(expression: string): void {
+  if (expression.length > MAX_EXPRESSION_LENGTH) {
+    throw new Error(
+      `calculate expression exceeds character limit of ${MAX_EXPRESSION_LENGTH}`,
+    );
   }
 
-  parse(): number {
-    const result = this.parseAdditive();
-    this.skipWhitespace();
-    if (this.index !== this.expression.length) {
-      throw new Error("calculate expression contains an unexpected token");
+  let depth = 0;
+  let maxDepth = 0;
+  let tokenCount = 0;
+  let inNumber = false;
+
+  for (let index = 0; index < expression.length; index += 1) {
+    const char = expression[index]!;
+    if (char === "(") {
+      depth += 1;
+      maxDepth = Math.max(maxDepth, depth);
+      inNumber = false;
+      continue;
     }
-    return finiteResult(Object.is(result, -0) ? 0 : result);
-  }
-
-  private parseAdditive(): number {
-    let value = this.parseMultiplicative();
-
-    while (true) {
-      this.skipWhitespace();
-      const operator = this.expression[this.index];
-      if (operator !== "+" && operator !== "-") return value;
-
-      this.consume(operator);
-      const right = this.parseMultiplicative();
-      value = this.applyBinary(operator, value, right);
+    if (char === ")") {
+      depth -= 1;
+      inNumber = false;
+      continue;
     }
-  }
-
-  private parseMultiplicative(): number {
-    let value = this.parseUnary();
-
-    while (true) {
-      this.skipWhitespace();
-      const operator = this.expression[this.index];
-      if (operator !== "*" && operator !== "/" && operator !== "%") {
-        return value;
+    if (/\s/.test(char)) {
+      inNumber = false;
+      continue;
+    }
+    if (/[0-9.]/.test(char) || ((char === "e" || char === "E") && inNumber)) {
+      if (!inNumber) {
+        tokenCount += 1;
+        inNumber = true;
       }
-
-      this.consume(operator);
-      const right = this.parseUnary();
-      value = this.applyBinary(operator, value, right);
+      continue;
     }
-  }
-
-  private parseUnary(): number {
-    this.skipWhitespace();
-    const operator = this.expression[this.index];
-    if (operator === "+" || operator === "-") {
-      this.consume(operator);
-      const value = this.parseUnary();
-      return finiteResult(operator === "-" ? -value : value);
+    if (char === "+" || char === "-") {
+      // unary or binary operator token
+      tokenCount += 1;
+      inNumber = false;
+      continue;
     }
-
-    return this.parsePower();
-  }
-
-  private parsePower(): number {
-    let value = this.parsePrimary();
-    this.skipWhitespace();
-
-    if (this.expression[this.index] === "^") {
-      this.consume("^");
-      value = this.applyBinary("^", value, this.parseUnary());
+    if (
+      char === "*" ||
+      char === "/" ||
+      char === "%" ||
+      char === "^" ||
+      char === ","
+    ) {
+      tokenCount += 1;
+      inNumber = false;
+      continue;
     }
-
-    return value;
-  }
-
-  private parsePrimary(): number {
-    this.skipWhitespace();
-
-    if (this.expression[this.index] === "(") {
-      this.consume("(");
-      this.parenthesisDepth += 1;
-      if (this.parenthesisDepth > MAX_PARENTHESIS_DEPTH) {
-        throw new Error(
-          `calculate expression exceeds the ${MAX_PARENTHESIS_DEPTH}-level parenthesis limit`,
-        );
+    // letters start identifier tokens (rejected later if present as variables/functions)
+    if (/[A-Za-z_]/.test(char)) {
+      if (!inNumber) {
+        tokenCount += 1;
+        inNumber = true;
       }
-
-      const value = this.parseAdditive();
-      this.skipWhitespace();
-      if (this.expression[this.index] !== ")") {
-        throw new Error("calculate expression is missing a closing parenthesis");
-      }
-      this.consume(")");
-      this.parenthesisDepth -= 1;
-      return value;
+      continue;
     }
-
-    return this.parseNumber();
+    inNumber = false;
   }
 
-  private parseNumber(): number {
-    this.skipWhitespace();
-    const start = this.index;
-    let wholeDigits = 0;
-    while (isDigit(this.expression[this.index])) {
-      this.index += 1;
-      wholeDigits += 1;
-    }
-
-    let fractionDigits = 0;
-    if (this.expression[this.index] === ".") {
-      this.index += 1;
-      while (isDigit(this.expression[this.index])) {
-        this.index += 1;
-        fractionDigits += 1;
-      }
-    }
-
-    if (wholeDigits === 0 && fractionDigits === 0) {
-      throw new Error("calculate expression expected a number or parenthesis");
-    }
-
-    if (this.expression[this.index] === "e" || this.expression[this.index] === "E") {
-      this.index += 1;
-      if (this.expression[this.index] === "+" || this.expression[this.index] === "-") {
-        this.index += 1;
-      }
-      const exponentStart = this.index;
-      while (isDigit(this.expression[this.index])) {
-        this.index += 1;
-      }
-      if (this.index === exponentStart) {
-        throw new Error("calculate expression has an invalid exponent");
-      }
-    }
-
-    this.countToken();
-    return finiteResult(Number(this.expression.slice(start, this.index)));
+  if (maxDepth > MAX_PARENTHESIS_DEPTH) {
+    throw new Error(
+      `calculate expression exceeds parenthesis limit of ${MAX_PARENTHESIS_DEPTH}`,
+    );
   }
-
-  private applyBinary(
-    operator: string,
-    left: number,
-    right: number,
-  ): number {
-    const result =
-      operator === "+"
-        ? left + right
-        : operator === "-"
-          ? left - right
-          : operator === "*"
-            ? left * right
-            : operator === "/"
-              ? left / right
-              : operator === "%"
-                ? left % right
-                : left ** right;
-
-    return finiteResult(result);
-  }
-
-  private consume(expected: string): void {
-    this.skipWhitespace();
-    if (this.expression[this.index] !== expected) {
-      throw new Error("calculate expression contains an unexpected token");
-    }
-    this.index += 1;
-    this.countToken();
-  }
-
-  private countToken(): void {
-    this.tokenCount += 1;
-    if (this.tokenCount > MAX_TOKEN_COUNT) {
-      throw new Error(
-        `calculate expression exceeds the ${MAX_TOKEN_COUNT}-token limit`,
-      );
-    }
-  }
-
-  private skipWhitespace(): void {
-    while (/\s/.test(this.expression[this.index] ?? "")) {
-      this.index += 1;
-    }
+  if (tokenCount > MAX_TOKEN_COUNT) {
+    throw new Error(
+      `calculate expression exceeds token limit of ${MAX_TOKEN_COUNT}`,
+    );
   }
 }
 
 export function calculateExpression(expression: string): number {
-  if (expression.length > MAX_EXPRESSION_LENGTH) {
-    throw new Error(
-      `calculate expression exceeds the ${MAX_EXPRESSION_LENGTH}-character limit`,
-    );
+  const trimmed = expression.trim();
+  if (!trimmed) {
+    throw new Error("calculate expression must not be empty");
+  }
+  assertComplexityLimits(trimmed);
+
+  let parsed;
+  try {
+    parsed = parser.parse(trimmed);
+  } catch {
+    throw new Error("calculate expression is invalid");
   }
 
-  const normalized = expression.trim();
-  if (!normalized) {
-    throw new Error("calculate requires a non-empty expression");
+  const variables = parsed.variables({ withMembers: true });
+  if (variables.length > 0) {
+    throw new Error("calculate expression must not use variables or functions");
   }
 
-  return new ExpressionParser(normalized).parse();
+  const value = parsed.evaluate({});
+  if (typeof value !== "number") {
+    throw new Error("calculate expression result must be a number");
+  }
+  return finiteResult(value);
 }
