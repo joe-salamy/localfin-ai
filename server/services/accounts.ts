@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { getDb, toBool } from "../db/index.js";
 import { ConflictError, NotFoundError } from "../errors.js";
+import { assertEntityNameIsUnique } from "./entity-name-uniqueness.js";
 import type { Account,
 AccountType,
 AccountWithBalance,
@@ -88,39 +89,6 @@ function defaultAdjustmentName(account: AccountRow, amount: number): string {
   return amount >= 0 ? "Appreciation" : "Depreciation";
 }
 
-function checkNameUniqueness(name: string, excludeId?: string): void {
-  const db = getDb();
-
-  const accountExists = excludeId
-    ? db
-        .prepare(
-          "SELECT 1 FROM accounts WHERE name = ? AND deleted_at IS NULL AND id != ?",
-        )
-        .get(name, excludeId)
-    : db
-        .prepare("SELECT 1 FROM accounts WHERE name = ? AND deleted_at IS NULL")
-        .get(name);
-
-  if (accountExists) {
-    throw new ConflictError(`An account with the name "${name}" already exists`)
-  }
-
-  const categoryExists = db
-    .prepare("SELECT 1 FROM categories WHERE name = ? AND deleted_at IS NULL")
-    .get(name);
-  if (categoryExists) {
-    throw new ConflictError(`A category with the name "${name}" already exists`)
-  }
-
-  const subcategoryExists = db
-    .prepare(
-      "SELECT 1 FROM subcategories WHERE name = ? AND deleted_at IS NULL",
-    )
-    .get(name);
-  if (subcategoryExists) {
-    throw new ConflictError(`A subcategory with the name "${name}" already exists`)
-  }
-}
 
 export function createAccount(data: {
   name: string;
@@ -132,7 +100,7 @@ export function createAccount(data: {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
 
-  checkNameUniqueness(data.name);
+  assertEntityNameIsUnique(data.name);
 
   db.prepare(
     "INSERT INTO accounts (id, name, type, initial_balance, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -207,7 +175,7 @@ export function updateAccount(
   }
 
   if (updates.name !== undefined) {
-    checkNameUniqueness(updates.name, id);
+    assertEntityNameIsUnique(updates.name, { table: "accounts", id });
   }
 
   const name = updates.name ?? existing.name;

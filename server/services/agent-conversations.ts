@@ -1,35 +1,12 @@
 import crypto from "node:crypto";
+import type {
+  AgentConversation,
+  AgentMessage,
+  ChatActionResult,
+} from "../../shared/contracts/index.js";
+export type { AgentConversation, AgentMessage } from "../../shared/contracts/index.js";
 import { getDb } from "../db/index.js";
 import { NotFoundError } from "../errors.js";
-
-export interface PersistedAgentAction {
-  type: string;
-  input: Record<string, unknown>;
-  status: "success" | "error";
-  result?: unknown;
-  error?: string;
-}
-
-export interface AgentConversation {
-  id: string;
-  title: string;
-  current_page: string | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
-}
-
-export interface AgentMessage {
-  id: string;
-  conversation_id: string;
-  role: "user" | "assistant";
-  content: string;
-  request_id: string | null;
-  actions: PersistedAgentAction[] | null;
-  log_file: string | null;
-  status: "success" | "partial" | "error";
-  created_at: string;
-}
 
 interface AgentMessageRow {
   id: string;
@@ -54,7 +31,7 @@ interface AppendMessageInput {
   role: "user" | "assistant";
   content: string;
   requestId?: string | null;
-  actions?: PersistedAgentAction[] | null;
+  actions?: ChatActionResult[] | null;
   logFile?: string | null;
   status?: "success" | "partial" | "error";
 }
@@ -75,11 +52,11 @@ function titleFromMessage(message: string): string {
     : title;
 }
 
-function parseActions(value: string | null): PersistedAgentAction[] | null {
+function parseActions(value: string | null): ChatActionResult[] | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed) ? (parsed as PersistedAgentAction[]) : null;
+    return Array.isArray(parsed) ? (parsed as ChatActionResult[]) : null;
   } catch {
     return null;
   }

@@ -1,4 +1,8 @@
-import { createAccount, getAccounts, updateAccount } from "../accounts.js";
+import {
+  createAccount,
+  getAccounts,
+  updateAccount,
+} from "../accounts.js";
 import {
   createCategory,
   createSubcategory,
@@ -26,43 +30,24 @@ import {
   updateTag,
 } from "../tags.js";
 import { calculateExpression } from "./calculator.js";
-import type { CreateTransactionData,
-Tag,
-TagType, } from "../../../shared/contracts/index.js"
-import type { AIAction, ExecutedAction } from "./types.js";
+import type {
+  ChatActionResult,
+  CreateTransactionData,
+  PlannedChatAction,
+  Tag,
+  TagType,
+} from "../../../shared/contracts/index.js";
 import {
   DEFAULT_BULK_TRANSACTION_LIMIT,
   MAX_BULK_TRANSACTION_LIMIT,
 } from "./constants.js";
 import {
-  asNullableString,
-  asNumber,
-  asString,
-  assertDateRange,
-  hasAnyField,
-  optionalAccountType,
-  optionalCategoryType,
-  optionalGoalPeriod,
-  optionalIsoDate,
-  optionalNullableIsoDate,
-  optionalNonnegativeNumber,
-  normalizeStringList,
-  optionalTagType,
-  optionalPositiveNumber,
-  optionalTransactionKind,
-  requireAccountType,
-  requireCategoryType,
-  requireGoalPeriod,
-  requireIsoDate,
-  requirePositiveNumber,
-} from "./input-validators.js";
-import {
   findByName,
-  resolveAccount,
   resolveGoal,
   resolveRequestedAccount,
   resolveRequestedCategory,
   resolveRequestedSubcategory,
+  resolveRequestedTag,
   resolveSubcategory,
   resolveTag,
 } from "./entity-resolution.js";
@@ -70,88 +55,91 @@ import {
   categoryTypeForSubcategory,
   transactionSearchFilters,
 } from "./transaction-action-input.js";
+import {
+  parseFinanceAction,
+  type FinanceAction,
+  type FinanceActionFor,
+  type FinanceToolName,
+} from "./tool-definitions.js";
 
-function tagObjectRequests(
-  value: unknown,
+function hasAnyField(input: object, fields: readonly string[]): boolean {
+  return fields.some((field) =>
+    Object.prototype.hasOwnProperty.call(input, field),
+  );
+}
+
+function normalizeComment(
+  value: string | null | undefined,
+): string | null | undefined {
+  if (value === null || value === undefined) return value;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+
+function resolveTagNames(
+  names: string[] | undefined,
+  tags: Tag[],
   actionType: string,
-): Array<{ name: string; type?: TagType }> {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => {
-      if (!item || typeof item !== "object") return undefined;
-      const record = item as Record<string, unknown>;
-      const name = asString(record.name);
-      if (!name) return undefined;
-      const type = optionalTagType(record.type, actionType);
-      return {
-        name,
-        ...(type ? { type } : {}),
-      };
-    })
-    .filter((item): item is { name: string; type?: TagType } => Boolean(item));
+  createMissing: boolean,
+): string[] {
+  return (names ?? []).map((name) => {
+    const id = resolveTag({ name }, tags);
+    if (id) return id;
+    if (createMissing) {
+      return resolveOrCreateTagsByName([{ name }])[0]?.id ?? "";
+    }
+    throw new Error(`${actionType} references an unknown tag "${name}"`);
+  });
 }
 
 function resolveExistingTagIds(
-  input: Record<string, unknown>,
+  input: {
+    add_tag_ids?: string[];
+    add_tag_names?: string[];
+    tag_ids?: string[];
+    tag_names?: string[];
+  },
   tags: Tag[],
   actionType: string,
-  idFields: string[],
-  nameFields: string[],
+  idField: "tag_ids" | "add_tag_ids",
+  nameField: "tag_names" | "add_tag_names",
 ): string[] {
-  const ids = idFields.flatMap((field) => normalizeStringList(input[field]));
-  const names = nameFields.flatMap((field) =>
-    normalizeStringList(input[field]),
-  );
-  const resolvedNames = names.map(
-    (name) =>
-      resolveTag({ tag_name: name, tag_type: input.tag_type }, tags) ??
-      resolveOrCreateTagsByName([
-        { name, type: optionalTagType(input.tag_type, actionType) },
-      ])[0]?.id,
-  );
-  return [...ids, ...resolvedNames].filter((id): id is string => Boolean(id));
+  const ids = input[idField] ?? [];
+  return [
+    ...ids,
+    ...resolveTagNames(input[nameField], tags, actionType, true),
+  ].filter(Boolean);
 }
 
 function explicitTagIds(
-  input: Record<string, unknown>,
+  input: {
+    tag_ids?: string[];
+    tag_names?: string[];
+    tags?: Array<{ name: string; type?: TagType }>;
+  },
   tags: Tag[],
   actionType: string,
-  idFields: string[],
-  nameFields: string[],
 ): string[] {
-  const ids = resolveExistingTagIds(
-    input,
-    tags,
-    actionType,
-    idFields,
-    nameFields,
+  const names = resolveTagNames(input.tag_names, tags, actionType, true);
+  const objects = resolveOrCreateTagsByName(input.tags ?? []).map(
+    (tag) => tag.id,
   );
-  const objects = tagObjectRequests(input.tags, actionType);
-  const objectIds =
-    objects.length > 0
-      ? resolveOrCreateTagsByName(objects).map((tag) => tag.id)
-      : [];
-  return [...ids, ...objectIds];
+  return [...new Set([...(input.tag_ids ?? []), ...names, ...objects])];
 }
 
 function existingTagIds(
-  input: Record<string, unknown>,
+  input: {
+    remove_tag_ids?: string[];
+    remove_tag_names?: string[];
+  },
   tags: Tag[],
   actionType: string,
-  idFields: string[],
-  nameFields: string[],
 ): string[] {
-  const ids = idFields.flatMap((field) => normalizeStringList(input[field]));
-  const names = nameFields.flatMap((field) =>
-    normalizeStringList(input[field]),
-  );
-  const resolvedNames = names.map((name) => {
-    const id = resolveTag({ tag_name: name, tag_type: input.tag_type }, tags);
-    if (!id)
-      throw new Error(`${actionType} references an unknown tag "${name}"`);
-    return id;
-  });
-  return [...ids, ...resolvedNames];
+  return [
+    ...(input.remove_tag_ids ?? []),
+    ...resolveTagNames(input.remove_tag_names, tags, actionType, false),
+  ];
 }
 
 function assertNoOverlappingTagEdits(
@@ -166,45 +154,75 @@ function assertNoOverlappingTagEdits(
   }
 }
 
-export function executeAction(action: AIAction): ExecutedAction {
-  const accounts = getAccounts();
-  const categories = getCategories();
-  const subcategories = getSubcategories();
-  const goals = getSpendingGoalsWithDetails();
-  const tags = getTags();
-  const input = action.input;
 
+function assertDateRange(
+  startDate: string,
+  endDate: string | null | undefined,
+  actionType: string,
+): void {
+  if (endDate && startDate > endDate) {
+    throw new Error(`${actionType} requires start_date on or before end_date`);
+  }
+}
+
+export function executeAction(action: PlannedChatAction): ChatActionResult {
   try {
+    return executeFinanceAction(parseFinanceAction(action));
+  } catch (error) {
+    return {
+      ...action,
+      status: "error",
+      error: error instanceof Error ? error.message : "Unknown action error",
+    };
+  }
+}
+
+export function executeFinanceAction<Name extends FinanceToolName>(
+  action: FinanceActionFor<Name>,
+): ChatActionResult;
+export function executeFinanceAction(
+  action: FinanceAction,
+): ChatActionResult;
+export function executeFinanceAction(action: FinanceAction): ChatActionResult {
+  try {
+    const accounts = getAccounts();
+    const categories = getCategories();
+    const subcategories = getSubcategories();
+    const goals = getSpendingGoalsWithDetails();
+    const tags = getTags();
     switch (action.type) {
-      // intentionally no delete tools; unsupported types fall through to default
       case "calculate": {
-        const expression = asString(input.expression);
-        if (!expression) throw new Error("calculate requires expression");
+        const calculateInput = action.input;
         return {
           ...action,
           status: "success",
           result: {
-            expression,
-            result: calculateExpression(expression),
+            expression: calculateInput.expression,
+            result: calculateExpression(calculateInput.expression),
           },
         };
       }
+
       case "create_account": {
-        const name = asString(input.name);
-        const type = requireAccountType(input.type, action.type);
-        if (!name) throw new Error("create_account requires name");
+        const createAccountInput = action.input;
         return {
           ...action,
           status: "success",
           result: createAccount({
-            name,
-            type,
-            initial_balance: asNumber(input.initial_balance),
+            name: createAccountInput.name,
+            type: createAccountInput.type,
+            initial_balance: createAccountInput.initial_balance,
           }),
         };
       }
+
       case "update_account": {
-        const id = asString(input.id) ?? resolveAccount(input, accounts);
+        const input = action.input;
+        const id = resolveRequestedAccount(
+          { id: input.id, name: input.current_name },
+          accounts,
+          action.type,
+        );
         if (!id) {
           throw new Error(
             "update_account requires id or existing account name",
@@ -219,26 +237,29 @@ export function executeAction(action: AIAction): ExecutedAction {
           ...action,
           status: "success",
           result: updateAccount(id, {
-            name: asString(input.name),
-            type: optionalAccountType(input.type, action.type),
-            initial_balance: asNumber(input.initial_balance),
+            name: input.name,
+            type: input.type,
+            initial_balance: input.initial_balance,
           }),
         };
       }
+
       case "create_category": {
-        const name = asString(input.name);
-        const type = requireCategoryType(input.type, action.type);
-        if (!name) throw new Error("create_category requires name");
+        const createCategoryInput = action.input;
         return {
           ...action,
           status: "success",
-          result: createCategory({ name, type }),
+          result: createCategory({
+            name: createCategoryInput.name,
+            type: createCategoryInput.type,
+          }),
         };
       }
+
       case "update_category": {
+        const input = action.input;
         const id =
-          asString(input.id) ??
-          findByName(categories, asString(input.current_name))?.id;
+          input.id ?? findByName(categories, input.current_name)?.id;
         if (!id) throw new Error("update_category requires id or current_name");
         if (!hasAnyField(input, ["name", "type"])) {
           throw new Error(
@@ -249,19 +270,20 @@ export function executeAction(action: AIAction): ExecutedAction {
           ...action,
           status: "success",
           result: updateCategory(id, {
-            name: asString(input.name),
-            type: optionalCategoryType(input.type, action.type),
+            name: input.name,
+            type: input.type,
           }),
         };
       }
+
       case "create_subcategory": {
-        const name = asString(input.name);
+        const input = action.input;
         const categoryId = resolveRequestedCategory(
-          input,
+          { id: input.category_id, name: input.category_name },
           categories,
           action.type,
         );
-        if (!name || !categoryId) {
+        if (!categoryId) {
           throw new Error(
             "create_subcategory requires name and category_id or category_name",
           );
@@ -270,27 +292,20 @@ export function executeAction(action: AIAction): ExecutedAction {
           ...action,
           status: "success",
           result: createSubcategory({
-            name,
+            name: input.name,
             category_id: categoryId,
-            monthly_goal:
-              optionalNonnegativeNumber(
-                input.monthly_goal,
-                "monthly_goal",
-                action.type,
-              ) ?? null,
+            monthly_goal: input.monthly_goal ?? null,
           }),
         };
       }
+
       case "update_subcategory": {
+        const input = action.input;
         const id =
-          asString(input.id) ??
+          input.id ??
           resolveSubcategory(
             {
-              ...input,
-              current_name:
-                asString(input.current_name) ??
-                asString(input.subcategory_name) ??
-                asString(input.name),
+              name: input.current_name ?? input.subcategory_name,
             },
             subcategories,
           );
@@ -313,47 +328,37 @@ export function executeAction(action: AIAction): ExecutedAction {
           ...action,
           status: "success",
           result: updateSubcategory(id, {
-            name: asString(input.name),
+            name: input.name,
             category_id: resolveRequestedCategory(
-              input,
+              { id: input.category_id, name: input.category_name },
               categories,
               action.type,
             ),
-            monthly_goal: optionalNonnegativeNumber(
-              input.monthly_goal,
-              "monthly_goal",
-              action.type,
-            ),
+            monthly_goal: input.monthly_goal,
           }),
         };
       }
+
       case "create_tag": {
-        const name = asString(input.name);
-        if (!name) throw new Error("create_tag requires name");
+        const createTagInput = action.input;
         return {
           ...action,
           status: "success",
           result: createTag({
-            name,
-            type: optionalTagType(input.type, action.type),
-            color: asNullableString(input.color) ?? null,
+            name: createTagInput.name,
+            type: createTagInput.type,
+            color: createTagInput.color ?? null,
           }),
         };
       }
+
       case "update_tag": {
-        const id =
-          asString(input.id) ??
-          resolveTag(
-            {
-              tag_name:
-                asString(input.current_name) ??
-                asString(input.tag_name) ??
-                asString(input.name),
-              tag_type:
-                asString(input.current_type) ?? asString(input.tag_type),
-            },
-            tags,
-          );
+        const input = action.input;
+        const id = resolveRequestedTag(
+          { id: input.id, name: input.current_name },
+          tags,
+          action.type,
+        );
         if (!id) throw new Error("update_tag requires id or current_name");
         if (!hasAnyField(input, ["name", "type", "color"])) {
           throw new Error("update_tag requires at least one field to update");
@@ -362,44 +367,45 @@ export function executeAction(action: AIAction): ExecutedAction {
           ...action,
           status: "success",
           result: updateTag(id, {
-            name: asString(input.name),
-            type: optionalTagType(input.type, action.type),
-            color: asNullableString(input.color),
+            name: input.name,
+            type: input.type,
+            color: input.color,
           }),
         };
       }
+
       case "create_transaction": {
-        const accountId = resolveRequestedAccount(input, accounts, action.type);
-        const date = requireIsoDate(input.date, "date", action.type);
-        const name = asString(input.name);
-        const amount = asNumber(input.amount);
-        if (!accountId || !name || amount === undefined) {
+        const input = action.input;
+        const accountId = resolveRequestedAccount(
+          { id: input.account_id, name: input.account_name },
+          accounts,
+          action.type,
+        );
+        const subcategoryId =
+          input.subcategory_id === undefined
+            ? resolveRequestedSubcategory(
+                { name: input.subcategory_name },
+                subcategories,
+                action.type,
+              )
+            : input.subcategory_id;
+        const kind =
+          input.kind ??
+          categoryTypeForSubcategory(input, categories, subcategories);
+        if (!accountId) {
           throw new Error(
             "create_transaction requires account, date, name, and amount",
           );
         }
-        const subcategoryId =
-          resolveRequestedSubcategory(input, subcategories, action.type) ??
-          null;
-        const kind =
-          optionalTransactionKind(input.kind, action.type) ??
-          categoryTypeForSubcategory(input, categories, subcategories) ??
-          undefined;
         const data: CreateTransactionData = {
           account_id: accountId,
-          date,
-          name,
-          amount,
+          date: input.date,
+          name: input.name,
+          amount: input.amount,
           kind,
-          subcategory_id: subcategoryId,
-          comment: asNullableString(input.comment) ?? null,
-          tag_ids: explicitTagIds(
-            input,
-            tags,
-            action.type,
-            ["tag_ids", "tag_id"],
-            ["tag_names", "tag_name"],
-          ),
+          subcategory_id: subcategoryId ?? null,
+          comment: normalizeComment(input.comment) ?? null,
+          tag_ids: explicitTagIds(input, tags, action.type),
         };
         return {
           ...action,
@@ -407,7 +413,9 @@ export function executeAction(action: AIAction): ExecutedAction {
           result: createTransaction(data),
         };
       }
+
       case "search_transactions": {
+        const input = action.input;
         const transactions = getTransactionsWithDetails(
           transactionSearchFilters(
             input,
@@ -419,7 +427,6 @@ export function executeAction(action: AIAction): ExecutedAction {
             100,
           ),
         );
-
         return {
           ...action,
           status: "success",
@@ -442,7 +449,9 @@ export function executeAction(action: AIAction): ExecutedAction {
           })),
         };
       }
+
       case "bulk_update_transactions": {
+        const input = action.input;
         const filters = transactionSearchFilters(
           input,
           accounts,
@@ -452,64 +461,48 @@ export function executeAction(action: AIAction): ExecutedAction {
           DEFAULT_BULK_TRANSACTION_LIMIT,
           MAX_BULK_TRANSACTION_LIMIT,
         );
-        const updateInput =
-          input.updates && typeof input.updates === "object"
-            ? (input.updates as Record<string, unknown>)
-            : input;
+        const updateInput = input.updates;
         const hasSubcategoryUpdate = hasAnyField(updateInput, [
           "subcategory_id",
           "subcategory_name",
         ]);
         const hasKindUpdate = hasAnyField(updateInput, ["kind"]);
         const hasCommentUpdate = hasAnyField(updateInput, ["comment"]);
-        if (
-          !hasKindUpdate &&
-          !hasSubcategoryUpdate &&
-          !hasCommentUpdate &&
-          !hasAnyField(updateInput, [
-            "add_tag_ids",
-            "add_tag_id",
-            "add_tag_names",
-            "add_tag_name",
-            "remove_tag_ids",
-            "remove_tag_id",
-            "remove_tag_names",
-            "remove_tag_name",
-          ])
-        ) {
-          throw new Error(`${action.type} requires at least one update field`);
-        }
-        const filtersResult = getTransactionsWithDetails(filters);
-        const transactionIds = filtersResult.map(
-          (transaction) => transaction.id,
-        );
-        const kind = hasKindUpdate
-          ? optionalTransactionKind(updateInput.kind, action.type)
-          : undefined;
-        const subcategoryId = hasSubcategoryUpdate
-          ? updateInput.subcategory_id === null
-            ? null
-            : resolveRequestedSubcategory(
-                updateInput,
-                subcategories,
-                action.type,
-              )
-          : undefined;
         const addTagIds = resolveExistingTagIds(
           updateInput,
           tags,
           action.type,
-          ["add_tag_ids", "add_tag_id"],
-          ["add_tag_names", "add_tag_name"],
+          "add_tag_ids",
+          "add_tag_names",
         );
         const removeTagIds = existingTagIds(
           updateInput,
           tags,
           action.type,
-          ["remove_tag_ids", "remove_tag_id"],
-          ["remove_tag_names", "remove_tag_name"],
         );
+        if (
+          !hasKindUpdate &&
+          !hasSubcategoryUpdate &&
+          !hasCommentUpdate &&
+          !hasAnyField(updateInput, ["add_tag_ids", "add_tag_names", "remove_tag_ids", "remove_tag_names"])
+        ) {
+          throw new Error(`${action.type} requires at least one update field`);
+        }
         assertNoOverlappingTagEdits(addTagIds, removeTagIds);
+
+        const filtersResult = getTransactionsWithDetails(filters);
+        const transactionIds = filtersResult.map(
+          (transaction) => transaction.id,
+        );
+        const subcategoryId = hasSubcategoryUpdate
+          ? updateInput.subcategory_id === null
+            ? null
+            : resolveRequestedSubcategory(
+                { id: updateInput.subcategory_id ?? undefined, name: updateInput.subcategory_name },
+                subcategories,
+                action.type,
+              )
+          : undefined;
 
         if (hasCommentUpdate) {
           for (const transaction of filtersResult) {
@@ -518,11 +511,11 @@ export function executeAction(action: AIAction): ExecutedAction {
             for (const tagId of addTagIds) nextTagIds.add(tagId);
             for (const tagId of removeTagIds) nextTagIds.delete(tagId);
             updateTransaction(transaction.id, {
-              ...(hasKindUpdate ? { kind } : {}),
+              ...(hasKindUpdate ? { kind: updateInput.kind } : {}),
               ...(hasSubcategoryUpdate
                 ? { subcategory_id: subcategoryId }
                 : {}),
-              comment: asNullableString(updateInput.comment) ?? null,
+              comment: normalizeComment(updateInput.comment) ?? null,
               ...(addTagIds.length > 0 || removeTagIds.length > 0
                 ? { tag_ids: Array.from(nextTagIds) }
                 : {}),
@@ -530,7 +523,7 @@ export function executeAction(action: AIAction): ExecutedAction {
           }
         } else {
           bulkUpdateTransactions(transactionIds, {
-            ...(hasKindUpdate ? { kind } : {}),
+            ...(hasKindUpdate ? { kind: updateInput.kind } : {}),
             ...(hasSubcategoryUpdate ? { subcategory_id: subcategoryId } : {}),
             ...(addTagIds.length > 0 ? { add_tag_ids: addTagIds } : {}),
             ...(removeTagIds.length > 0
@@ -549,27 +542,18 @@ export function executeAction(action: AIAction): ExecutedAction {
           },
         };
       }
+
       case "update_transaction": {
-        const id = asString(input.id);
-        if (!id) throw new Error("update_transaction requires id");
+        const input = action.input;
         const hasReplacementTags = hasAnyField(input, [
           "tag_ids",
-          "tag_id",
           "tag_names",
-          "tag_name",
           "tags",
         ]);
-        const hasAddTags = hasAnyField(input, [
-          "add_tag_ids",
-          "add_tag_id",
-          "add_tag_names",
-          "add_tag_name",
-        ]);
+        const hasAddTags = hasAnyField(input, ["add_tag_ids", "add_tag_names"]);
         const hasRemoveTags = hasAnyField(input, [
           "remove_tag_ids",
-          "remove_tag_id",
           "remove_tag_names",
-          "remove_tag_name",
         ]);
         if (
           !hasAnyField(input, [
@@ -589,45 +573,33 @@ export function executeAction(action: AIAction): ExecutedAction {
             "update_transaction requires at least one field to update",
           );
         }
+
         const subcategoryId =
           input.subcategory_id === null
             ? null
-            : resolveRequestedSubcategory(input, subcategories, action.type);
-        const date = optionalIsoDate(input.date, "date", action.type);
-        const name = asString(input.name);
-        const amount = asNumber(input.amount);
-        const kind = optionalTransactionKind(input.kind, action.type);
-        const comment = asNullableString(input.comment);
-        const existingTransaction = getTransactionById(id);
+            : resolveRequestedSubcategory(
+                { id: input.subcategory_id ?? undefined, name: input.subcategory_name },
+                subcategories,
+                action.type,
+              );
+        const existingTransaction = getTransactionById(input.id);
         if (!existingTransaction) {
-          throw new Error(`Transaction with id "${id}" not found`);
+          throw new Error(`Transaction with id "${input.id}" not found`);
         }
         const replacementTagIds = hasReplacementTags
-          ? explicitTagIds(
-              input,
-              tags,
-              action.type,
-              ["tag_ids", "tag_id"],
-              ["tag_names", "tag_name"],
-            )
+          ? explicitTagIds(input, tags, action.type)
           : undefined;
         const addTagIds = hasAddTags
           ? resolveExistingTagIds(
               input,
               tags,
               action.type,
-              ["add_tag_ids", "add_tag_id"],
-              ["add_tag_names", "add_tag_name"],
+              "add_tag_ids",
+              "add_tag_names",
             )
           : [];
         const removeTagIds = hasRemoveTags
-          ? existingTagIds(
-              input,
-              tags,
-              action.type,
-              ["remove_tag_ids", "remove_tag_id"],
-              ["remove_tag_names", "remove_tag_name"],
-            )
+          ? existingTagIds(input, tags, action.type)
           : [];
         const nextTagIds =
           replacementTagIds ??
@@ -643,52 +615,42 @@ export function executeAction(action: AIAction): ExecutedAction {
         return {
           ...action,
           status: "success",
-          result: updateTransaction(id, {
-            date,
-            name,
-            amount,
-            kind,
+          result: updateTransaction(input.id, {
+            date: input.date,
+            name: input.name,
+            amount: input.amount,
+            kind: input.kind,
             subcategory_id: subcategoryId,
-            comment,
+            comment: normalizeComment(input.comment),
             ...(nextTagIds ? { tag_ids: nextTagIds } : {}),
           }),
         };
       }
+
       case "create_goal": {
+        const input = action.input;
         const subcategoryId = resolveRequestedSubcategory(
-          input,
+          { id: input.subcategory_id, name: input.subcategory_name },
           subcategories,
           action.type,
         );
-        const amount = requirePositiveNumber(
-          input.amount,
-          "amount",
-          action.type,
-        );
-        const period = requireGoalPeriod(input.period, action.type);
-        const startDate = requireIsoDate(
-          input.start_date,
-          "start_date",
-          action.type,
-        );
-        const endDate =
-          optionalNullableIsoDate(input.end_date, "end_date", action.type) ??
-          null;
         if (!subcategoryId) throw new Error("create_goal requires subcategory");
-        assertDateRange(startDate, endDate, action.type);
+        assertDateRange(input.start_date, input.end_date, action.type);
         return {
           ...action,
           status: "success",
           result: createSpendingGoal({
             subcategory_id: subcategoryId,
-            amount,
-            period,
-            start_date: startDate,
-            end_date: endDate,
+            amount: input.amount,
+            period: input.period,
+            start_date: input.start_date,
+            end_date: input.end_date ?? null,
           }),
         };
       }
+
       case "update_goal": {
+        const input = action.input;
         const id = resolveGoal(input, goals, subcategories);
         if (!id) throw new Error("update_goal requires id or subcategory");
         if (
@@ -696,35 +658,25 @@ export function executeAction(action: AIAction): ExecutedAction {
         ) {
           throw new Error("update_goal requires at least one field to update");
         }
-        const startDate = optionalIsoDate(
-          input.start_date,
-          "start_date",
-          action.type,
-        );
-        const endDate = optionalNullableIsoDate(
-          input.end_date,
-          "end_date",
-          action.type,
-        );
         const existingGoal = goals.find((goal) => goal.id === id);
         assertDateRange(
-          startDate ?? existingGoal?.start_date ?? "",
-          endDate !== undefined ? endDate : existingGoal?.end_date,
+          input.start_date ?? existingGoal?.start_date ?? "",
+          input.end_date !== undefined
+            ? input.end_date
+            : existingGoal?.end_date,
           action.type,
         );
         return {
           ...action,
           status: "success",
           result: updateSpendingGoal(id, {
-            amount: optionalPositiveNumber(input.amount, "amount", action.type),
-            period: optionalGoalPeriod(input.period, action.type),
-            start_date: startDate,
-            end_date: endDate,
+            amount: input.amount,
+            period: input.period,
+            start_date: input.start_date,
+            end_date: input.end_date,
           }),
         };
       }
-      default:
-        throw new Error(`Unsupported action "${action.type}"`);
     }
   } catch (error) {
     return {

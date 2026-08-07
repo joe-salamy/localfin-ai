@@ -1,6 +1,8 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { categoryTypeSchema } from "../../shared/contracts/categories.js";
+import { hexColorSchema } from "../../shared/validation.js";
 import {
   createCategory,
   getCategories,
@@ -23,11 +25,7 @@ import {
 
 export const categoryRouter = Router();
 export const subcategoryRouter = Router();
-const categoryTypeSchema = z.enum(["income", "expense"]);
-const colorSchema = z
-  .string()
-  .regex(/^#[0-9a-fA-F]{6}$/)
-  .nullable();
+const colorSchema = hexColorSchema.nullable();
 const createCategorySchema = z.object({
   name: nonEmptyString,
   type: categoryTypeSchema,

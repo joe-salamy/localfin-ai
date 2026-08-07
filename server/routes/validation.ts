@@ -1,22 +1,25 @@
 import { z } from "zod";
 import { BadRequestError } from "../errors.js";
-
-const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
-
-function isRealIsoDate(value: string): boolean {
-  if (!isoDatePattern.test(value)) return false;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return (
-    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
-  );
-}
+import { isIsoDate } from "../../shared/validation.js";
 
 export const nonEmptyString = z.string().trim().min(1);
 export const isoDateString = z
   .string()
-  .refine(isRealIsoDate, "Expected date in YYYY-MM-DD format");
+  .refine(isIsoDate, "Expected date in YYYY-MM-DD format");
 export const finiteNumber = z.number().finite();
 export const idParamSchema = z.object({ id: nonEmptyString });
+export const optionalQueryStringArray = z.preprocess(
+  (value) => {
+    if (value === undefined || value === "") return undefined;
+    const values = Array.isArray(value) ? value : [value];
+    const normalized = values
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return normalized.length > 0 ? normalized : undefined;
+  },
+  z.array(nonEmptyString).optional(),
+);
 
 export function parseRequest<T>(
   schema: z.ZodType<T>,

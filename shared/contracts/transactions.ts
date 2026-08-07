@@ -1,6 +1,6 @@
 import { z } from "zod";
+import { tagTypeSchema, type Tag } from "./tags.js";
 import type { AccountType } from "./accounts.js";
-import type { Tag } from "./tags.js";
 
 export type TransactionKind = "income" | "expense" | "transfer" | "adjustment";
 
@@ -63,8 +63,14 @@ export interface TransactionFilters {
 }
 
 export type SuspectFindingStatus = "open" | "dismissed" | "resolved";
+export const suspectFindingStatusSchema = z.enum([
+  "open",
+  "dismissed",
+  "resolved",
+]);
 
 export type SuspectSeverity = "low" | "medium" | "high";
+export const suspectSeveritySchema = z.enum(["low", "medium", "high"]);
 
 export type SuspectReasonCode =
   | "exact_duplicate"
@@ -75,6 +81,16 @@ export type SuspectReasonCode =
   | "missing_category"
   | "unmatched_transfer_like"
   | "flagged_word";
+export const suspectReasonCodeSchema = z.enum([
+  "exact_duplicate",
+  "near_duplicate",
+  "large_amount_outlier",
+  "merchant_amount_outlier",
+  "rapid_small_charge_cluster",
+  "missing_category",
+  "unmatched_transfer_like",
+  "flagged_word",
+]);
 
 export interface SuspectEvidence {
   summary: string;
@@ -172,14 +188,7 @@ export const transactionSchema = z.object({
 const transactionTagSchema: z.ZodType<Tag> = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum([
-    "custom",
-    "trip",
-    "event",
-    "person",
-    "reimbursable",
-    "tax",
-  ]),
+  type: tagTypeSchema,
   color: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string().nullable(),

@@ -6,145 +6,38 @@ import process from "node:process";
 import dotenv from "dotenv";
 import type Database from "better-sqlite3";
 import type {
+  ChatActionResult,
+  ChatRequest,
   ChatResult,
   ChatStreamEvent,
-} from "../server/services/ai-chat.js";
-import type { Account,
-CategoryType,
-GoalPeriod,
-Subcategory, } from "../shared/contracts/index.js"
-
-dotenv.config();
-
-type ActionStatus = "success" | "error";
-
-interface EvalAction {
-  type: string;
-  input: Record<string, unknown>;
-  status: ActionStatus;
-  result?: unknown;
-  error?: string;
-}
-
-interface SnapshotAccount {
-  id: string;
-  name: string;
-  type: string;
-  current_balance: number;
-  deleted_at: string | null;
-}
-
-interface SnapshotCategory {
-  id: string;
-  name: string;
-  type: string;
-  is_system: number;
-  deleted_at: string | null;
-}
-
-interface SnapshotSubcategory {
-  id: string;
-  name: string;
-  monthly_goal: number | null;
-  category_name: string;
-  category_type: string;
-  deleted_at: string | null;
-}
-
-interface SnapshotTransaction {
-  id: string;
-  date: string;
-  name: string;
-  amount: number;
-  kind: string;
-  account_name: string;
-  account_type: string;
-  subcategory_name: string | null;
-  category_name: string | null;
-  category_type: string | null;
-  comment: string | null;
-  deleted_at: string | null;
-}
-
-interface SnapshotGoal {
-  id: string;
-  amount: number;
-  period: string;
-  start_date: string;
-  end_date: string | null;
-  subcategory_name: string;
-  category_name: string;
-  deleted_at: string | null;
-}
-
-interface EvalSnapshot {
-  accounts: SnapshotAccount[];
-  categories: SnapshotCategory[];
-  subcategories: SnapshotSubcategory[];
-  transactions: SnapshotTransaction[];
-  goals: SnapshotGoal[];
-  deletedRows: {
-    accounts: number;
-    categories: number;
-    subcategories: number;
-    transactions: number;
-    goals: number;
-  };
-}
-
-interface EvalContext {
-  result: ChatResult;
-  actions: EvalAction[];
-  snapshot: EvalSnapshot;
-  streamEvents: ChatStreamEvent[];
-}
-
-interface AssertionResult {
+} from "../shared/contracts/index.js";
+import {
+  assertAccount,
+  assertActionCount,
+  assertAllActionsSucceeded,
+  assertAnyActionFailed,
+  assertCategory,
+  assertGoal,
+  assertMatchingTransactionsSubcategory,
+  assertNoAction,
+  assertNoDeletedRows,
+  assertSearchBeforeUpdate,
+  assertStreamLifecycle,
+  assertSubcategory,
+  assertTransaction,
+  type AgentEvalAssertion as EvalAssertion,
+  type AgentEvalContext as EvalContext,
+  type AgentEvalSeed as ScenarioSeed,
+  type AgentEvalServices,
+  readAgentSnapshot,
+  seedAgentScenario,
+} from "../server/testing/agent-eval.js";
+type EvalAction = ChatActionResult;
+type AssertionResult = {
   name: string;
   status: "pass" | "fail";
   details?: string;
-}
-
-interface EvalAssertion {
-  name: string;
-  check: (context: EvalContext) => AssertionResult;
-}
-
-interface SeedAccount {
-  name: string;
-  type: "asset" | "liability";
-  initial_balance?: number;
-}
-
-interface SeedCategory {
-  name: string;
-  type: CategoryType;
-  subcategories: { name: string; monthly_goal?: number | null }[];
-}
-
-interface SeedTransaction {
-  account: string;
-  date: string;
-  name: string;
-  amount: number;
-  subcategory?: string;
-  comment?: string | null;
-}
-
-interface SeedGoal {
-  subcategory: string;
-  amount: number;
-  period: GoalPeriod;
-  start_date: string;
-  end_date?: string | null;
-}
-
-interface ScenarioSeed {
-  accounts?: SeedAccount[];
-  categories?: SeedCategory[];
-  transactions?: SeedTransaction[];
-  goals?: SeedGoal[];
-}
+};
 
 interface LiveAgentScenario {
   suite: string;
@@ -164,7 +57,7 @@ interface EvalCaseReport {
   durationMs: number;
   actionTypes: string[];
   failedAssertions: AssertionResult[];
-  assertions: AssertionResult[];
+  assertions: { name: string; status: "pass" | "fail"; details?: string }[];
   message?: string;
   logFile?: string;
   error?: string;
@@ -191,401 +84,19 @@ interface EvalReport {
   cases: EvalCaseReport[];
 }
 
-interface ServiceModules {
-  chatWithAssistant: (request: {
-    conversationId: string;
-    message: string;
-    currentPage?: string;
-    maxAssistantTurns?: number;
-  }) => Promise<ChatResult>;
+interface ServiceModules extends AgentEvalServices {
+  chatWithAssistant: (request: ChatRequest) => Promise<ChatResult>;
   streamChatWithAssistant: (
-    request: {
-      conversationId: string;
-      message: string;
-      currentPage?: string;
-      maxAssistantTurns?: number;
-    },
+    request: ChatRequest,
     emit: (event: ChatStreamEvent) => void | Promise<void>,
   ) => Promise<ChatResult>;
   getDb: () => Database.Database;
   closeDbForTests: () => void;
-  createAccount: (data: SeedAccount) => Account;
-  createCategory: (data: { name: string; type: CategoryType }) => {
-    id: string;
-    name: string;
-  };
-  createSubcategory: (data: {
-    name: string;
-    category_id: string;
-    monthly_goal?: number | null;
-  }) => Subcategory;
-  createTransaction: (data: {
-    account_id: string;
-    date: string;
-    name: string;
-    amount: number;
-    subcategory_id?: string | null;
-    comment?: string | null;
-  }) => unknown;
-  createSpendingGoal: (data: {
-    subcategory_id: string;
-    amount: number;
-    period: GoalPeriod;
-    start_date: string;
-    end_date?: string | null;
-  }) => unknown;
 }
-
 const REPORT_ROOT = path.resolve(process.cwd(), ".agent-harness", "reports");
 
-function normalize(value: string): string {
-  return value.trim().toLowerCase();
-}
 
-function includesText(
-  actual: string | null | undefined,
-  expected: string,
-): boolean {
-  return normalize(actual ?? "").includes(normalize(expected));
-}
-
-function numberEquals(actual: number, expected: number): boolean {
-  return Math.abs(actual - expected) < 0.005;
-}
-
-function normalizedExpectedAmount(
-  amount: number,
-  transaction: SnapshotTransaction,
-): number {
-  if (transaction.kind === "transfer") {
-    return amount;
-  }
-
-  const absoluteAmount = Math.abs(amount);
-  if (
-    (transaction.account_type === "asset" && transaction.kind === "expense") ||
-    (transaction.account_type === "liability" && transaction.kind === "income")
-  ) {
-    return -absoluteAmount;
-  }
-  return absoluteAmount;
-}
-
-function pass(name: string, details?: string): AssertionResult {
-  return { name, status: "pass", details };
-}
-
-function fail(name: string, details: string): AssertionResult {
-  return { name, status: "fail", details };
-}
-
-function assertActionCount(type: string, minimum: number): EvalAssertion {
-  return {
-    name: `at least ${minimum} ${type} action(s)`,
-    check: ({ actions }) => {
-      const count = actions.filter((action) => action.type === type).length;
-      return count >= minimum
-        ? pass(`at least ${minimum} ${type} action(s)`, `found ${count}`)
-        : fail(`at least ${minimum} ${type} action(s)`, `found ${count}`);
-    },
-  };
-}
-
-function assertNoAction(type: string): EvalAssertion {
-  return {
-    name: `no ${type} action`,
-    check: ({ actions }) =>
-      actions.some((action) => action.type === type)
-        ? fail(`no ${type} action`, `${type} was returned`)
-        : pass(`no ${type} action`),
-  };
-}
-
-function assertAllActionsSucceeded(): EvalAssertion {
-  return {
-    name: "all actions succeeded",
-    check: ({ actions }) => {
-      const failed = actions.filter((action) => action.status === "error");
-      return failed.length === 0
-        ? pass("all actions succeeded")
-        : fail(
-            "all actions succeeded",
-            failed
-              .map((action) => `${action.type}: ${action.error}`)
-              .join("; "),
-          );
-    },
-  };
-}
-
-function assertAnyActionFailed(): EvalAssertion {
-  return {
-    name: "at least one action failed",
-    check: ({ actions }) =>
-      actions.some((action) => action.status === "error")
-        ? pass("at least one action failed")
-        : fail("at least one action failed", "no action reported an error"),
-  };
-}
-
-function assertSearchBeforeUpdate(): EvalAssertion {
-  return {
-    name: "search/update or bulk update path used",
-    check: ({ actions }) => {
-      const bulkIndex = actions.findIndex(
-        (action) => action.type === "bulk_update_transactions",
-      );
-      if (bulkIndex !== -1) {
-        return pass("search/update or bulk update path used");
-      }
-
-      const searchIndex = actions.findIndex(
-        (action) => action.type === "search_transactions",
-      );
-      const updateIndex = actions.findIndex(
-        (action) => action.type === "update_transaction",
-      );
-      return searchIndex !== -1 &&
-        updateIndex !== -1 &&
-        searchIndex < updateIndex
-        ? pass("search happens before transaction update")
-        : fail(
-            "search/update or bulk update path used",
-            `search index ${searchIndex}, update index ${updateIndex}`,
-          );
-    },
-  };
-}
-
-function assertAccount(
-  name: string,
-  type?: string,
-  balance?: number,
-): EvalAssertion {
-  return {
-    name: `account exists: ${name}`,
-    check: ({ snapshot }) => {
-      const account = snapshot.accounts.find(
-        (item) => normalize(item.name) === normalize(name),
-      );
-      if (!account) return fail(`account exists: ${name}`, "account not found");
-      if (type && account.type !== type) {
-        return fail(`account exists: ${name}`, `type was ${account.type}`);
-      }
-      if (
-        balance !== undefined &&
-        !numberEquals(account.current_balance, balance)
-      ) {
-        return fail(
-          `account exists: ${name}`,
-          `balance was ${account.current_balance}`,
-        );
-      }
-      return pass(`account exists: ${name}`);
-    },
-  };
-}
-
-function assertCategory(name: string, type: string): EvalAssertion {
-  return {
-    name: `category exists: ${name}`,
-    check: ({ snapshot }) => {
-      const category = snapshot.categories.find(
-        (item) =>
-          normalize(item.name) === normalize(name) && item.type === type,
-      );
-      return category
-        ? pass(`category exists: ${name}`)
-        : fail(`category exists: ${name}`, "category not found");
-    },
-  };
-}
-
-function assertSubcategory(
-  name: string,
-  categoryName?: string,
-  monthlyGoal?: number | null,
-): EvalAssertion {
-  return {
-    name: `subcategory exists: ${name}`,
-    check: ({ snapshot }) => {
-      const subcategory = snapshot.subcategories.find(
-        (item) => normalize(item.name) === normalize(name),
-      );
-      if (!subcategory)
-        return fail(`subcategory exists: ${name}`, "subcategory not found");
-      if (
-        categoryName &&
-        normalize(subcategory.category_name) !== normalize(categoryName)
-      ) {
-        return fail(
-          `subcategory exists: ${name}`,
-          `category was ${subcategory.category_name}`,
-        );
-      }
-      if (
-        monthlyGoal !== undefined &&
-        (subcategory.monthly_goal === null ||
-          !numberEquals(subcategory.monthly_goal, monthlyGoal ?? 0))
-      ) {
-        return fail(
-          `subcategory exists: ${name}`,
-          `monthly goal was ${subcategory.monthly_goal}`,
-        );
-      }
-      return pass(`subcategory exists: ${name}`);
-    },
-  };
-}
-
-function assertGoal(
-  subcategoryName: string,
-  amount: number,
-  period: GoalPeriod,
-): EvalAssertion {
-  return {
-    name: `goal exists: ${subcategoryName}`,
-    check: ({ snapshot }) => {
-      const goal = snapshot.goals.find(
-        (item) =>
-          normalize(item.subcategory_name) === normalize(subcategoryName),
-      );
-      if (!goal)
-        return fail(`goal exists: ${subcategoryName}`, "goal not found");
-      if (!numberEquals(goal.amount, amount)) {
-        return fail(
-          `goal exists: ${subcategoryName}`,
-          `amount was ${goal.amount}`,
-        );
-      }
-      if (goal.period !== period) {
-        return fail(
-          `goal exists: ${subcategoryName}`,
-          `period was ${goal.period}`,
-        );
-      }
-      return pass(`goal exists: ${subcategoryName}`);
-    },
-  };
-}
-
-function assertTransaction(expected: {
-  account: string;
-  date?: string;
-  nameIncludes: string;
-  amount?: number;
-  subcategory?: string;
-  commentIncludes?: string;
-}): EvalAssertion {
-  return {
-    name: `transaction exists: ${expected.nameIncludes}`,
-    check: ({ snapshot }) => {
-      const transaction = snapshot.transactions.find((item) => {
-        if (normalize(item.account_name) !== normalize(expected.account))
-          return false;
-        if (!includesText(item.name, expected.nameIncludes)) return false;
-        if (expected.date && item.date !== expected.date) return false;
-        if (
-          expected.amount !== undefined &&
-          !numberEquals(
-            item.amount,
-            normalizedExpectedAmount(expected.amount, item),
-          )
-        ) {
-          return false;
-        }
-        if (
-          expected.subcategory &&
-          normalize(item.subcategory_name ?? "") !==
-            normalize(expected.subcategory)
-        ) {
-          return false;
-        }
-        if (
-          expected.commentIncludes &&
-          !includesText(item.comment, expected.commentIncludes)
-        ) {
-          return false;
-        }
-        return true;
-      });
-      return transaction
-        ? pass(`transaction exists: ${expected.nameIncludes}`)
-        : fail(
-            `transaction exists: ${expected.nameIncludes}`,
-            "transaction not found",
-          );
-    },
-  };
-}
-
-function assertMatchingTransactionsSubcategory(expected: {
-  account: string;
-  nameIncludes: string;
-  subcategory: string;
-  count: number;
-}): EvalAssertion {
-  return {
-    name: `all ${expected.nameIncludes} transactions are ${expected.subcategory}`,
-    check: ({ snapshot }) => {
-      const matches = snapshot.transactions.filter(
-        (item) =>
-          normalize(item.account_name) === normalize(expected.account) &&
-          includesText(item.name, expected.nameIncludes),
-      );
-      if (matches.length !== expected.count) {
-        return fail(
-          `all ${expected.nameIncludes} transactions are ${expected.subcategory}`,
-          `found ${matches.length}, expected ${expected.count}`,
-        );
-      }
-      const mismatches = matches.filter(
-        (item) =>
-          item.subcategory_name === null ||
-          normalize(item.subcategory_name) !== normalize(expected.subcategory),
-      );
-      return mismatches.length === 0
-        ? pass(
-            `all ${expected.nameIncludes} transactions are ${expected.subcategory}`,
-          )
-        : fail(
-            `all ${expected.nameIncludes} transactions are ${expected.subcategory}`,
-            `mismatched ids: ${mismatches.map((item) => item.id).join(", ")}`,
-          );
-    },
-  };
-}
-
-function assertNoDeletedRows(): EvalAssertion {
-  return {
-    name: "no rows were soft-deleted",
-    check: ({ snapshot }) => {
-      const total = Object.values(snapshot.deletedRows).reduce(
-        (sum, value) => sum + value,
-        0,
-      );
-      return total === 0
-        ? pass("no rows were soft-deleted")
-        : fail("no rows were soft-deleted", `${total} deleted rows found`);
-    },
-  };
-}
-
-function assertStreamLifecycle(): EvalAssertion {
-  return {
-    name: "stream lifecycle completed",
-    check: ({ streamEvents }) => {
-      const types = streamEvents.map((event) => event.type);
-      const required = ["started", "thinking", "actions_planned", "final"];
-      const missing = required.filter(
-        (type) => !types.includes(type as ChatStreamEvent["type"]),
-      );
-      return missing.length === 0
-        ? pass("stream lifecycle completed")
-        : fail("stream lifecycle completed", `missing ${missing.join(", ")}`);
-    },
-  };
-}
+dotenv.config();
 
 function onboardingAssertions(): EvalAssertion[] {
   return [
@@ -1296,142 +807,6 @@ const scenarios: LiveAgentScenario[] = [
   },
 ];
 
-function countRows(db: Database.Database, table: string): number {
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM ${table} WHERE deleted_at IS NOT NULL`,
-    )
-    .get() as {
-    count: number;
-  };
-  return row.count;
-}
-
-function readSnapshot(db: Database.Database): EvalSnapshot {
-  return {
-    accounts: db
-      .prepare(
-        `
-          SELECT a.*, COALESCE(SUM(t.amount), 0) AS current_balance
-          FROM accounts a
-          LEFT JOIN transactions t ON t.account_id = a.id AND t.deleted_at IS NULL
-          WHERE a.deleted_at IS NULL
-          GROUP BY a.id
-          ORDER BY a.name
-        `,
-      )
-      .all() as SnapshotAccount[],
-    categories: db
-      .prepare(
-        "SELECT id, name, type, is_system, deleted_at FROM categories WHERE deleted_at IS NULL ORDER BY name",
-      )
-      .all() as SnapshotCategory[],
-    subcategories: db
-      .prepare(
-        `
-          SELECT s.id, s.name, s.monthly_goal, c.name AS category_name,
-                 c.type AS category_type, s.deleted_at
-          FROM subcategories s
-          JOIN categories c ON c.id = s.category_id
-          WHERE s.deleted_at IS NULL AND c.deleted_at IS NULL
-          ORDER BY s.name
-        `,
-      )
-      .all() as SnapshotSubcategory[],
-    transactions: db
-      .prepare(
-        `
-          SELECT t.id, t.date, t.name, t.amount, a.name AS account_name,
-                 a.type AS account_type, t.kind,
-                 s.name AS subcategory_name, c.name AS category_name,
-                 c.type AS category_type, t.comment, t.deleted_at
-          FROM transactions t
-          JOIN accounts a ON a.id = t.account_id
-          LEFT JOIN subcategories s ON s.id = t.subcategory_id
-          LEFT JOIN categories c ON c.id = s.category_id
-          WHERE t.deleted_at IS NULL AND a.deleted_at IS NULL
-          ORDER BY t.date, t.name
-        `,
-      )
-      .all() as SnapshotTransaction[],
-    goals: db
-      .prepare(
-        `
-          SELECT g.id, g.amount, g.period, g.start_date, g.end_date,
-                 s.name AS subcategory_name, c.name AS category_name, g.deleted_at
-          FROM spending_goals g
-          JOIN subcategories s ON s.id = g.subcategory_id
-          JOIN categories c ON c.id = s.category_id
-          WHERE g.deleted_at IS NULL AND s.deleted_at IS NULL AND c.deleted_at IS NULL
-          ORDER BY s.name
-        `,
-      )
-      .all() as SnapshotGoal[],
-    deletedRows: {
-      accounts: countRows(db, "accounts"),
-      categories: countRows(db, "categories"),
-      subcategories: countRows(db, "subcategories"),
-      transactions: countRows(db, "transactions"),
-      goals: countRows(db, "spending_goals"),
-    },
-  };
-}
-
-function byName<T extends { name: string }>(items: T[], name: string): T {
-  const item = items.find(
-    (candidate) => normalize(candidate.name) === normalize(name),
-  );
-  if (!item) throw new Error(`Seed item "${name}" was not created`);
-  return item;
-}
-
-function seedScenario(services: ServiceModules, seed?: ScenarioSeed): void {
-  const accounts = new Map<string, Account>();
-  const subcategories = new Map<string, Subcategory>();
-
-  for (const account of seed?.accounts ?? []) {
-    accounts.set(account.name, services.createAccount(account));
-  }
-
-  for (const categorySeed of seed?.categories ?? []) {
-    const category = services.createCategory({
-      name: categorySeed.name,
-      type: categorySeed.type,
-    });
-    for (const subcategorySeed of categorySeed.subcategories) {
-      const subcategory = services.createSubcategory({
-        name: subcategorySeed.name,
-        category_id: category.id,
-        monthly_goal: subcategorySeed.monthly_goal ?? null,
-      });
-      subcategories.set(subcategory.name, subcategory);
-    }
-  }
-
-  for (const transaction of seed?.transactions ?? []) {
-    services.createTransaction({
-      account_id: byName([...accounts.values()], transaction.account).id,
-      date: transaction.date,
-      name: transaction.name,
-      amount: transaction.amount,
-      subcategory_id: transaction.subcategory
-        ? byName([...subcategories.values()], transaction.subcategory).id
-        : null,
-      comment: transaction.comment ?? null,
-    });
-  }
-
-  for (const goal of seed?.goals ?? []) {
-    services.createSpendingGoal({
-      subcategory_id: byName([...subcategories.values()], goal.subcategory).id,
-      amount: goal.amount,
-      period: goal.period,
-      start_date: goal.start_date,
-      end_date: goal.end_date ?? null,
-    });
-  }
-}
-
 async function loadServices(): Promise<ServiceModules> {
   const aiChat = await import("../server/services/ai-chat.js");
   const db = await import("../server/db/index.js");
@@ -1464,7 +839,7 @@ async function runScenario(
   const startedAt = Date.now();
 
   try {
-    seedScenario(services, scenario.seed);
+    seedAgentScenario(services, scenario.seed);
     const streamEvents: ChatStreamEvent[] = [];
     const conversationId = `agent-eval-${crypto.randomUUID()}`;
     const request = {
@@ -1479,7 +854,7 @@ async function runScenario(
             streamEvents.push(event);
           })
         : await services.chatWithAssistant(request);
-    const snapshot = readSnapshot(services.getDb());
+    const snapshot = readAgentSnapshot(services.getDb());
     const actions = result.actions as EvalAction[];
     const context: EvalContext = { result, actions, snapshot, streamEvents };
     const assertions = scenario.assertions.map((assertion) =>

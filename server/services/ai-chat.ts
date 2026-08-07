@@ -1,11 +1,11 @@
 export type {
-  AIAction,
+  ChatActionResult,
   ChatRequest,
   ChatResult,
-  ChatStreamEmitter,
   ChatStreamEvent,
-  ExecutedAction,
-} from "./ai-chat/types.js";
+  PlannedChatAction,
+} from "../../shared/contracts/index.js";
+export type { ChatStreamEmitter } from "../../shared/contracts/parsing-ai.js";
 export { normalizeMaxAssistantTurns } from "./ai-chat/constants.js";
 export { executeAction } from "./ai-chat/action-executor.js";
 export {

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { getDb, toBool } from "../db/index.js";
 import { ConflictError, NotFoundError } from "../errors.js";
+import { assertEntityNameIsUnique } from "./entity-name-uniqueness.js";
 import type { Category,
 CategoryType,
 Subcategory, } from "../../shared/contracts/index.js"
@@ -55,64 +56,6 @@ function rowToSubcategory(row: SubcategoryRow): Subcategory {
   };
 }
 
-function checkNameUniqueness(
-  name: string,
-  excludeTable?: string,
-  excludeId?: string,
-): void {
-  const db = getDb();
-
-  const accountExists =
-    excludeTable === "accounts" && excludeId
-      ? db
-          .prepare(
-            "SELECT 1 FROM accounts WHERE name = ? AND deleted_at IS NULL AND id != ?",
-          )
-          .get(name, excludeId)
-      : db
-          .prepare(
-            "SELECT 1 FROM accounts WHERE name = ? AND deleted_at IS NULL",
-          )
-          .get(name);
-
-  if (accountExists) {
-    throw new ConflictError(`An account with the name "${name}" already exists`)
-  }
-
-  const categoryExists =
-    excludeTable === "categories" && excludeId
-      ? db
-          .prepare(
-            "SELECT 1 FROM categories WHERE name = ? AND deleted_at IS NULL AND id != ?",
-          )
-          .get(name, excludeId)
-      : db
-          .prepare(
-            "SELECT 1 FROM categories WHERE name = ? AND deleted_at IS NULL",
-          )
-          .get(name);
-
-  if (categoryExists) {
-    throw new ConflictError(`A category with the name "${name}" already exists`)
-  }
-
-  const subcategoryExists =
-    excludeTable === "subcategories" && excludeId
-      ? db
-          .prepare(
-            "SELECT 1 FROM subcategories WHERE name = ? AND deleted_at IS NULL AND id != ?",
-          )
-          .get(name, excludeId)
-      : db
-          .prepare(
-            "SELECT 1 FROM subcategories WHERE name = ? AND deleted_at IS NULL",
-          )
-          .get(name);
-
-  if (subcategoryExists) {
-    throw new ConflictError(`A subcategory with the name "${name}" already exists`)
-  }
-}
 
 // === CATEGORIES ===
 
@@ -125,7 +68,7 @@ export function createCategory(data: {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
 
-  checkNameUniqueness(data.name);
+  assertEntityNameIsUnique(data.name);
 
   db.prepare(
     "INSERT INTO categories (id, name, type, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -179,7 +122,7 @@ export function updateCategory(
   }
 
   if (updates.name !== undefined) {
-    checkNameUniqueness(updates.name, "categories", id);
+    assertEntityNameIsUnique(updates.name, { table: "categories", id });
   }
 
   const name = updates.name ?? existing.name;
@@ -271,7 +214,7 @@ export function createSubcategory(data: {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
 
-  checkNameUniqueness(data.name);
+  assertEntityNameIsUnique(data.name);
 
   const category = db
     .prepare("SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL")
@@ -356,7 +299,10 @@ export function updateSubcategory(
   }
 
   if (updates.name !== undefined) {
-    checkNameUniqueness(updates.name, "subcategories", id);
+    assertEntityNameIsUnique(updates.name, {
+      table: "subcategories",
+      id,
+    });
   }
 
   if (updates.category_id !== undefined) {

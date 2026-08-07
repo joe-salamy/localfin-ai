@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { goalPeriodSchema } from "../../shared/contracts/goals.js";
 import { NotFoundError } from "../errors.js";
 import {
   createSpendingGoal,
@@ -19,7 +20,6 @@ import {
 } from "./validation.js";
 
 const router = Router();
-const goalPeriodSchema = z.enum(["weekly", "monthly", "quarterly", "annual"]);
 const createGoalSchema = z
   .object({
     subcategory_id: nonEmptyString,

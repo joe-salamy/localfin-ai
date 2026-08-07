@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { TransactionKind } from "./transactions.js";
+import { transactionKindSchema, type TransactionKind } from "./transactions.js";
 
 export interface ParsedTransaction {
   date: string;
@@ -107,21 +107,16 @@ export type PlannedChatAction = Omit<
 export type ChatStreamEvent =
   | { type: "started"; conversationId: string; requestId: string }
   | { type: "thinking"; message: string }
-  | { type: "reasoning_delta"; message: string }
-  | { type: "reasoning_details"; details: Record<string, unknown>[] }
-  | { type: "response_delta"; content: string }
   | { type: "actions_planned"; actions: PlannedChatAction[] }
   | { type: "action_started"; index: number; action: PlannedChatAction }
   | { type: "action_finished"; index: number; action: ChatActionResult }
   | { type: "final"; data: ChatResult }
   | { type: "error"; message: string };
 
-const transactionKindSchema = z.enum([
-  "income",
-  "expense",
-  "transfer",
-  "adjustment",
-]);
+export type ChatStreamEmitter = (
+  event: ChatStreamEvent,
+) => void | Promise<void>;
+
 
 const parsedTransactionSchema = z.object({
   date: z.string(),
@@ -217,16 +212,7 @@ export const chatStreamEventSchema: z.ZodType<ChatStreamEvent> =
       requestId: z.string(),
     }),
     z.object({ type: z.literal("thinking"), message: z.string() }),
-    z.object({ type: z.literal("reasoning_delta"), message: z.string() }),
-    z.object({
-      type: z.literal("reasoning_details"),
-      details: z.array(z.record(z.string(), z.unknown())),
-    }),
-    z.object({ type: z.literal("response_delta"), content: z.string() }),
-    z.object({
-      type: z.literal("actions_planned"),
-      actions: z.array(plannedChatActionSchema),
-    }),
+    z.object({ type: z.literal("actions_planned"), actions: z.array(plannedChatActionSchema) }),
     z.object({
       type: z.literal("action_started"),
       index: z.number(),

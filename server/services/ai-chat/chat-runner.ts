@@ -1,12 +1,8 @@
 import crypto from "node:crypto";
 import { createAgent } from "langchain";
-import {
-  AIMessage,
-  AIMessageChunk,
-  HumanMessage,
-} from "@langchain/core/messages";
-import type { OpenRouterReasoningDetail } from "../../ai/openrouter.js";
-import { appendConversationLog } from "../../ai/openrouter.js";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { appendConversationLog } from "../../ai/conversation-log.js";
+import { AI_MODELS } from "../../config/app.js";
 import {
   appendAgentMessage,
   ensureAgentConversation,
@@ -14,15 +10,15 @@ import {
   touchAgentConversationPage,
 } from "../agent-conversations.js";
 import type {
-  AIAction,
+  ChatActionResult,
   ChatRequest,
   ChatResult,
-  ChatStreamEmitter,
-  ExecutedAction,
-} from "./types.js";
+  PlannedChatAction,
+} from "../../../shared/contracts/index.js";
+import type { ChatStreamEmitter } from "../../../shared/contracts/parsing-ai.js";
 import { normalizeMaxAssistantTurns } from "./constants.js";
 import { assistantSystemMessage, buildUserPrompt } from "./prompting.js";
-import { createAssistantChatModel } from "./model.js";
+import { createOpenRouterChatModel } from "../../ai/model.js";
 import { createAssistantTools } from "./tools.js";
 
 function messageText(content: unknown): string {
@@ -40,13 +36,11 @@ function messageText(content: unknown): string {
     .join("");
 }
 
-function isAssistantMessage(
-  message: unknown,
-): message is AIMessage | AIMessageChunk {
-  return message instanceof AIMessage || message instanceof AIMessageChunk;
+function isAssistantMessage(message: unknown): message is AIMessage {
+  return message instanceof AIMessage;
 }
 
-function plannedActions(message: AIMessage | AIMessageChunk): AIAction[] {
+function plannedActions(message: AIMessage): PlannedChatAction[] {
   return (message.tool_calls ?? [])
     .filter((call) => typeof call.name === "string" && call.name.length > 0)
     .map((call) => ({
@@ -58,40 +52,12 @@ function plannedActions(message: AIMessage | AIMessageChunk): AIAction[] {
     }));
 }
 
-function reasoningText(message: AIMessage | AIMessageChunk): string {
-  const additionalKwargs = message.additional_kwargs;
-  if (!additionalKwargs || typeof additionalKwargs !== "object") return "";
-  const reasoning = additionalKwargs.reasoning;
-  return typeof reasoning === "string" ? reasoning : "";
-}
-
-function reasoningDetails(
-  message: AIMessage | AIMessageChunk,
-): OpenRouterReasoningDetail[] {
-  const additionalKwargs = message.additional_kwargs;
-  if (
-    !additionalKwargs ||
-    typeof additionalKwargs !== "object" ||
-    !("reasoning_details" in additionalKwargs)
-  ) {
-    return [];
-  }
-  const details = additionalKwargs.reasoning_details;
-  if (!Array.isArray(details)) return [];
-  return details.filter(
-    (detail): detail is OpenRouterReasoningDetail =>
-      detail !== null && typeof detail === "object",
-  );
-}
-
 function finalAssistantText(
-  messages: unknown[],
-  actions: ExecutedAction[],
+  messages: AIMessage[],
+  actions: ChatActionResult[],
 ): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!isAssistantMessage(message)) continue;
-    const text = messageText(message.content).trim();
+    const text = messageText(messages[index].content).trim();
     if (text) return text;
   }
   if (actions.length === 0) return "Done.";
@@ -105,7 +71,6 @@ export async function runAssistantChat(
 ): Promise<ChatResult> {
   const requestId = crypto.randomUUID();
   const maxTurns = normalizeMaxAssistantTurns(request.maxAssistantTurns);
-  // Each tool round uses a model step and a tools step; the final answer needs one model step.
   const recursionLimit = Math.max(3, maxTurns * 2 + 1);
 
   await emit?.({
@@ -138,11 +103,13 @@ export async function runAssistantChat(
   });
 
   const runtime = {
-    actions: [] as ExecutedAction[],
+    actions: [] as ChatActionResult[],
     emit,
   };
   const agent = createAgent({
-    model: createAssistantChatModel(),
+    model: createOpenRouterChatModel(AI_MODELS.assistantChat, {
+      disableParallelToolCalls: true,
+    }),
     tools: createAssistantTools(runtime),
     systemPrompt: assistantSystemMessage(),
   });
@@ -164,64 +131,34 @@ export async function runAssistantChat(
 
   const startedAt = new Date();
   let logFile = "";
-  const outputMessages: unknown[] = [...inputMessages];
+  const assistantMessages: AIMessage[] = [];
 
   try {
     const stream = await agent.stream(
       { messages: inputMessages },
       {
         recursionLimit,
-        streamMode: ["messages", "updates"],
+        streamMode: "updates",
       },
     );
 
-    for await (const event of stream) {
-      if (!Array.isArray(event) || event.length < 2) continue;
-      const mode = event[0];
-      const payload = event[1];
-
-      if (mode === "messages" && Array.isArray(payload)) {
-        const message = payload[0];
-        const metadata = payload[1];
-        const nodeName =
-          metadata && typeof metadata === "object" && "langgraph_node" in metadata
-            ? metadata.langgraph_node
-            : undefined;
-        if (nodeName !== "model_request" || !isAssistantMessage(message)) {
-          continue;
-        }
-
-        const text = messageText(message.content);
-        if (text) {
-          await emit?.({ type: "response_delta", content: text });
-        }
-        const reasoning = reasoningText(message);
-        if (reasoning) {
-          await emit?.({ type: "reasoning_delta", message: reasoning });
-        }
-        const details = reasoningDetails(message);
-        if (details.length > 0) {
-          await emit?.({ type: "reasoning_details", details });
-        }
-        continue;
-      }
-
-      if (mode !== "updates" || !payload || typeof payload !== "object") {
+    for await (const update of stream) {
+      if (!update || typeof update !== "object" || Array.isArray(update)) {
         continue;
       }
 
       for (const [nodeName, nodeUpdate] of Object.entries(
-        payload as Record<string, unknown>,
+        update as Record<string, unknown>,
       )) {
         if (!nodeUpdate || typeof nodeUpdate !== "object") continue;
         if (!("messages" in nodeUpdate)) continue;
         const messages = nodeUpdate.messages;
         if (!Array.isArray(messages)) continue;
-        outputMessages.push(...messages);
 
         if (nodeName !== "model_request") continue;
         for (const message of messages) {
           if (!isAssistantMessage(message)) continue;
+          assistantMessages.push(message);
           const actions = plannedActions(message);
           if (actions.length > 0) {
             await emit?.({ type: "actions_planned", actions });
@@ -262,7 +199,7 @@ export async function runAssistantChat(
 
   const actionErrors = actions.filter((action) => action.status === "error");
   const status = actionErrors.length > 0 ? "partial" : "success";
-  const baseMessage = finalAssistantText(outputMessages, actions);
+  const baseMessage = finalAssistantText(assistantMessages, actions);
   const suffix =
     actionErrors.length > 0
       ? ` ${actionErrors.length} action${actionErrors.length === 1 ? "" : "s"} failed; see the action details.`

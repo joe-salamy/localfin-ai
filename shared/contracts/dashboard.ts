@@ -1,7 +1,13 @@
 import { z } from "zod";
-import type { AccountType } from "./accounts.js";
-import type { CategoryType } from "./categories.js";
-import type { TagType } from "./tags.js";
+import {
+  accountTypeSchema,
+  type AccountType,
+} from "./accounts.js";
+import {
+  categoryTypeSchema,
+  type CategoryType,
+} from "./categories.js";
+import { tagTypeSchema, type TagType } from "./tags.js";
 
 export interface AccountSummary {
   account_id: string;
@@ -111,22 +117,12 @@ export interface SankeyData {
   links: SankeyLink[];
 }
 
-const accountTypeSchema = z.enum(["asset", "liability"]);
-const categoryTypeSchema = z.enum(["income", "expense"]);
-const tagTypeSchema = z.enum([
-  "custom",
-  "trip",
-  "event",
-  "person",
-  "reimbursable",
-  "tax",
-]);
-
 const netWorthSummarySchema: z.ZodType<NetWorthSummary> = z.object({
   total_assets: z.number(),
   total_liabilities: z.number(),
   net_worth: z.number(),
 });
+
 
 const accountTransactionSchema: z.ZodType<AccountTransaction> = z.object({
   id: z.string(),

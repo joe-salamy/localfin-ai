@@ -1,7 +1,13 @@
+import { z } from "zod";
 import type { CategoryType } from "./categories.js";
 
 export type GoalPeriod = "weekly" | "monthly" | "quarterly" | "annual";
-
+export const goalPeriodSchema = z.enum([
+  "weekly",
+  "monthly",
+  "quarterly",
+  "annual",
+]);
 export interface SpendingGoal {
   id: string;
   subcategory_id: string;

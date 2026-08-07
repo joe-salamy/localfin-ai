@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type TagType =
   | "custom"
   | "trip"
@@ -6,6 +8,14 @@ export type TagType =
   | "reimbursable"
   | "tax";
 
+export const tagTypeSchema = z.enum([
+  "custom",
+  "trip",
+  "event",
+  "person",
+  "reimbursable",
+  "tax",
+]);
 export interface Tag {
   id: string;
   name: string;

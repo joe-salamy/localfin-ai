@@ -1,4 +1,7 @@
+import { z } from "zod";
+
 export type CategoryType = "income" | "expense";
+export const categoryTypeSchema = z.enum(["income", "expense"]);
 
 export interface Category {
   id: string;

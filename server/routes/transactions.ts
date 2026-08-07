@@ -18,8 +18,8 @@ import {
   checkTransferMatch,
 } from "../services/transactions.js";
 import {
-  getSuspectTransactionFindings,
   runSuspectTransactionScan,
+  getSuspectTransactionFindings,
   updateSuspectTransactionFindingStatus,
 } from "../services/suspect-transactions.js";
 import {
@@ -27,8 +27,15 @@ import {
   idParamSchema,
   isoDateString,
   nonEmptyString,
+  optionalQueryStringArray,
   parseRequest,
 } from "./validation.js";
+import {
+  suspectFindingStatusSchema as sharedSuspectFindingStatusSchema,
+  suspectReasonCodeSchema,
+  suspectSeveritySchema,
+  transactionKindSchema,
+} from "../../shared/contracts/transactions.js";
 
 const optionalQueryBoolean = z.preprocess((value) => {
   if (value === undefined || value === "") return undefined;
@@ -36,15 +43,6 @@ const optionalQueryBoolean = z.preprocess((value) => {
   if (value === false || value === "false") return false;
   return value;
 }, z.boolean().optional());
-const optionalQueryStringArray = z.preprocess((value) => {
-  if (value === undefined || value === "") return undefined;
-  const values = Array.isArray(value) ? value : [value];
-  const normalized = values
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return normalized.length > 0 ? normalized : undefined;
-}, z.array(nonEmptyString).optional());
 
 const router = Router();
 const transactionFiltersSchema = z.object({
@@ -54,7 +52,7 @@ const transactionFiltersSchema = z.object({
   subcategoryId: nonEmptyString.optional(),
   subcategoryIds: optionalQueryStringArray,
   tagIds: optionalQueryStringArray,
-  kind: z.enum(["income", "expense", "transfer", "adjustment"]).optional(),
+  kind: transactionKindSchema.optional(),
   needsCategory: optionalQueryBoolean,
   startDate: isoDateString.optional(),
   endDate: isoDateString.optional(),
@@ -67,7 +65,7 @@ const createTransactionSchema = z.object({
   date: isoDateString,
   name: nonEmptyString,
   amount: finiteNumber,
-  kind: z.enum(["income", "expense", "transfer", "adjustment"]).optional(),
+  kind: transactionKindSchema.optional(),
   subcategory_id: nonEmptyString.nullable().optional(),
   tag_ids: z.array(nonEmptyString).max(50).optional(),
   comment: z.string().nullable().optional(),
@@ -78,7 +76,7 @@ const updateTransactionSchema = z
     date: isoDateString.optional(),
     name: nonEmptyString.optional(),
     amount: finiteNumber.optional(),
-    kind: z.enum(["income", "expense", "transfer", "adjustment"]).optional(),
+  kind: transactionKindSchema.optional(),
     subcategory_id: nonEmptyString.nullable().optional(),
     tag_ids: z.array(nonEmptyString).max(50).optional(),
     comment: z.string().nullable().optional(),
@@ -95,7 +93,7 @@ const bulkUpdateSchema = z.object({
   ids: z.array(nonEmptyString).min(1).max(500),
   updates: z
     .object({
-      kind: z.enum(["income", "expense", "transfer", "adjustment"]).optional(),
+      kind: transactionKindSchema.optional(),
       subcategory_id: nonEmptyString.nullable().optional(),
       add_tag_ids: z.array(nonEmptyString).max(50).optional(),
       remove_tag_ids: z.array(nonEmptyString).max(50).optional(),
@@ -135,28 +133,19 @@ const transferCheckSchema = z
     (value) => value.account_id || value.accountId,
     "account_id is required",
   );
-const suspectReasonSchema = z.enum([
-  "exact_duplicate",
-  "near_duplicate",
-  "large_amount_outlier",
-  "merchant_amount_outlier",
-  "rapid_small_charge_cluster",
-  "missing_category",
-  "unmatched_transfer_like",
-  "flagged_word",
-]);
 const suspectScanSchema = z.object({
   filters: transactionFiltersSchema.optional(),
-  flaggedWords: z.array(z.string()).max(100).optional(),
+  flaggedWords: z.array(nonEmptyString).max(100).optional(),
 });
+const suspectReasonSchema = suspectReasonCodeSchema;
 const suspectFindingFiltersSchema = z.object({
-  status: z.enum(["open", "dismissed", "resolved"]).optional(),
-  severity: z.enum(["low", "medium", "high"]).optional(),
+  status: sharedSuspectFindingStatusSchema.optional(),
+  severity: suspectSeveritySchema.optional(),
   reason: suspectReasonSchema.optional(),
   runId: nonEmptyString.optional(),
 });
 const suspectFindingStatusSchema = z.object({
-  status: z.enum(["open", "dismissed", "resolved"]),
+  status: sharedSuspectFindingStatusSchema,
 });
 
 router.get("/", (req: Request, res: Response) => {

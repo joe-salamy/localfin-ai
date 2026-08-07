@@ -1,4 +1,3 @@
-import type { OpenRouterReasoningDetail } from "../../ai/openrouter.js";
 import type {
   AccountType,
   CategoryType,
@@ -6,25 +5,14 @@ import type {
   TagType,
 } from "../../../shared/contracts/index.js";
 
-export interface ChatRequest {
-  conversationId: string;
-  message: string;
-  currentPage?: string;
-  maxAssistantTurns?: number;
-}
-
-export interface AIAction {
-  type: string;
-  input: Record<string, unknown>;
-}
-
-export interface ExecutedAction {
-  type: string;
-  input: Record<string, unknown>;
-  status: "success" | "error";
-  result?: unknown;
-  error?: string;
-}
+export type {
+  ChatActionResult,
+  ChatRequest,
+  ChatResult,
+  ChatStreamEvent,
+  PlannedChatAction,
+} from "../../../shared/contracts/index.js";
+export type { ChatStreamEmitter } from "../../../shared/contracts/parsing-ai.js";
 
 export interface AssistantContext {
   accounts: Array<{
@@ -60,26 +48,3 @@ export interface AssistantContext {
     end_date: string | null;
   }>;
 }
-
-export interface ChatResult {
-  conversationId: string;
-  requestId: string;
-  message: string;
-  actions: ExecutedAction[];
-  logFile: string;
-}
-
-export type ChatStreamEvent =
-  | { type: "started"; conversationId: string; requestId: string }
-  | { type: "thinking"; message: string }
-  | { type: "reasoning_delta"; message: string }
-  | { type: "reasoning_details"; details: OpenRouterReasoningDetail[] }
-  | { type: "response_delta"; content: string }
-  | { type: "actions_planned"; actions: AIAction[] }
-  | { type: "action_started"; index: number; action: AIAction }
-  | { type: "action_finished"; index: number; action: ExecutedAction }
-  | { type: "final"; data: ChatResult };
-
-export type ChatStreamEmitter = (
-  event: ChatStreamEvent,
-) => void | Promise<void>;

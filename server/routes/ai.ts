@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
+import { accountTypeSchema } from "../../shared/contracts/accounts.js";
 import { HTTP_HEADERS } from "../config/app.js";
 import { publicErrorMessage } from "../errors.js";
 import { categorizeTransactions } from "../services/ai.js";
@@ -30,7 +31,7 @@ const categorizeSchema = z.object({
         name: nonEmptyString,
         account_id: nonEmptyString,
         account_name: nonEmptyString,
-        account_type: z.enum(["asset", "liability"]).optional(),
+        account_type: accountTypeSchema.optional(),
         amount: finiteNumber,
         date: isoDateString.optional(),
       }),

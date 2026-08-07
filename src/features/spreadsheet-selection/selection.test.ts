@@ -1,9 +1,11 @@
 import { expect, test } from "vitest"
 import {
+  buildClipboardMatrix,
   expandRangesToCells,
   formatClipboardMatrix,
   isCellInRanges,
   isSingleCellMatrix,
+  isSpreadsheetArrowKey,
   moveCellWithinBounds,
   normalizeRange,
   parseClipboardMatrix,
@@ -11,7 +13,6 @@ import {
   selectionBoundingRange,
   topLeftCell,
 } from "./selection";
-
 test("normalizes rectangular selections regardless of drag direction", () => {
   expect(normalizeRange({ start: { row: 3, col: 4 }, end: { row: 1, col: 2 } })).toEqual({ startRow: 1, endRow: 3, startCol: 2, endCol: 4 });
 });
@@ -136,4 +137,43 @@ test("parses and formats TSV while preserving inner empty cells", () => {
 test("drops one final blank row caused by terminal newline", () => {
   expect(parseClipboardMatrix("a\tb\n")).toEqual([["a", "b"]]);
   expect(parseClipboardMatrix("a\tb\n\n")).toEqual([["a", "b"], [""]]);
+});
+
+test("recognizes only spreadsheet arrow keys", () => {
+  expect(isSpreadsheetArrowKey("ArrowUp")).toBe(true);
+  expect(isSpreadsheetArrowKey("ArrowRight")).toBe(true);
+  expect(isSpreadsheetArrowKey("Enter")).toBe(false);
+  expect(isSpreadsheetArrowKey("a")).toBe(false);
+});
+
+test("builds a rectangular clipboard matrix", () => {
+  expect(
+    buildClipboardMatrix(
+      [rectangleFrom({ row: 1, col: 2 }, { row: 2, col: 3 })],
+      ({ row, col }) => `${row}:${col}`,
+    ),
+  ).toEqual([
+    ["1:2", "1:3"],
+    ["2:2", "2:3"],
+  ]);
+});
+
+test("builds discontiguous clipboard matrices with blank holes", () => {
+  expect(
+    buildClipboardMatrix(
+      [
+        rectangleFrom({ row: 0, col: 0 }, { row: 0, col: 0 }),
+        rectangleFrom({ row: 2, col: 2 }, { row: 2, col: 2 }),
+      ],
+      ({ row, col }) => `${row}:${col}`,
+    ),
+  ).toEqual([
+    ["0:0", "", ""],
+    ["", "", ""],
+    ["", "", "2:2"],
+  ]);
+});
+
+test("returns no clipboard matrix for an empty selection", () => {
+  expect(buildClipboardMatrix([], () => "unused")).toBe(null);
 });

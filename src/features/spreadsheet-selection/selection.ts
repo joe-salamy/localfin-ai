@@ -14,6 +14,17 @@ export type SpreadsheetArrowKey =
   | "ArrowLeft"
   | "ArrowRight";
 
+export function isSpreadsheetArrowKey(
+  key: string,
+): key is SpreadsheetArrowKey {
+  return (
+    key === "ArrowUp" ||
+    key === "ArrowDown" ||
+    key === "ArrowLeft" ||
+    key === "ArrowRight"
+  );
+}
+
 export interface NormalizedCellRange {
   startRow: number;
   endRow: number;
@@ -85,16 +96,37 @@ export function moveCellWithinBounds(
 ): CellCoord | null {
   if (rowCount <= 0 || colCount <= 0) return null;
 
+  const row = Math.min(rowCount - 1, Math.max(0, cell.row));
+  const col = Math.min(colCount - 1, Math.max(0, cell.col));
   if (key === "ArrowLeft") {
-    return { row: cell.row, col: Math.max(0, cell.col - 1) };
+    return { row, col: Math.max(0, col - 1) };
   }
   if (key === "ArrowRight") {
-    return { row: cell.row, col: Math.min(colCount - 1, cell.col + 1) };
+    return { row, col: Math.min(colCount - 1, col + 1) };
   }
   if (key === "ArrowUp") {
-    return { row: Math.max(0, cell.row - 1), col: cell.col };
+    return { row: Math.max(0, row - 1), col };
   }
-  return { row: Math.min(rowCount - 1, cell.row + 1), col: cell.col };
+  return { row: Math.min(rowCount - 1, row + 1), col };
+}
+
+export function buildClipboardMatrix(
+  ranges: readonly CellRange[],
+  readCell: (cell: CellCoord) => string,
+): string[][] | null {
+  const bounds = selectionBoundingRange(ranges);
+  if (!bounds) return null;
+
+  const matrix: string[][] = [];
+  for (let row = bounds.startRow; row <= bounds.endRow; row++) {
+    const values: string[] = [];
+    for (let col = bounds.startCol; col <= bounds.endCol; col++) {
+      const cell = { row, col };
+      values.push(isCellInRanges(cell, ranges) ? readCell(cell) : "");
+    }
+    matrix.push(values);
+  }
+  return matrix;
 }
 
 export function selectionBoundingRange(

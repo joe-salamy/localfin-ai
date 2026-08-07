@@ -1,10 +1,38 @@
-import type { Account, Category, CategoryType, Subcategory, Tag } from "../../../shared/contracts/index.js";
+import type {
+  Account,
+  Category,
+  CategoryType,
+  Subcategory,
+  Tag,
+  TransactionKind,
+} from "../../../shared/contracts/index.js";
 import type { getTransactionsWithDetails } from "../transactions.js";
-import { asString, optionalIsoDate, optionalPositiveInteger, normalizeStringList, optionalTransactionKind } from "./input-validators.js";
-import { resolveRequestedAccount, resolveRequestedSubcategory, resolveRequestedTag, resolveSubcategory } from "./entity-resolution.js";
+import {
+  resolveRequestedAccount,
+  resolveRequestedSubcategory,
+  resolveRequestedTag,
+  resolveSubcategory,
+} from "./entity-resolution.js";
+
+export interface TransactionSearchInput {
+  searchQuery: string;
+  account_id?: string;
+  account_name?: string;
+  kind?: TransactionKind;
+  needsCategory?: boolean;
+  subcategory_id?: string;
+  subcategory_name?: string;
+  tag_id?: string;
+  tag_name?: string;
+  tag_ids?: string[];
+  tag_names?: string[];
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+}
 
 export function transactionSearchFilters(
-  input: Record<string, unknown>,
+  input: TransactionSearchInput,
   accounts: Account[],
   subcategories: Subcategory[],
   tags: Tag[],
@@ -12,64 +40,51 @@ export function transactionSearchFilters(
   defaultLimit: number,
   maxLimit: number,
 ): Parameters<typeof getTransactionsWithDetails>[0] {
-  const searchQuery = asString(input.searchQuery);
-  if (!searchQuery) {
-    throw new Error(`${actionType} requires searchQuery`);
-  }
-
-  const requestedLimit = optionalPositiveInteger(input.limit);
-  const limit = Math.min(requestedLimit ?? defaultLimit, maxLimit);
   const tagIds = [
-    ...normalizeStringList(input.tag_ids),
-    ...normalizeStringList(input.tag_id),
-    ...normalizeStringList(input.tagIds),
-    ...normalizeStringList(input.tagId),
-    ...normalizeStringList(input.tags),
+    ...(input.tag_ids ?? []),
+    ...(input.tag_id ? [input.tag_id] : []),
   ];
   const tagNames = [
-    ...normalizeStringList(input.tag_names),
-    ...normalizeStringList(input.tag_name),
+    ...(input.tag_names ?? []),
+    ...(input.tag_name ? [input.tag_name] : []),
   ];
   const resolvedTagIds = [
     ...tagIds,
     ...tagNames.map((name) =>
-      resolveRequestedTag(
-        { tag_name: name, tag_type: input.tag_type },
-        tags,
-        actionType,
-      ),
+      resolveRequestedTag({ name }, tags, actionType),
     ),
   ].filter((id): id is string => Boolean(id));
+
   return {
-    searchQuery,
-    accountId: resolveRequestedAccount(input, accounts, actionType),
+    searchQuery: input.searchQuery,
+    accountId: resolveRequestedAccount(
+      { id: input.account_id, name: input.account_name },
+      accounts,
+      actionType,
+    ),
     subcategoryId: resolveRequestedSubcategory(
-      input,
+      { id: input.subcategory_id, name: input.subcategory_name },
       subcategories,
       actionType,
     ),
-    tagIds: resolvedTagIds.length > 0 ? resolvedTagIds : undefined,
-    kind: optionalTransactionKind(input.kind, actionType),
-    needsCategory:
-      typeof input.needsCategory === "boolean"
-        ? input.needsCategory
-        : undefined,
-    startDate:
-      optionalIsoDate(input.startDate, "startDate", actionType) ??
-      optionalIsoDate(input.start_date, "start_date", actionType),
-    endDate:
-      optionalIsoDate(input.endDate, "endDate", actionType) ??
-      optionalIsoDate(input.end_date, "end_date", actionType),
-    limit,
+    tagIds: resolvedTagIds.length > 0 ? [...new Set(resolvedTagIds)] : undefined,
+    kind: input.kind,
+    needsCategory: input.needsCategory,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    limit: Math.min(input.limit ?? defaultLimit, maxLimit),
   };
 }
 
 export function categoryTypeForSubcategory(
-  input: Record<string, unknown>,
+  input: { subcategory_id?: string; subcategory_name?: string },
   categories: Category[],
   subcategories: Subcategory[],
 ): CategoryType | undefined {
-  const subcategoryId = resolveSubcategory(input, subcategories);
+  const subcategoryId = resolveSubcategory(
+    { id: input.subcategory_id, name: input.subcategory_name },
+    subcategories,
+  );
   if (!subcategoryId) return undefined;
   const subcategory = subcategories.find((item) => item.id === subcategoryId);
   if (!subcategory) return undefined;

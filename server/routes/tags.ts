@@ -1,6 +1,8 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { tagTypeSchema } from "../../shared/contracts/tags.js";
+import { hexColorSchema } from "../../shared/validation.js";
 import {
   createTag,
   deleteTag,
@@ -11,19 +13,8 @@ import {
 import { idParamSchema, nonEmptyString, parseRequest } from "./validation.js";
 
 export const tagRouter = Router();
+const colorSchema = hexColorSchema.nullable();
 
-const tagTypeSchema = z.enum([
-  "custom",
-  "trip",
-  "event",
-  "person",
-  "reimbursable",
-  "tax",
-]);
-const colorSchema = z
-  .string()
-  .regex(/^#[0-9a-fA-F]{6}$/)
-  .nullable();
 const createTagSchema = z.object({
   name: nonEmptyString,
   type: tagTypeSchema.optional(),

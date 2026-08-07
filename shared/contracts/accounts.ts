@@ -1,6 +1,8 @@
+import { z } from "zod";
 import type { Transaction } from "./transactions.js";
 
 export type AccountType = "asset" | "liability";
+export const accountTypeSchema = z.enum(["asset", "liability"]);
 
 export interface Account {
   id: string;

@@ -22,8 +22,16 @@ import {
 } from "./services/transactions.js";
 import { createTag, getTags } from "./services/tags.js";
 import { closeDbForTests, getDb } from "./db/index.js";
-import type { ChatResult } from "./services/ai-chat.js";
-import type { CategoryType } from "../shared/contracts/index.js";
+import type {
+  CategoryType,
+  ChatResult,
+  ChatStreamEvent,
+} from "../shared/contracts/index.js";
+import {
+  assertAllowedChatStreamEvents,
+  assertOrderedChatStreamLifecycle,
+  softDeletedRowCounts,
+} from "./testing/agent-eval.js";
 
 type ToolCallSpec = {
   name: string;
@@ -290,26 +298,6 @@ async function loggedEvents(
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
-function softDeletedCounts(db: Database.Database): Record<string, number> {
-  return Object.fromEntries(
-    [
-      "accounts",
-      "categories",
-      "subcategories",
-      "transactions",
-      "spending_goals",
-    ].map((table) => [
-      table,
-      (
-        db
-          .prepare(
-            `SELECT COUNT(*) AS count FROM ${table} WHERE deleted_at IS NOT NULL`,
-          )
-          .get() as { count: number }
-      ).count,
-    ]),
-  );
-}
 
 void test("agent creates budget structure and captures a transaction through the real tool loop", async (t) => {
   const { db } = await createFixture(t);
@@ -624,30 +612,38 @@ void test("agent refuses deletion and streaming emits a traceable lifecycle", as
     content: "Deletion is not available from chat.",
   }));
 
-  const events: string[] = [];
+  const events: ChatStreamEvent[] = [];
   const result = await streamChatWithAssistant(
     {
       conversationId: "test-delete-refusal",
       message: "Delete the Uber Trip Downtown transaction.",
     },
     (event) => {
-      events.push(event.type);
+      events.push(event);
     },
   );
 
   assert.equal(result.actions.length, 0);
   assert.match(result.message, /Deletion is not available/i);
-  assert.deepEqual(softDeletedCounts(db), {
+  assert.deepEqual(softDeletedRowCounts(db), {
     accounts: 0,
     categories: 0,
     subcategories: 0,
     transactions: 0,
-    spending_goals: 0,
+    goals: 0,
   });
-  assert.ok(events.includes("started"));
-  assert.ok(events.includes("thinking"));
-  assert.ok(events.includes("response_delta"));
-  assert.ok(events.includes("final"));
+  assert.ok(events.some((event) => event.type === "started"));
+  assert.equal(
+    events.some((event) =>
+      ["reasoning_delta", "reasoning_details", "response_delta"].includes(
+        event.type,
+      ),
+    ),
+    false,
+  );
+  assert.ok(events.some((event) => event.type === "final"));
+  assert.equal(assertAllowedChatStreamEvents(events).status, "pass");
+  assert.equal(assertOrderedChatStreamLifecycle(events).status, "pass");
 });
 
 void test("agent creates an explicit trip tag and assigns it to a transaction", async (t) => {
@@ -683,7 +679,7 @@ void test("agent creates an explicit trip tag and assigns it to a transaction", 
     };
   });
 
-  const events: string[] = [];
+  const events: ChatStreamEvent[] = [];
   const result = await streamChatWithAssistant(
     {
       conversationId: "test-explicit-trip-tag",
@@ -691,16 +687,23 @@ void test("agent creates an explicit trip tag and assigns it to a transaction", 
         "Add a 420 hotel charge on 2026-06-15 from Travel Checking and tag it as Cabo Trip.",
     },
     (event) => {
-      events.push(event.type);
+      events.push(event);
     },
   );
 
   assert.equal(calls.length, 2);
-  assert.ok(events.includes("actions_planned"));
-  assert.ok(events.includes("action_started"));
-  assert.ok(events.includes("action_finished"));
-  assert.ok(events.includes("response_delta"));
-  assert.ok(events.includes("final"));
+  assert.ok(events.some((event) => event.type === "actions_planned"));
+  assert.ok(events.some((event) => event.type === "action_started"));
+  assert.equal(
+    events.some((event) =>
+      ["reasoning_delta", "reasoning_details", "response_delta"].includes(
+        event.type,
+      ),
+    ),
+    false,
+  );
+  assert.ok(events.some((event) => event.type === "final"));
+  assert.equal(assertOrderedChatStreamLifecycle(events).status, "pass");
   assert.deepEqual(
     result.actions.map((action) => [action.type, action.status]),
     [["create_transaction", "success"]],
@@ -740,7 +743,7 @@ void test("agent creates an explicit trip tag and assigns it to a transaction", 
   });
   const tagFilteredSearch = executeAction({
     type: "search_transactions",
-    input: { searchQuery: '"Cabo Hotel"', tagIds: [transaction.tags[0]?.id] },
+    input: { searchQuery: '"Cabo Hotel"', tag_ids: [transaction.tags[0]?.id] },
   });
   const tagFilteredResults = tagFilteredSearch.result;
   assert.ok(
@@ -813,6 +816,56 @@ void test("agent rejects conflicting bulk tag edits when also updating comments"
   assert.deepEqual(
     unchanged?.tags.map((item) => item.id),
     [tag.id],
+  );
+});
+
+void test("agent validates category references and normalizes transaction comments", async (t) => {
+  await createFixture(t);
+  const account = createAccount({ name: "Checking", type: "asset" });
+  const categoryId = createNamedCategory("Food", "expense");
+  const subcategory = createSubcategory({
+    name: "Coffee",
+    category_id: categoryId,
+  });
+
+  const invalidUpdate = executeAction({
+    type: "update_subcategory",
+    input: {
+      id: subcategory.id,
+      category_name: "Missing category",
+      name: "Coffee shops",
+    },
+  });
+  assert.equal(invalidUpdate.status, "error");
+  assert.match(invalidUpdate.error ?? "", /unknown category/);
+
+  const created = executeAction({
+    type: "create_transaction",
+    input: {
+      account_id: account.id,
+      date: "2026-06-15",
+      name: "Coffee",
+      amount: -6,
+      kind: "expense",
+      subcategory_id: subcategory.id,
+      comment: "  client coffee  ",
+    },
+  });
+  assert.equal(created.status, "success");
+  const transaction = getTransactionsWithDetails({
+    searchQuery: '"Coffee"',
+  })[0];
+  assert.ok(transaction, "expected created transaction");
+  assert.equal(transaction.comment, "client coffee");
+
+  const blankUpdate = executeAction({
+    type: "update_transaction",
+    input: { id: transaction.id, comment: "   " },
+  });
+  assert.equal(blankUpdate.status, "success");
+  assert.equal(
+    getTransactionsWithDetails({ searchQuery: '"Coffee"' })[0]?.comment,
+    "client coffee",
   );
 });
 

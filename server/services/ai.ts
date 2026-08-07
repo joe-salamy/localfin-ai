@@ -1,40 +1,49 @@
+import crypto from "node:crypto";
+import { z } from "zod";
 import { getDb } from "../db/index.js";
-import { callOpenRouter } from "../ai/openrouter.js";
+import { appendConversationLog } from "../ai/conversation-log.js";
 import { AI_CONFIG, AI_MODELS } from "../config/app.js";
-import type { AccountType, TransactionKind } from "../../shared/contracts/index.js"
-import { inferTransactionKindForAccount } from "../../shared/finance/transactionAmounts.js"
+import { createOpenRouterChatModel } from "../ai/model.js";
+import type {
+  AccountType,
+  CategorizeResult,
+  CategoryType,
+  TransactionKind,
+} from "../../shared/contracts/index.js";
+import { inferTransactionKindForAccount } from "../../shared/finance/transactionAmounts.js";
+type StructuredCategorizer = {
+  batch(
+    inputs: unknown[],
+    config: undefined,
+    options: {
+      maxConcurrency: number;
+      returnExceptions: boolean;
+    },
+  ): Promise<unknown[]>;
+};
 
-interface CategorizeRequest {
-  transactions: {
-    name: string;
-    account_id: string;
-    account_name: string;
-    account_type?: AccountType;
-    amount: number;
-    date?: string;
-  }[];
-  conversationId?: string;
+interface CategorizeTransactionInput {
+  name: string;
+  account_id: string;
+  account_name: string;
+  account_type?: AccountType;
+  amount: number;
+  date?: string;
 }
 
-interface CategorizeResult {
-  transaction_name: string;
-  kind: TransactionKind;
-  subcategory_id: string | null;
-  subcategory_name: string | null;
-  category_name: string | null;
-  source: "lookup" | "transfer" | "ai" | "none";
+interface CategorizeRequest {
+  transactions: CategorizeTransactionInput[];
+  conversationId?: string;
 }
 
 interface SubcategoryRow {
   id: string;
   name: string;
   category_name: string;
-  category_type: string;
+  category_type: CategoryType;
 }
 
-interface AvailableSubcategoryChoice extends SubcategoryRow {
-  number: number;
-}
+type AvailableSubcategoryChoice = SubcategoryRow;
 
 interface PastExampleRow {
   name: string;
@@ -53,46 +62,42 @@ interface PastTxRow {
   category_name: string | null;
 }
 
-interface AIResultItem {
+interface UnknownTransaction extends CategorizeTransactionInput {
   index: number;
-  kind?: number | null;
-  subcategory?: number | null;
 }
 
-interface ResolvedAIResultItem {
-  index: number;
-  kind: TransactionKind;
-  subcategory_id: string | null;
-  subcategory_name: string | null;
-  category_name: string | null;
-}
-
-interface UnknownTransaction {
-  index: number;
-  name: string;
-  account_id: string;
-  account_name: string;
-  account_type?: AccountType;
-  amount: number;
-  date?: string;
-}
-
-const KIND_CHOICES: TransactionKind[] = ["income", "expense", "transfer"];
 const TRANSFER_NAME_PATTERN =
   /\b(?:transfer|online transfer|credit card payment|payment thank you|autopay|ach payment|card payment|payment received|payment posted)\b/i;
+
+export const categorizationSchema = z.strictObject({
+  results: z
+    .array(
+      z.strictObject({
+        kind: z
+          .enum(["income", "expense", "transfer"])
+          .describe("The transaction kind in input order."),
+        subcategory_id: z
+          .string()
+          .nullable()
+          .describe("The exact available subcategory id, or null."),
+      }),
+    )
+    .max(AI_CONFIG.batchSize)
+    .describe("One result per transaction, in the same order as the input."),
+});
+
+type CategorizationOutput = z.infer<typeof categorizationSchema>;
 
 export async function categorizeTransactions(
   request: CategorizeRequest,
 ): Promise<CategorizeResult[]> {
   const db = getDb();
-  const results: CategorizeResult[] = [];
+  const results: CategorizeResult[] = new Array(request.transactions.length);
   const unknowns: UnknownTransaction[] = [];
 
-  // Step 1: For each transaction, try past transactions with the same name and account.
   for (let i = 0; i < request.transactions.length; i++) {
     const tx = request.transactions[i];
     const normalizedName = tx.name.trim().toLowerCase();
-
     const pastTx = db
       .prepare(
         `
@@ -134,7 +139,6 @@ export async function categorizeTransactions(
       continue;
     }
 
-    // Mark as unknown for AI batch
     unknowns.push({ index: i, ...tx });
     results[i] = {
       transaction_name: tx.name,
@@ -146,23 +150,22 @@ export async function categorizeTransactions(
     };
   }
 
-  // Step 2: Batch unknowns to LLM
-  if (unknowns.length > 0) {
-    const subcategories = db
-      .prepare(
-        `
+  if (unknowns.length === 0) return results;
+
+  const subcategories = db
+    .prepare(
+      `
       SELECT s.id, s.name, c.name as category_name, c.type as category_type
       FROM subcategories s
       JOIN categories c ON s.category_id = c.id
       WHERE s.deleted_at IS NULL AND c.deleted_at IS NULL
       ORDER BY c.type, c.name, s.name
     `,
-      )
-      .all() as SubcategoryRow[];
-
-    const pastExamples = db
-      .prepare(
-        `
+    )
+    .all() as SubcategoryRow[];
+  const pastExamples = db
+    .prepare(
+      `
       SELECT t.name, t.amount, t.kind, a.name as account_name, a.type as account_type, s.name as subcategory_name, c.name as category_name
       FROM transactions t
       JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
@@ -171,18 +174,16 @@ export async function categorizeTransactions(
       WHERE t.deleted_at IS NULL AND (t.kind = 'transfer' OR t.subcategory_id IS NOT NULL)
       ORDER BY t.date DESC LIMIT ?
     `,
-      )
-      .all(AI_CONFIG.contextSize) as PastExampleRow[];
+    )
+    .all(AI_CONFIG.contextSize) as PastExampleRow[];
 
-    await processCategorizationBatches({
-      unknowns,
-      results,
-      subcategories,
-      pastExamples,
-      conversationId: request.conversationId,
-    });
-  }
-
+  await processCategorizationBatches(
+    unknowns,
+    results,
+    subcategories,
+    pastExamples,
+    request.conversationId ?? crypto.randomUUID(),
+  );
   return results;
 }
 
@@ -194,148 +195,217 @@ function createBatches<T>(items: T[], batchSize: number): T[][] {
   return batches;
 }
 
-export function normalizeAIResultIndex(
-  resultIndex: unknown,
-  batchLength: number,
-  usesOneBasedIndexes: boolean,
-): number | null {
-  if (typeof resultIndex !== "number" || !Number.isInteger(resultIndex)) {
-    return null;
+class CategorizationFailure extends Error {
+  constructor(name: string) {
+    super();
+    this.name = name;
   }
-
-  const batchIndex = usesOneBasedIndexes ? resultIndex - 1 : resultIndex;
-  if (batchIndex < 0 || batchIndex >= batchLength) {
-    return null;
-  }
-
-  return batchIndex;
 }
 
-async function processWithConcurrency<T>(
-  items: T[],
-  concurrency: number,
-  processItem: (item: T, itemIndex: number) => Promise<void>,
+function errorClass(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
+interface CategorizationBatchLog {
+  requestId: string;
+  batchIndex: number;
+  batchCount: number;
+  batchSize: number;
+  unknownIndexes: number[];
+  durationMs: number;
+  errorClass?: string;
+}
+
+async function appendCategorizationLog(
+  entry: CategorizationBatchLog,
 ): Promise<void> {
-  let nextIndex = 0;
-  const workerCount = Math.min(Math.max(concurrency, 1), items.length);
-
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (nextIndex < items.length) {
-      const itemIndex = nextIndex;
-      nextIndex += 1;
-      await processItem(items[itemIndex], itemIndex);
-    }
-  });
-
-  await Promise.all(workers);
-}
-
-async function processCategorizationBatches({
-  unknowns,
-  results,
-  subcategories,
-  pastExamples,
-  conversationId,
-}: {
-  unknowns: UnknownTransaction[];
-  results: CategorizeResult[];
-  subcategories: SubcategoryRow[];
-  pastExamples: PastExampleRow[];
-  conversationId?: string;
-}): Promise<void> {
-  const batches = createBatches(unknowns, AI_CONFIG.batchSize);
-  const concurrency =
-    unknowns.length > AI_CONFIG.batchSize
-      ? AI_CONFIG.maxConcurrentLLMRequests
-      : 1;
-
-  await processWithConcurrency(
-    batches,
-    concurrency,
-    async (batch, batchIndex) => {
-      try {
-        const aiResults = await callOpenRouterForCategorization(
-          batch,
-          subcategories,
-          pastExamples,
-          conversationId,
-          {
-            batchNumber: batchIndex + 1,
-            batchCount: batches.length,
-          },
-        );
-
-        for (let j = 0; j < batch.length; j++) {
-          const aiResult = aiResults[j];
-          if (aiResult) {
-            results[batch[j].index] = {
-              transaction_name: batch[j].name,
-              kind: aiResult.kind,
-              subcategory_id: aiResult.subcategory_id,
-              subcategory_name: aiResult.subcategory_name,
-              category_name: aiResult.category_name,
-              source: "ai",
-            };
-          }
-        }
-      } catch (error) {
-        console.error("AI categorization batch failed:", error);
-        // Leave unknowns in this batch as 'none' source.
-      }
-    },
-  );
-}
-
-async function callOpenRouterForCategorization(
-  batch: UnknownTransaction[],
-  subcategories: SubcategoryRow[],
-  pastExamples: PastExampleRow[],
-  conversationId?: string,
-  batchMetadata?: {
-    batchNumber: number;
-    batchCount: number;
-  },
-): Promise<ResolvedAIResultItem[]> {
-  const availableSubcategories =
-    buildAvailableSubcategoryChoices(subcategories);
-  const { systemMessage, userMessage } = buildCategorizationMessages(
-    batch,
-    availableSubcategories,
-    pastExamples,
-  );
-
-  const response = await callOpenRouter(
-    [
-      { role: "system", content: systemMessage },
-      { role: "user", content: userMessage },
-    ],
-    {
-      conversationId,
+  try {
+    await appendConversationLog(entry.requestId, {
       operation: "transaction.categorize",
       model: AI_MODELS.transactionCategorization,
-      metadata: {
-        batchSize: batch.length,
-        unknownIndexes: batch.map((tx) => tx.index),
-        ...batchMetadata,
-      },
-    },
-  );
+      request_id: entry.requestId,
+      duration_ms: entry.durationMs,
+      batch_index: entry.batchIndex,
+      batch_count: entry.batchCount,
+      batch_size: entry.batchSize,
+      unknown_indexes: entry.unknownIndexes,
+      ...(entry.errorClass
+        ? { status: "error", error_class: entry.errorClass }
+        : { status: "success" }),
+    });
+  } catch {
+    // Categorization logging must never change the categorization result.
+  }
+}
 
-  return resolveAIResults(
-    response.parsedContent as { results: AIResultItem[] } | null,
-    response.content,
-    batch,
-    availableSubcategories,
-  );
+async function processCategorizationBatches(
+  unknowns: UnknownTransaction[],
+  results: CategorizeResult[],
+  subcategories: SubcategoryRow[],
+  pastExamples: PastExampleRow[],
+  requestId: string,
+): Promise<void> {
+  const batches = createBatches(unknowns, AI_CONFIG.batchSize);
+  const batchCount = batches.length;
+  const availableSubcategories = buildAvailableSubcategoryChoices(subcategories);
+  const promptInputs = batches.map((batch) => {
+    const { systemMessage, userMessage } = buildCategorizationMessages(
+      batch,
+      availableSubcategories,
+      pastExamples,
+    );
+    return [
+      { role: "system" as const, content: systemMessage },
+      { role: "user" as const, content: userMessage },
+    ];
+  });
+
+  const logBatch = async (
+    batchIndex: number,
+    startedAt: number,
+    failure?: unknown,
+  ) => {
+    const batch = batches[batchIndex];
+    const failureClass = failure
+      ? errorClass(failure)
+      : undefined;
+    if (failureClass) {
+      console.error("AI categorization batch failed", {
+        batch: batchIndex + 1,
+        error: failureClass,
+      });
+    }
+    await appendCategorizationLog({
+      requestId,
+      batchIndex: batchIndex + 1,
+      batchCount,
+      batchSize: batch.length,
+      unknownIndexes: batch.map((transaction) => transaction.index),
+      durationMs: Math.max(0, Date.now() - startedAt),
+      errorClass: failureClass,
+    });
+  };
+
+  const startedAt = Date.now();
+  let structuredCategorizer: StructuredCategorizer;
+  try {
+    structuredCategorizer = createOpenRouterChatModel(
+      AI_MODELS.transactionCategorization,
+    ).withStructuredOutput(categorizationSchema, {
+      method: "functionCalling",
+      includeRaw: false,
+      name: "categorize_transactions",
+    });
+  } catch (error) {
+    for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
+      await logBatch(batchIndex, startedAt, error);
+    }
+    return;
+  }
+
+  let outputs: unknown[];
+  try {
+    outputs = await structuredCategorizer.batch(promptInputs, undefined, {
+      maxConcurrency: AI_CONFIG.maxConcurrentLLMRequests,
+      returnExceptions: true,
+    });
+  } catch (error) {
+    for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
+      await logBatch(batchIndex, startedAt, error);
+    }
+    return;
+  }
+
+  for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
+    const output = outputs[batchIndex];
+    if (output instanceof Error || output === undefined) {
+      await logBatch(
+        batchIndex,
+        startedAt,
+        output instanceof Error
+          ? output
+          : new CategorizationFailure("MissingCategorizationOutput"),
+      );
+      continue;
+    }
+
+    const parsed = categorizationSchema.safeParse(output);
+    if (!parsed.success) {
+      await logBatch(
+        batchIndex,
+        startedAt,
+        new CategorizationFailure("InvalidCategorizationOutput"),
+      );
+      continue;
+    }
+
+    applyCategorizationOutput(
+      parsed.data,
+      batches[batchIndex],
+      availableSubcategories,
+      results,
+    );
+    await logBatch(batchIndex, startedAt);
+  }
+}
+
+function applyCategorizationOutput(
+  output: CategorizationOutput,
+  batch: UnknownTransaction[],
+  availableSubcategories: AvailableSubcategoryChoice[],
+  results: CategorizeResult[],
+): void {
+  for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
+    const transaction = batch[batchIndex];
+    const item = output.results[batchIndex];
+    const inferredKind = getTransactionCategoryType(
+      transaction.amount,
+      transaction.account_type,
+    );
+    const kind = item?.kind ?? inferredKind;
+
+    if (item?.kind === "transfer") {
+      results[transaction.index] = {
+        transaction_name: transaction.name,
+        kind: "transfer",
+        subcategory_id: null,
+        subcategory_name: null,
+        category_name: null,
+        source: "ai",
+      };
+      continue;
+    }
+
+    const subcategory = item
+      ? availableSubcategories.find(
+          (candidate) =>
+            candidate.id === item.subcategory_id &&
+            candidate.category_type === kind,
+        )
+      : undefined;
+    const fallback =
+      subcategory ??
+      availableSubcategories.find(
+        (candidate) =>
+          candidate.name === "Unassigned" && candidate.category_type === kind,
+      );
+
+    if (!fallback) continue;
+    results[transaction.index] = {
+      transaction_name: transaction.name,
+      kind,
+      subcategory_id: fallback.id,
+      subcategory_name: fallback.name,
+      category_name: fallback.category_name,
+      source: "ai",
+    };
+  }
 }
 
 export function buildAvailableSubcategoryChoices(
   subcategories: SubcategoryRow[],
 ): AvailableSubcategoryChoice[] {
-  return subcategories.map((subcategory, index) => ({
-    ...subcategory,
-    number: index,
-  }));
+  return subcategories.map((subcategory) => ({ ...subcategory }));
 }
 
 export function formatAvailableSubcategories(
@@ -344,7 +414,7 @@ export function formatAvailableSubcategories(
   return availableSubcategories
     .map(
       (subcategory) =>
-        `${subcategory.number}. [${subcategory.category_type}] ${subcategory.category_name} > ${subcategory.name}`,
+        `${subcategory.id} [${subcategory.category_type}] ${subcategory.category_name} > ${subcategory.name}`,
     )
     .join("\n");
 }
@@ -354,170 +424,38 @@ export function buildCategorizationMessages(
   availableSubcategories: AvailableSubcategoryChoice[],
   pastExamples: PastExampleRow[],
 ): { systemMessage: string; userMessage: string } {
-  // Build past examples context
-  const exampleLines = pastExamples.map((e) => {
-    if (e.kind === "transfer") {
-      return `"${e.name}" ($${e.amount}) on "${e.account_name}" -> kind 2 transfer, no subcategory`;
+  const exampleLines = pastExamples.map((example) => {
+    if (example.kind === "transfer") {
+      return `"${example.name}" ($${example.amount}) on "${example.account_name}" -> transfer, no subcategory`;
     }
-    const kindIndex = e.kind === "income" ? 0 : 1;
-    return `"${e.name}" ($${e.amount}) on "${e.account_name}" -> kind ${kindIndex} ${e.kind}, "${e.category_name} > ${e.subcategory_name}"`;
+    return `"${example.name}" ($${example.amount}) on "${example.account_name}" -> ${example.kind}, "${example.category_name} > ${example.subcategory_name}"`;
   });
 
-  const systemMessage = `You are a transaction categorizer for a personal budget app. Categorize each transaction into the most appropriate subcategory.
+  const systemMessage = `You are a transaction categorizer for a personal budget app. Categorize each transaction into the most appropriate available subcategory.
 
 RULES:
 - Amounts are account-balance deltas: asset-account expenses are negative, asset-account income is positive, liability-account expenses/charges are positive, and liability-account payments/refunds/income are negative
 - Transfers are money moving between owned accounts, including card payments, ACH transfers, autopay payments, and payment-thank-you lines
-- Return kind as a numeric index: 0 = income, 1 = expense, 2 = transfer
-- Transfers must return kind 2 and subcategory null
-- Match the subcategory number to the transaction kind, not just the numeric sign
-- If unsure, use the "Unassigned" subcategory number for the appropriate type
-- Return numeric values only; do not return category, subcategory, or kind names
-- Return ONLY the JSON, no explanation
+- Return one result per input transaction in the same order
+- kind must be income, expense, or transfer
+- Transfers must return kind transfer and subcategory_id null
+- Use only an exact subcategory id from the available list when its category type matches kind
+- If unsure, return the Unassigned subcategory id for the appropriate type
+- Return only the structured result
 AVAILABLE SUBCATEGORIES:
 ${formatAvailableSubcategories(availableSubcategories)}
 ${
   exampleLines.length > 0
-    ? `
-PAST EXAMPLES:
-${exampleLines.join("\n")}
-`
+    ? `\nPAST EXAMPLES:\n${exampleLines.join("\n")}\n`
     : ""
 }`;
 
   const transactionLines = batch.map(
-    (tx, i) =>
-      `- index ${i}: "${tx.name}" ($${tx.amount}) on ${tx.account_type ?? "asset"} account "${tx.account_name}"`,
+    (transaction) =>
+      `- "${transaction.name}" ($${transaction.amount}) on ${transaction.account_type ?? "asset"} account "${transaction.account_name}"`,
   );
-
-  const userMessage = `Categorize these transactions:
-${transactionLines.join("\n")}
-
-Return exactly one result per transaction using the same zero-based index values shown above.
-Return JSON: { "results": [{ "index": 0, "kind": 0, "subcategory": 0 }] }`;
-
+  const userMessage = `Categorize these transactions:\n${transactionLines.join("\n")}\n\nReturn exactly one result per transaction in input order.`;
   return { systemMessage, userMessage };
-}
-
-export function resolveSubcategoryChoice(
-  choice: unknown,
-  kind: "income" | "expense",
-  availableSubcategories: AvailableSubcategoryChoice[],
-): AvailableSubcategoryChoice | null {
-  if (typeof choice === "number" && Number.isInteger(choice)) {
-    const subcategory = availableSubcategories[choice];
-    if (subcategory?.category_type === kind) {
-      return subcategory;
-    }
-  }
-
-  return findUnassignedSubcategory(availableSubcategories, kind);
-}
-
-export function resolveKindChoice(
-  choice: unknown,
-  transactionAmount: number,
-  accountType?: AccountType,
-): TransactionKind {
-  if (typeof choice === "number" && Number.isInteger(choice)) {
-    return (
-      KIND_CHOICES[choice] ??
-      getTransactionCategoryType(transactionAmount, accountType)
-    );
-  }
-  return getTransactionCategoryType(transactionAmount, accountType);
-}
-
-function resolveAIResults(
-  parsed: { results: AIResultItem[] } | null,
-  responseContent: string,
-  batch: UnknownTransaction[],
-  availableSubcategories: AvailableSubcategoryChoice[],
-): ResolvedAIResultItem[] {
-  if (!parsed) {
-    console.error("Failed to parse AI response:", responseContent);
-    return [];
-  }
-
-  if (!parsed.results || !Array.isArray(parsed.results)) {
-    console.error("AI response missing results array:", parsed);
-    return [];
-  }
-
-  const indexedResults: ResolvedAIResultItem[] = [];
-  const resultIndexes = parsed.results
-    .map((result) => result.index)
-    .filter((index): index is number => Number.isInteger(index));
-  const usesOneBasedIndexes =
-    resultIndexes.length > 0 &&
-    !resultIndexes.includes(0) &&
-    resultIndexes.every((index) => index >= 1 && index <= batch.length);
-
-  for (const result of parsed.results) {
-    const batchIndex = normalizeAIResultIndex(
-      result.index,
-      batch.length,
-      usesOneBasedIndexes,
-    );
-    if (batchIndex === null) continue;
-
-    const kind = resolveKindChoice(
-      result.kind,
-      batch[batchIndex].amount,
-      batch[batchIndex].account_type,
-    );
-    if (kind === "transfer") {
-      indexedResults[batchIndex] = {
-        index: batchIndex,
-        kind,
-        subcategory_id: null,
-        subcategory_name: null,
-        category_name: null,
-      };
-      continue;
-    }
-    if (kind !== "income" && kind !== "expense") continue;
-
-    const subcategory = resolveSubcategoryChoice(
-      result.subcategory,
-      kind,
-      availableSubcategories,
-    );
-    if (subcategory) {
-      indexedResults[batchIndex] = {
-        index: batchIndex,
-        kind,
-        subcategory_id: subcategory.id,
-        subcategory_name: subcategory.name,
-        category_name: subcategory.category_name,
-      };
-    }
-  }
-
-  for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
-    if (indexedResults[batchIndex]) continue;
-
-    const kind = getTransactionCategoryType(
-      batch[batchIndex].amount,
-      batch[batchIndex].account_type,
-    );
-    const subcategory = resolveSubcategoryChoice(
-      null,
-      kind,
-      availableSubcategories,
-    );
-    if (subcategory) {
-      indexedResults[batchIndex] = {
-        index: batchIndex,
-        kind,
-        subcategory_id: subcategory.id,
-        subcategory_name: subcategory.name,
-        category_name: subcategory.category_name,
-      };
-    }
-  }
-
-  return indexedResults;
 }
 
 function getTransactionCategoryType(
@@ -528,12 +466,11 @@ function getTransactionCategoryType(
 }
 
 function isLikelyTransfer(
-  tx: CategorizeRequest["transactions"][number],
-  batchTransactions: CategorizeRequest["transactions"] = [],
+  tx: CategorizeTransactionInput,
+  batchTransactions: CategorizeTransactionInput[] = [],
 ): boolean {
   if (TRANSFER_NAME_PATTERN.test(tx.name)) return true;
   if (!tx.date) return false;
-  const txDate = tx.date;
 
   if (
     batchTransactions.some(
@@ -543,7 +480,7 @@ function isLikelyTransfer(
         candidate.amount === -tx.amount &&
         typeof candidate.date === "string" &&
         Math.abs(
-          (new Date(candidate.date).getTime() - new Date(txDate).getTime()) /
+          (new Date(candidate.date).getTime() - new Date(tx.date!).getTime()) /
             86_400_000,
         ) <= 3,
     )
@@ -565,17 +502,5 @@ function isLikelyTransfer(
     `,
     )
     .get(tx.account_id, -tx.amount, tx.date, tx.date);
-  return !!row;
-}
-
-function findUnassignedSubcategory(
-  availableSubcategories: AvailableSubcategoryChoice[],
-  type: "income" | "expense",
-): AvailableSubcategoryChoice | null {
-  return (
-    availableSubcategories.find(
-      (subcategory) =>
-        subcategory.name === "Unassigned" && subcategory.category_type === type,
-    ) ?? null
-  );
+  return Boolean(row);
 }

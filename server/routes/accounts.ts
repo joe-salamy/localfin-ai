@@ -1,6 +1,8 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { accountTypeSchema } from "../../shared/contracts/accounts.js";
+import { hexColorSchema } from "../../shared/validation.js";
 import { NotFoundError } from "../errors.js";
 import {
   createAccount,
@@ -21,11 +23,7 @@ import {
 } from "./validation.js";
 
 const router = Router();
-const accountTypeSchema = z.enum(["asset", "liability"]);
-const colorSchema = z
-  .string()
-  .regex(/^#[0-9a-fA-F]{6}$/)
-  .nullable();
+const colorSchema = hexColorSchema.nullable();
 const createAccountSchema = z.object({
   name: nonEmptyString,
   type: accountTypeSchema,

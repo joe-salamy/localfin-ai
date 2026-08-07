@@ -1,6 +1,5 @@
 import { z } from "zod";
-import type { AccountType } from "./accounts.js";
-
+import { accountTypeSchema, type AccountType } from "./accounts.js";
 export type AccountLinkProvider = "plaid" | "akoya";
 
 export type TargetInstitution = "us_bank" | "discover" | "fidelity";
@@ -81,7 +80,7 @@ export const providerAccountSummarySchema = z.object({
   provider_account_id: z.string(),
   name: z.string(),
   mask: z.string().nullable(),
-  type: z.enum(["asset", "liability"]),
+  type: accountTypeSchema,
   provider_type: z.string().nullable(),
   provider_subtype: z.string().nullable(),
   current_balance: z.number().nullable(),

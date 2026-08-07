@@ -7,21 +7,13 @@ import {
   getTagSummary,
 } from "../services/dashboard.js";
 import { prepareNetWorthData, prepareSankeyData } from "../services/charts.js";
-import { isoDateString, parseRequest } from "./validation.js";
+import {
+  isoDateString,
+  optionalQueryStringArray,
+  parseRequest,
+} from "./validation.js";
 import { z } from "zod";
 
-const optionalQueryStringArray = z.preprocess(
-  (value) => {
-    if (value === undefined || value === "") return undefined;
-    const values = Array.isArray(value) ? value : [value];
-    const normalized = values
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    return normalized.length > 0 ? normalized : undefined;
-  },
-  z.array(z.string().trim().min(1)).optional(),
-);
 
 const router = Router();
 const dateRangeQueryShape = {
@@ -34,15 +26,9 @@ const dateRangeQuerySchema = z
     (value) => value.startDate <= value.endDate,
     "startDate must be on or before endDate",
   );
-const transactionReportQuerySchema = z
-  .object({
-    ...dateRangeQueryShape,
-    tagIds: optionalQueryStringArray,
-  })
-  .refine(
-    (value) => value.startDate <= value.endDate,
-    "startDate must be on or before endDate",
-  );
+const transactionReportQuerySchema = dateRangeQuerySchema.extend({
+  tagIds: optionalQueryStringArray,
+});
 
 router.get("/account-summary", (req: Request, res: Response) => {
   const query = parseRequest(dateRangeQuerySchema, req.query);

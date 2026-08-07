@@ -261,3 +261,19 @@ describe("MultiTransactionTable", () => {
     );
   });
 });
+
+test("does not hijack Ctrl+A from native draft inputs", () => {
+  renderDraft();
+  const input = screen.getAllByPlaceholderText("Description")[0]!;
+  input.focus();
+
+  const event = new KeyboardEvent("keydown", {
+    key: "a",
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  input.dispatchEvent(event);
+
+  expect(event.defaultPrevented).toBe(false);
+});

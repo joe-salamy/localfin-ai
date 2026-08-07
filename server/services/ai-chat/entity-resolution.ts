@@ -1,9 +1,16 @@
-import type { Account,
-Category,
-SpendingGoalWithDetails,
-Subcategory,
-Tag, } from "../../../shared/contracts/index.js"
-import { asString, hasAnyField, optionalTagType } from "./input-validators.js";
+import type {
+  Account,
+  Category,
+  SpendingGoalWithDetails,
+  Subcategory,
+  Tag,
+  TagType,
+} from "../../../shared/contracts/index.js";
+
+export interface EntityReference {
+  id?: string;
+  name?: string;
+}
 
 export function findByName<T extends { name: string }>(
   items: T[],
@@ -39,176 +46,135 @@ export function describeEntityCandidate(item: {
 
 export function resolveEntityReference<T extends { id: string; name: string }>(
   items: T[],
-  idValue: string | undefined,
-  nameValue: string | undefined,
+  reference: EntityReference,
 ): string | undefined {
-  if (idValue && items.some((item) => item.id === idValue)) return idValue;
+  if (reference.id && items.some((item) => item.id === reference.id)) {
+    return reference.id;
+  }
 
-  const idNameMatches = findAllByName(items, idValue);
-  if (idNameMatches.length === 1) return idNameMatches[0]?.id;
-
-  const nameMatches = findAllByName(items, nameValue);
-  if (nameMatches.length === 1) return nameMatches[0]?.id;
-
-  return undefined;
+  const nameMatches = findAllByName(items, reference.name);
+  return nameMatches.length === 1 ? nameMatches[0]?.id : undefined;
 }
 
-export function referenceError<T extends { id: string; name: string }>(
+export function resolveRequestedEntityReference<
+  T extends { id: string; name: string },
+>(
   actionType: string,
   label: string,
   items: T[],
-  values: Array<string | undefined>,
-): Error {
-  const reference = values.find(Boolean);
-  const matches = findAllByName(items, reference);
-  if (reference && matches.length > 1) {
-    return new Error(
-      `${actionType} references ambiguous ${label} "${reference}". Candidates: ${matches
+  reference: EntityReference,
+): string | undefined {
+  if (reference.id === undefined && reference.name === undefined) {
+    return undefined;
+  }
+
+  const resolved = resolveEntityReference(items, reference);
+  if (resolved) return resolved;
+
+  const referenceValue = reference.name ?? reference.id ?? "";
+  const matches = findAllByName(items, referenceValue);
+  if (matches.length > 1) {
+    throw new Error(
+      `${actionType} references ambiguous ${label} "${referenceValue}". Candidates: ${matches
         .map(describeEntityCandidate)
         .join("; ")}`,
     );
   }
-  return new Error(`${actionType} references an unknown ${label}`);
+  throw new Error(`${actionType} references an unknown ${label}`);
 }
 
 export function resolveAccount(
-  input: Record<string, unknown>,
+  reference: EntityReference,
   accounts: Account[],
 ): string | undefined {
-  return resolveEntityReference(
-    accounts,
-    asString(input.account_id),
-    asString(input.account_name) ?? asString(input.current_name),
-  );
+  return resolveEntityReference(accounts, reference);
 }
 
 export function resolveRequestedAccount(
-  input: Record<string, unknown>,
+  reference: EntityReference,
   accounts: Account[],
   actionType: string,
 ): string | undefined {
-  const accountId = resolveAccount(input, accounts);
-  if (!accountId && hasAnyField(input, ["account_id", "account_name"])) {
-    throw referenceError(actionType, "account", accounts, [
-      asString(input.account_id),
-      asString(input.account_name),
-      asString(input.current_name),
-    ]);
-  }
-  return accountId;
+  return resolveRequestedEntityReference(actionType, "account", accounts, reference);
 }
 
 export function resolveCategory(
-  input: Record<string, unknown>,
+  reference: EntityReference,
   categories: Category[],
 ): string | undefined {
-  return resolveEntityReference(
+  return resolveEntityReference(categories, reference);
+}
+
+export function resolveRequestedCategory(
+  reference: EntityReference,
+  categories: Category[],
+  actionType: string,
+): string | undefined {
+  return resolveRequestedEntityReference(
+    actionType,
+    "category",
     categories,
-    asString(input.category_id),
-    asString(input.category_name) ?? asString(input.current_name),
+    reference,
   );
 }
 
 export function resolveSubcategory(
-  input: Record<string, unknown>,
+  reference: EntityReference,
   subcategories: Subcategory[],
 ): string | undefined {
-  return resolveEntityReference(
-    subcategories,
-    asString(input.subcategory_id),
-    asString(input.subcategory_name) ?? asString(input.current_name),
-  );
-}
-
-export function resolveRequestedCategory(
-  input: Record<string, unknown>,
-  categories: Category[],
-  actionType: string,
-): string | undefined {
-  const categoryId = resolveCategory(input, categories);
-  if (!categoryId && hasAnyField(input, ["category_id", "category_name"])) {
-    throw referenceError(actionType, "category", categories, [
-      asString(input.category_id),
-      asString(input.category_name),
-      asString(input.current_name),
-    ]);
-  }
-  return categoryId;
+  return resolveEntityReference(subcategories, reference);
 }
 
 export function resolveRequestedSubcategory(
-  input: Record<string, unknown>,
+  reference: EntityReference,
   subcategories: Subcategory[],
   actionType: string,
 ): string | undefined {
-  const subcategoryId = resolveSubcategory(input, subcategories);
-  if (
-    !subcategoryId &&
-    (asString(input.subcategory_id) || asString(input.subcategory_name))
-  ) {
-    throw referenceError(actionType, "subcategory", subcategories, [
-      asString(input.subcategory_id),
-      asString(input.subcategory_name),
-      asString(input.current_name),
-    ]);
-  }
-  return subcategoryId;
+  return resolveRequestedEntityReference(
+    actionType,
+    "subcategory",
+    subcategories,
+    reference,
+  );
 }
 
 export function resolveTag(
-  input: Record<string, unknown>,
+  reference: EntityReference,
   tags: Tag[],
+  requestedType?: TagType,
 ): string | undefined {
-  const requestedType = optionalTagType(
-    input.tag_type ?? input.type,
-    "resolve_tag",
-  );
   const candidates = requestedType
     ? tags.filter((tag) => tag.type === requestedType)
     : tags;
-  return resolveEntityReference(
-    candidates,
-    asString(input.tag_id) ?? asString(input.id),
-    asString(input.tag_name) ?? asString(input.name),
-  );
+  return resolveEntityReference(candidates, reference);
 }
 
 export function resolveRequestedTag(
-  input: Record<string, unknown>,
+  reference: EntityReference,
   tags: Tag[],
   actionType: string,
+  requestedType?: TagType,
 ): string | undefined {
-  if (!hasAnyField(input, ["tag_id", "tag_name", "id", "name"])) {
-    return undefined;
-  }
-
-  const requestedType = optionalTagType(
-    input.tag_type ?? input.type,
+  return resolveRequestedEntityReference(
     actionType,
+    "tag",
+    requestedType ? tags.filter((tag) => tag.type === requestedType) : tags,
+    reference,
   );
-  const candidates = requestedType
-    ? tags.filter((tag) => tag.type === requestedType)
-    : tags;
-  const id = resolveEntityReference(
-    candidates,
-    asString(input.tag_id) ?? asString(input.id),
-    asString(input.tag_name) ?? asString(input.name),
-  );
-  if (id) return id;
-
-  throw referenceError(actionType, "tag", candidates, [
-    asString(input.tag_id) ?? asString(input.id),
-    asString(input.tag_name) ?? asString(input.name),
-  ]);
 }
 
 export function resolveGoal(
-  input: Record<string, unknown>,
+  reference: { id?: string; subcategory_id?: string; subcategory_name?: string },
   goals: SpendingGoalWithDetails[],
   subcategories: Subcategory[],
 ): string | undefined {
-  const id = asString(input.id);
-  if (id) return id;
-  const subcategoryId = resolveSubcategory(input, subcategories);
+  if (reference.id) return reference.id;
+  const subcategoryId = resolveSubcategory(
+    {
+      id: reference.subcategory_id,
+      name: reference.subcategory_name,
+    },
+    subcategories,
+  );
   return goals.find((goal) => goal.subcategory_id === subcategoryId)?.id;
 }

@@ -92,13 +92,20 @@ export const AI_MODELS = {
 } as const;
 
 export const OPENROUTER_CONFIG = {
-  apiUrl: "https://openrouter.ai/api/v1/chat/completions",
   apiKeyPlaceholder: "your_openrouter_api_key_here",
-  defaultOperation: "openrouter.chat_completion",
-  providerName: "openrouter",
   logDirectory: path.resolve(process.cwd(), "logs", "jsonl"),
   logFileTimeZone: "America/Los_Angeles",
   maxLogIdLength: 120,
 } as const;
+
+export function getOpenRouterApiKey(): string {
+  const apiKey = process.env[ENV_KEYS.openRouterApiKey];
+  if (!apiKey || apiKey === OPENROUTER_CONFIG.apiKeyPlaceholder) {
+    throw new Error(
+      `${ENV_KEYS.openRouterApiKey} not configured. Set it in .env file.`,
+    );
+  }
+  return apiKey;
+}
 
 export type AIModel = (typeof AI_MODELS)[keyof typeof AI_MODELS];
