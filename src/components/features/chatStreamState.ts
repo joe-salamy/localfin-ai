@@ -32,6 +32,7 @@ export type ChatUiAction =
   | { type: "request_started"; requestId?: string }
   | { type: "user_message"; message: ChatMessage }
   | { type: "messages_loaded"; messages: ChatMessage[] }
+  | { type: "confirmation_result"; message: ChatMessage }
   | { type: "conversation_reset" }
   | { type: "transport_error"; id: string; message: string };
 
@@ -91,6 +92,11 @@ export function chatUiReducer(
       return { ...state, messages: [...state.messages, action.message] };
     case "messages_loaded":
       return { messages: action.messages, stream: null };
+    case "confirmation_result":
+      return {
+        messages: [...state.messages, action.message],
+        stream: null,
+      };
     case "conversation_reset":
       return initialChatUiState();
     case "started":
@@ -110,6 +116,15 @@ export function chatUiReducer(
           action.actions.length > 0
             ? "Preparing tool calls..."
             : "Writing response...",
+        actions: action.actions.map((planned) => ({
+          ...planned,
+          status: "pending",
+        })),
+      });
+    case "confirmation_requested":
+      return streamWith(state, {
+        requestId: action.requestId,
+        status: "Approval required",
         actions: action.actions.map((planned) => ({
           ...planned,
           status: "pending",

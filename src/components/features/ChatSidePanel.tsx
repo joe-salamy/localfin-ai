@@ -15,12 +15,13 @@ import {
 import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
-import { useAI } from "@/hooks/useAI";
 import type {
   AgentConversation,
   ChatActionResult,
   ChatStreamEvent,
+  PlannedChatAction,
 } from "@/hooks/useAI";
+import { useAI } from "@/hooks/useAI";
 import {
   chatUiReducer,
   initialChatUiState,
@@ -36,12 +37,30 @@ import {
   useShortcutScope,
 } from "@/features/shortcuts/hooks";
 
-function actionLabel(action: StreamAction | ChatActionResult) {
+function actionLabel(
+  action: StreamAction | ChatActionResult | PlannedChatAction,
+) {
   return action.type.replace(/_/g, " ");
 }
 
 function compactJson(value: unknown) {
   return JSON.stringify(value, null, 2);
+}
+
+type PendingApproval = {
+  conversationId: string;
+  requestId: string;
+  actions: PlannedChatAction[];
+};
+
+function actionSummary(input: Record<string, unknown>) {
+  const summary = Object.entries(input)
+    .map(
+      ([key, value]) =>
+        `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`,
+    )
+    .join(", ");
+  return summary || "No input";
 }
 
 function actionStatusText(action: StreamAction) {
@@ -81,9 +100,14 @@ export function ChatSidePanel({
   const [loadingConversationId, setLoadingConversationId] = useState<
     string | null
   >(null);
+  const [pendingApproval, setPendingApproval] =
+    useState<PendingApproval | null>(null);
+  const pendingApprovalRef = useRef<PendingApproval | null>(null);
+  const requestIdsRef = useRef(new Map<string, string>());
   const abortRef = useRef<AbortController | null>(null);
   const { pathname } = useLocation();
   const {
+    confirmChat,
     conversations,
     createConversation,
     deleteConversation,
@@ -91,12 +115,24 @@ export function ChatSidePanel({
     streamChat,
   } = useAI();
 
+  const updatePendingApproval = useCallback(
+    (next: PendingApproval | null) => {
+      pendingApprovalRef.current = next;
+      setPendingApproval(next);
+    },
+    [],
+  );
+
   const { messages, stream: streamState } = uiState;
   const conversationList = conversations.data ?? [];
   const selectedConversation = conversationList.find(
     (item) => item.id === conversationId,
   );
+  const visiblePendingApproval =
+    pendingApproval?.conversationId === conversationId ? pendingApproval : null;
   const isStreaming = streamState !== null;
+  const isConversationBusy =
+    isStreaming || visiblePendingApproval !== null || confirmChat.isPending;
   const toggleShortcut = useShortcutMetadata("global.toggleAssistant");
 
   useShortcutScope("assistant", open);
@@ -105,23 +141,47 @@ export function ChatSidePanel({
     return () => abortRef.current?.abort();
   }, []);
 
-  const handleStreamEvent = useCallback((event: ChatStreamEvent) => {
-    dispatch(event);
-    if (event.type === "final") {
-      const failed = event.data.actions.filter(
-        (action) => action.status === "error",
-      ).length;
-      if (failed > 0) {
-        toast.warning(`${failed} assistant action failed.`);
+  const handleStreamEvent = useCallback(
+    (event: ChatStreamEvent) => {
+      dispatch(event);
+      if (event.type === "confirmation_requested") {
+        updatePendingApproval({
+          conversationId,
+          requestId: event.requestId,
+          actions: event.actions,
+        });
       }
-    }
-    if (event.type === "error") {
-      toast.error(event.message);
-    }
-  }, []);
+      if (event.type === "final") {
+        const failed = event.data.actions.filter(
+          (action) => action.status === "error",
+        ).length;
+        if (failed > 0) {
+          toast.warning(`${failed} assistant action failed.`);
+        }
+        if (event.data.status === "awaiting_confirmation") {
+          const current = pendingApprovalRef.current;
+          updatePendingApproval({
+            conversationId,
+            requestId: event.data.requestId,
+            actions:
+              current?.conversationId === conversationId
+                ? current.actions
+                : event.data.actions.map(({ type, input }) => ({ type, input })),
+          });
+        } else if (pendingApprovalRef.current?.conversationId === conversationId) {
+          updatePendingApproval(null);
+        }
+      }
+      if (event.type === "error") {
+        updatePendingApproval(null);
+        toast.error(event.message);
+      }
+    },
+    [conversationId, updatePendingApproval],
+  );
 
   const startNewConversation = useCallback(async () => {
-    if (isStreaming) return;
+    if (isConversationBusy) return;
     try {
       const response = await createConversation.mutateAsync({
         currentPage: pathname,
@@ -129,6 +189,7 @@ export function ChatSidePanel({
       if (!response.data)
         throw new Error("Assistant conversation was not created.");
       setConversationId(response.data.id);
+      updatePendingApproval(null);
       dispatch({ type: "conversation_reset" });
       setInput("");
       setHistoryOpen(false);
@@ -137,15 +198,16 @@ export function ChatSidePanel({
         err instanceof Error ? err.message : "Could not create conversation.",
       );
     }
-  }, [createConversation, isStreaming, pathname]);
+  }, [createConversation, isConversationBusy, pathname, updatePendingApproval]);
 
   const selectConversation = useCallback(
     async (conversation: AgentConversation) => {
-      if (isStreaming) return;
+      if (isConversationBusy || pendingApprovalRef.current) return;
       setLoadingConversationId(conversation.id);
       try {
         const loaded = await loadConversationMessages(conversation.id);
         setConversationId(conversation.id);
+        updatePendingApproval(null);
         dispatch({
           type: "messages_loaded",
           messages: loaded.map(messageFromPersisted),
@@ -160,16 +222,21 @@ export function ChatSidePanel({
         setLoadingConversationId(null);
       }
     },
-    [isStreaming, loadConversationMessages],
+    [
+      isConversationBusy,
+      loadConversationMessages,
+      updatePendingApproval,
+    ],
   );
 
   const removeConversation = useCallback(
     async (conversation: AgentConversation) => {
-      if (isStreaming) return;
+      if (isConversationBusy || pendingApprovalRef.current) return;
       try {
         await deleteConversation.mutateAsync(conversation.id);
         if (conversation.id === conversationId) {
           setConversationId(crypto.randomUUID());
+          updatePendingApproval(null);
           dispatch({ type: "conversation_reset" });
           setInput("");
         }
@@ -179,21 +246,28 @@ export function ChatSidePanel({
         );
       }
     },
-    [conversationId, deleteConversation, isStreaming],
+    [
+      conversationId,
+      deleteConversation,
+      isConversationBusy,
+      updatePendingApproval,
+    ],
   );
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
-    if (!text || isStreaming) return;
+    if (!text || isConversationBusy) return;
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
       content: text,
     };
+    const requestId = crypto.randomUUID();
+    requestIdsRef.current.set(userMessage.id, requestId);
     const transportErrorId = crypto.randomUUID();
     dispatch({ type: "user_message", message: userMessage });
-    dispatch({ type: "request_started" });
+    dispatch({ type: "request_started", requestId });
     setInput("");
     abortRef.current?.abort();
     const abortController = new AbortController();
@@ -205,6 +279,7 @@ export function ChatSidePanel({
           conversationId,
           message: text,
           currentPage: pathname,
+          requestId,
         },
         handleStreamEvent,
         abortController.signal,
@@ -224,17 +299,77 @@ export function ChatSidePanel({
     conversationId,
     handleStreamEvent,
     input,
-    isStreaming,
+    isConversationBusy,
     pathname,
     streamChat,
   ]);
+
+  const handleApproval = useCallback(
+    async (approve: boolean) => {
+      const pending = pendingApprovalRef.current;
+      if (!pending || confirmChat.isPending) return;
+
+      try {
+        const response = await confirmChat.mutateAsync({
+          conversationId: pending.conversationId,
+          requestId: pending.requestId,
+          approve,
+        });
+        if (!response.data) throw new Error("Assistant confirmation failed.");
+        const confirmData = response.data;
+
+        let refreshed: ChatMessage[] | null = null;
+        try {
+          const loaded = await loadConversationMessages(
+            pending.conversationId,
+            { force: true },
+          );
+          refreshed = loaded.map(messageFromPersisted);
+        } catch {
+          toast.warning("The conversation was confirmed, but history could not be refreshed.");
+        }
+
+        if (pending.conversationId === conversationId) {
+          const resultMessage: ChatMessage = {
+            id: confirmData.requestId,
+            role: "assistant",
+            content: confirmData.message,
+            actions: confirmData.actions,
+          };
+          if (refreshed) {
+            dispatch({ type: "messages_loaded", messages: refreshed });
+          }
+          if (
+            !refreshed?.some(
+              (message) =>
+                message.role === "assistant" &&
+                message.content === confirmData.message,
+            )
+          ) {
+            dispatch({ type: "confirmation_result", message: resultMessage });
+          }
+        }
+        updatePendingApproval(null);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Assistant confirmation failed.",
+        );
+      }
+    },
+    [
+      confirmChat,
+      conversationId,
+      loadConversationMessages,
+      updatePendingApproval,
+    ],
+  );
 
   useShortcut(
     "assistant.send",
     () => {
       void sendMessage();
     },
-    { enabled: open && Boolean(input.trim()) && !isStreaming },
+    { enabled: open && Boolean(input.trim()) && !isConversationBusy },
   );
 
   return (
@@ -279,7 +414,7 @@ export function ChatSidePanel({
               className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
               aria-label="New conversation"
               title="New conversation"
-              disabled={isStreaming}
+              disabled={isConversationBusy}
             >
               <Plus className="h-4 w-4" />
             </button>
@@ -326,7 +461,8 @@ export function ChatSidePanel({
                         void selectConversation(conversation);
                       }}
                       disabled={
-                        isStreaming || loadingConversationId === conversation.id
+                        isConversationBusy ||
+                        loadingConversationId === conversation.id
                       }
                       className="min-w-0 flex-1 rounded px-2 py-1 text-left hover:bg-secondary disabled:opacity-60"
                     >
@@ -342,7 +478,7 @@ export function ChatSidePanel({
                       onClick={() => {
                         void removeConversation(conversation);
                       }}
-                      disabled={isStreaming || deleteConversation.isPending}
+                      disabled={isConversationBusy || deleteConversation.isPending}
                       className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-60"
                       aria-label={`Delete ${conversation.title}`}
                       title="Delete conversation"
@@ -404,6 +540,51 @@ export function ChatSidePanel({
                 )}
               </div>
             ))}
+            {visiblePendingApproval && (
+              <div
+                role="region"
+                aria-label="Assistant approval required"
+                className="mr-8 rounded-md border border-yellow-500/50 bg-yellow-500/10 px-3 py-3 text-sm"
+              >
+                <div className="font-medium text-foreground">
+                  Approval required before these changes can be applied
+                </div>
+                <ul className="mt-2 space-y-1 text-xs">
+                  {visiblePendingApproval.actions.map((action, index) => (
+                    <li
+                      key={`${action.type}-${index}`}
+                      className="rounded border border-border bg-card p-2"
+                    >
+                      <div className="font-medium">{actionLabel(action)}</div>
+                      <div className="mt-1 break-words text-muted-foreground">
+                        {actionSummary(action.input)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => void handleApproval(false)}
+                    loading={confirmChat.isPending}
+                    disabled={isStreaming}
+                  >
+                    Reject
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleApproval(true)}
+                    loading={confirmChat.isPending}
+                    disabled={isStreaming}
+                  >
+                    Approve
+                  </Button>
+                </div>
+              </div>
+            )}
             {streamState && (
               <div className="mr-8 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground">
                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -464,14 +645,19 @@ export function ChatSidePanel({
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask or request an update..."
-                disabled={isStreaming}
+                placeholder={
+                  visiblePendingApproval
+                    ? "Approval pending for this conversation..."
+                    : "Ask or request an update..."
+                }
+                disabled={isConversationBusy}
                 className="h-24 min-w-0 flex-1 resize-none rounded border border-border bg-input px-2 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
               <Button
                 type="submit"
                 size="sm"
-                loading={isStreaming}
+                loading={isStreaming || confirmChat.isPending}
+                disabled={isConversationBusy}
                 aria-label="Send message"
                 className="shrink-0"
               >

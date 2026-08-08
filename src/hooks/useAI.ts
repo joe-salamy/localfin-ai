@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
-import { apiDelete, apiGet, apiPost, apiStream } from "@/lib/api";
+import { apiConfirmChat, apiDelete, apiGet, apiPost, apiStream } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import { invalidateFinanceQueries } from "@/lib/queryInvalidation";
 import { readAssistantSettings } from "@/features/assistant-settings/storage";
@@ -9,6 +9,7 @@ import {
   agentConversationSchema,
   agentMessageSchema,
   categorizeResultSchema,
+  chatConfirmResultSchema,
   chatResultSchema,
   chatStreamEventSchema,
   parseStatementResultSchema,
@@ -16,6 +17,7 @@ import {
   type AgentConversation,
   type AgentMessage,
   type CategorizeResult,
+  type ChatConfirmResult,
   type ChatRequest,
   type ChatResult,
   type ChatStreamEvent,
@@ -25,12 +27,12 @@ export type {
   AgentConversation,
   AgentMessage,
   ChatActionResult,
+  ChatConfirmResult,
   ChatRequest,
   ChatResult,
   ChatStreamEvent,
   PlannedChatAction,
 } from "@shared/contracts";
-
 interface CategorizeTransaction {
   name: string;
   account_id: string;
@@ -100,6 +102,24 @@ export function useAI() {
         }),
       ]),
   });
+  const confirmChat = useMutation({
+    mutationFn: (data: {
+      conversationId: string;
+      requestId: string;
+      approve: boolean;
+    }) =>
+      apiConfirmChat<ChatConfirmResult>(data, chatConfirmResultSchema),
+    onSuccess: (_response, variables) =>
+      Promise.all([
+        invalidateFinanceData(),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.ai.conversations(),
+        }),
+        queryClient.removeQueries({
+          queryKey: queryKeys.ai.conversationMessages(variables.conversationId),
+        }),
+      ]),
+  });
 
   const conversations = useQuery({
     queryKey: queryKeys.ai.conversations(),
@@ -137,11 +157,14 @@ export function useAI() {
   });
 
   const loadConversationMessages = useCallback(
-    async (conversationId: string) => {
+    async (
+      conversationId: string,
+      options?: { force?: boolean },
+    ) => {
       const cached = queryClient.getQueryData<AgentMessage[]>(
         queryKeys.ai.conversationMessages(conversationId),
       );
-      if (cached) return cached;
+      if (cached && !options?.force) return cached;
 
       const response = await queryClient.fetchQuery({
         queryKey: queryKeys.ai.conversationMessages(conversationId),
@@ -152,6 +175,7 @@ export function useAI() {
           );
           return response.data ?? [];
         },
+        staleTime: 0,
       });
       return response;
     },
@@ -197,6 +221,7 @@ export function useAI() {
     categorize,
     parseStatement,
     chat,
+    confirmChat,
     streamChat,
     conversations,
     createConversation,

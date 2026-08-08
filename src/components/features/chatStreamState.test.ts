@@ -28,6 +28,7 @@ const result: ChatResult = {
   message: "The result is 2.",
   actions: [completedAction],
   logFile: "",
+  status: "success",
 };
 
 function reduceEvents(events: ChatStreamEvent[]) {

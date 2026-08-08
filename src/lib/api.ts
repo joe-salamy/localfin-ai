@@ -67,6 +67,10 @@ export const apiPost = <T>(
   body: unknown,
   dataSchema?: z.ZodType<T>,
 ) => api<T>(path, { method: "POST", body: JSON.stringify(body) }, dataSchema);
+export const apiConfirmChat = <T>(
+  body: { conversationId: string; requestId: string; approve: boolean },
+  dataSchema?: z.ZodType<T>,
+) => apiPost<T>("/ai/chat/confirm", body, dataSchema);
 export const apiPut = <T>(
   path: string,
   body: unknown,
