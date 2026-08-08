@@ -20,6 +20,15 @@ import { normalizeMaxAssistantTurns } from "./constants.js";
 import { assistantSystemMessage, buildUserPrompt } from "./prompting.js";
 import { createOpenRouterChatModel } from "../../ai/model.js";
 import { createAssistantTools } from "./tools.js";
+import { getCompletedRun, savePendingApprovals } from "./approvals.js";
+import { hasActionReceipts } from "./idempotency.js";
+
+export interface AssistantRunOptions {
+  signal?: AbortSignal;
+}
+
+/** Hard ceiling for non-streamed runs that have no client signal to cancel. */
+const RUN_TIMEOUT_MS = 120_000;
 
 function messageText(content: unknown): string {
   if (typeof content === "string") return content;
@@ -65,13 +74,35 @@ function finalAssistantText(
   return "Finished with some action errors.";
 }
 
+function abortError(): Error {
+  const error = new Error("Request aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 export async function runAssistantChat(
   request: ChatRequest,
   emit?: ChatStreamEmitter,
+  options: AssistantRunOptions = {},
 ): Promise<ChatResult> {
-  const requestId = crypto.randomUUID();
+  const requestId = request.requestId ?? crypto.randomUUID();
   const maxTurns = normalizeMaxAssistantTurns(request.maxAssistantTurns);
   const recursionLimit = Math.max(3, maxTurns * 2 + 1);
+  const signal = options.signal ?? AbortSignal.timeout(RUN_TIMEOUT_MS);
+
+  // Idempotent replay: when this exact request already completed (and its
+  // approved plan was executed), replay the stored result without re-running
+  // the model or mutating anything again.
+  const completed = getCompletedRun(request.conversationId, requestId);
+  if (completed) {
+    await emit?.({
+      type: "started",
+      conversationId: request.conversationId,
+      requestId,
+    });
+    await emit?.({ type: "final", data: completed });
+    return completed;
+  }
 
   await emit?.({
     type: "started",
@@ -90,12 +121,16 @@ export async function runAssistantChat(
   const conversationHistory = getRecentAgentMessagesForPrompt(
     request.conversationId,
   );
-  appendAgentMessage({
-    conversationId: request.conversationId,
-    role: "user",
-    content: request.message,
-    requestId,
-  });
+  // A retry of a request that partially executed must not duplicate the user
+  // message; executed actions are replayed from receipts by the tools.
+  if (!hasActionReceipts(request.conversationId, requestId)) {
+    appendAgentMessage({
+      conversationId: request.conversationId,
+      role: "user",
+      content: request.message,
+      requestId,
+    });
+  }
 
   await emit?.({
     type: "thinking",
@@ -105,6 +140,10 @@ export async function runAssistantChat(
   const runtime = {
     actions: [] as ChatActionResult[],
     emit,
+    conversationId: request.conversationId,
+    requestId,
+    signal,
+    pendingApprovals: [] as PlannedChatAction[],
   };
   const agent = createAgent({
     model: createOpenRouterChatModel(AI_MODELS.assistantChat, {
@@ -139,10 +178,12 @@ export async function runAssistantChat(
       {
         recursionLimit,
         streamMode: "updates",
+        ...(signal ? { signal } : {}),
       },
     );
 
     for await (const update of stream) {
+      if (signal?.aborted) throw abortError();
       if (!update || typeof update !== "object" || Array.isArray(update)) {
         continue;
       }
@@ -166,14 +207,24 @@ export async function runAssistantChat(
         }
       }
     }
+    // The loop ends when the model stops calling tools (bounded by
+    // recursionLimit). All mutating intents were buffered by the tools and are
+    // persisted as one complete plan below, so approval covers the whole turn.
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw error;
+    }
+    throw error;
   } finally {
     logFile = await appendConversationLog(request.conversationId, {
       timestamp: startedAt.toISOString(),
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
-      status: runtime.actions.some((action) => action.status === "error")
-        ? "partial"
-        : "success",
+      status: runtime.pendingApprovals.length > 0
+        ? "awaiting_approval"
+        : runtime.actions.some((action) => action.status === "error")
+          ? "partial"
+          : "success",
       operation: "assistant.chat",
       conversationId: request.conversationId,
       requestId,
@@ -183,6 +234,33 @@ export async function runAssistantChat(
         recursionLimit,
       },
     });
+  }
+
+  if (signal?.aborted) throw abortError();
+
+  const pending = runtime.pendingApprovals;
+  if (pending.length > 0) {
+    savePendingApprovals(request.conversationId, requestId, pending);
+    await appendConversationLog(request.conversationId, {
+      timestamp: new Date().toISOString(),
+      status: "awaiting_approval",
+      operation: "assistant.pending_approval",
+      conversationId: request.conversationId,
+      requestId,
+      actions: pending,
+    });
+
+    const result: ChatResult = {
+      conversationId: request.conversationId,
+      requestId,
+      message: `${pending.length} proposed action${pending.length === 1 ? " is" : "s are"} awaiting your approval.`,
+      actions: runtime.actions,
+      logFile,
+      status: "awaiting_confirmation",
+    };
+    await emit?.({ type: "confirmation_requested", requestId, actions: pending });
+    await emit?.({ type: "final", data: result });
+    return result;
   }
 
   const actions = runtime.actions;
@@ -211,6 +289,7 @@ export async function runAssistantChat(
     message: `${baseMessage}${suffix}`,
     actions,
     logFile,
+    status,
   };
 
   appendAgentMessage({
@@ -225,17 +304,4 @@ export async function runAssistantChat(
 
   await emit?.({ type: "final", data: result });
   return result;
-}
-
-export async function chatWithAssistant(
-  request: ChatRequest,
-): Promise<ChatResult> {
-  return runAssistantChat(request);
-}
-
-export async function streamChatWithAssistant(
-  request: ChatRequest,
-  emit: ChatStreamEmitter,
-): Promise<ChatResult> {
-  return runAssistantChat(request, emit);
 }

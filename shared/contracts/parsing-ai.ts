@@ -60,6 +60,8 @@ export interface ChatRequest {
   message: string;
   currentPage?: string;
   maxAssistantTurns?: number;
+  /** Client-generated idempotency key; retries with the same key are replayed instead of re-executed. */
+  requestId?: string;
 }
 
 export interface ChatActionResult {
@@ -76,6 +78,15 @@ export interface ChatResult {
   message: string;
   actions: ChatActionResult[];
   logFile: string;
+  status: "success" | "partial" | "awaiting_confirmation";
+}
+
+export interface ChatConfirmResult {
+  conversationId: string;
+  requestId: string;
+  message: string;
+  actions: ChatActionResult[];
+  status: "success" | "partial";
 }
 
 export interface AgentConversation {
@@ -108,6 +119,11 @@ export type ChatStreamEvent =
   | { type: "started"; conversationId: string; requestId: string }
   | { type: "thinking"; message: string }
   | { type: "actions_planned"; actions: PlannedChatAction[] }
+  | {
+      type: "confirmation_requested";
+      requestId: string;
+      actions: PlannedChatAction[];
+    }
   | { type: "action_started"; index: number; action: PlannedChatAction }
   | { type: "action_finished"; index: number; action: ChatActionResult }
   | { type: "final"; data: ChatResult }
@@ -181,6 +197,15 @@ export const chatResultSchema: z.ZodType<ChatResult> = z.object({
   message: z.string(),
   actions: z.array(chatActionResultSchema),
   logFile: z.string(),
+  status: z.enum(["success", "partial", "awaiting_confirmation"]),
+});
+
+export const chatConfirmResultSchema: z.ZodType<ChatConfirmResult> = z.object({
+  conversationId: z.string(),
+  requestId: z.string(),
+  message: z.string(),
+  actions: z.array(chatActionResultSchema),
+  status: z.enum(["success", "partial"]),
 });
 
 export const agentConversationSchema: z.ZodType<AgentConversation> = z.object({
@@ -213,6 +238,11 @@ export const chatStreamEventSchema: z.ZodType<ChatStreamEvent> =
     }),
     z.object({ type: z.literal("thinking"), message: z.string() }),
     z.object({ type: z.literal("actions_planned"), actions: z.array(plannedChatActionSchema) }),
+    z.object({
+      type: z.literal("confirmation_requested"),
+      requestId: z.string(),
+      actions: z.array(plannedChatActionSchema),
+    }),
     z.object({
       type: z.literal("action_started"),
       index: z.number(),

@@ -214,7 +214,7 @@ function rebuildTransactions(database: Database.Database): void {
     expression("date", "date('now')"),
     expression("name", "''"),
     expression("amount", "0"),
-    expression("kind", "CASE WHEN amount >= 0 THEN 'income' ELSE 'expense' END"),
+    expression("kind", "CASE WHEN amount > 0 THEN 'income' ELSE 'expense' END"),
     expression("subcategory_id", "NULL"),
     expression("comment", "NULL"),
     expression("is_initial_balance", "0"),
@@ -263,8 +263,8 @@ function migrateCoreCompatibility(database: Database.Database): void {
   addColumnIfMissing(database, "transactions", "ai_suggested INTEGER NOT NULL DEFAULT 0");
   database.exec(`
     UPDATE transactions
-       SET kind = CASE WHEN amount >= 0 THEN 'income' ELSE 'expense' END
-     WHERE kind = 'expense' AND amount >= 0;
+       SET kind = CASE WHEN amount > 0 THEN 'income' ELSE 'expense' END
+     WHERE kind = 'expense' AND amount > 0;
   `);
   if (!hadInitialBalance) {
     database.exec(`
@@ -473,6 +473,37 @@ function migrateAgentConversations(database: Database.Database): void {
   `);
 }
 
+function createAgentApprovalAndReceipts(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS agent_pending_approvals (
+      conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL,
+      action_index INTEGER NOT NULL,
+      action_type TEXT NOT NULL,
+      action_input TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (conversation_id, request_id, action_index)
+    );
+    CREATE TABLE IF NOT EXISTS agent_action_receipts (
+      conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL,
+      action_index INTEGER NOT NULL,
+      action_type TEXT NOT NULL,
+      action_input TEXT NOT NULL,
+      result_status TEXT NOT NULL CHECK(result_status IN ('success', 'error')),
+      result_json TEXT,
+      result_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (conversation_id, request_id, action_index)
+    );
+  `);
+}
+
 export const MIGRATIONS: readonly Migration[] = Object.freeze([
   {
     version: 1,
@@ -494,6 +525,11 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
     version: 6,
     name: "agent-conversation-compatibility",
     up: migrateAgentConversations,
+  },
+  {
+    version: 7,
+    name: "agent-approval-receipts",
+    up: createAgentApprovalAndReceipts,
   },
 ]);
 

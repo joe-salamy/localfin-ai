@@ -10,6 +10,7 @@ import {
   normalizeMaxAssistantTurns,
   streamChatWithAssistant,
 } from "./services/ai-chat.js";
+import { executePendingApprovals } from "./services/ai-chat/approvals.js";
 import { createAccount } from "./services/accounts.js";
 import {
   createCategory,
@@ -22,6 +23,7 @@ import {
 } from "./services/transactions.js";
 import { createTag, getTags } from "./services/tags.js";
 import { closeDbForTests, getDb } from "./db/index.js";
+import { OPENROUTER_CONFIG } from "./config/app.js";
 import type {
   CategoryType,
   ChatResult,
@@ -290,7 +292,12 @@ async function loggedEvents(
   result: ChatResult,
 ): Promise<Record<string, unknown>[]> {
   assert.ok(result.logFile, "agent result should include a log file");
-  const content = await readFile(result.logFile, "utf8");
+  // appendConversationLog returns the file basename; resolve against the
+  // configured log directory.
+  const content = await readFile(
+    path.join(OPENROUTER_CONFIG.logDirectory, result.logFile),
+    "utf8",
+  );
   return content
     .trim()
     .split(/\r?\n/)
@@ -353,8 +360,15 @@ void test("agent creates budget structure and captures a transaction through the
   });
 
   assert.equal(calls.length, 2);
+  assert.equal(result.status, "awaiting_confirmation");
+  assert.deepEqual(result.actions, []);
+  const confirmation = executePendingApprovals(
+    result.conversationId,
+    result.requestId,
+  );
+  assert.equal(confirmation.status, "success");
   assert.deepEqual(
-    result.actions.map((action) => [action.type, action.status]),
+    confirmation.actions.map((action) => [action.type, action.status]),
     [
       ["create_account", "success"],
       ["create_category", "success"],
@@ -362,7 +376,7 @@ void test("agent creates budget structure and captures a transaction through the
       ["create_transaction", "success"],
     ],
   );
-  assert.match(result.message, /Created the checking account/i);
+  assert.match(result.message, /awaiting your approval/i);
 
   const account = db
     .prepare("SELECT name, type, initial_balance FROM accounts WHERE name = ?")
@@ -386,7 +400,7 @@ void test("agent creates budget structure and captures a transaction through the
   const events = await loggedEvents(result);
   assert.ok(events.some((event) => event.operation === "assistant.chat"));
   assert.ok(
-    events.some((event) => event.operation === "assistant.tool_actions"),
+    events.some((event) => event.operation === "assistant.pending_approval"),
   );
 });
 
@@ -498,15 +512,20 @@ void test("agent searches before updating a described transaction and finishes i
     maxAssistantTurns: 5,
   });
 
-  assert.ok(calls.length >= 2);
-
-  assert.ok(calls.length >= 2);
+  assert.equal(calls.length, 3);
+  assert.equal(result.status, "awaiting_confirmation");
   assert.deepEqual(
     result.actions.map((action) => [action.type, action.status]),
-    [
-      ["search_transactions", "success"],
-      ["update_transaction", "success"],
-    ],
+    [["search_transactions", "success"]],
+  );
+  const confirmation = executePendingApprovals(
+    result.conversationId,
+    result.requestId,
+  );
+  assert.equal(confirmation.status, "success");
+  assert.deepEqual(
+    confirmation.actions.map((action) => [action.type, action.status]),
+    [["update_transaction", "success"]],
   );
   const updated = getTransactionsWithDetails({
     searchQuery: '"Uber Trip Downtown"',
@@ -516,7 +535,7 @@ void test("agent searches before updating a described transaction and finishes i
 });
 
 void test("agent persists partial failures without rolling back valid actions", async (t) => {
-  const { db } = await createFixture(t);
+  await createFixture(t);
   createAccount({ name: "Test Checking", type: "asset" });
   createNamedCategory("Food", "expense");
   createNamedSubcategory("Groceries", "Food", 500);
@@ -561,14 +580,21 @@ void test("agent persists partial failures without rolling back valid actions", 
       "Add Corner Market to checking and also add Impossible Charge to Missing Account.",
   });
 
+  assert.equal(result.status, "awaiting_confirmation");
+  assert.deepEqual(result.actions, []);
+  assert.match(result.message, /awaiting your approval/i);
+  const confirmation = executePendingApprovals(
+    result.conversationId,
+    result.requestId,
+  );
+  assert.equal(confirmation.status, "partial");
   assert.deepEqual(
-    result.actions.map((action) => [action.type, action.status]),
+    confirmation.actions.map((action) => [action.type, action.status]),
     [
       ["create_transaction", "success"],
       ["create_transaction", "error"],
     ],
   );
-  assert.match(result.message, /1 action failed/);
   assert.equal(
     getTransactionsWithDetails({ searchQuery: '"Corner Market"' }).length,
     1,
@@ -577,14 +603,6 @@ void test("agent persists partial failures without rolling back valid actions", 
     getTransactionsWithDetails({ searchQuery: '"Impossible Charge"' }).length,
     0,
   );
-
-  const assistantMessage = db
-    .prepare(
-      "SELECT status, actions_json FROM agent_messages WHERE role = 'assistant' ORDER BY created_at DESC LIMIT 1",
-    )
-    .get() as { status: string; actions_json: string };
-  assert.equal(assistantMessage.status, "partial");
-  assert.match(assistantMessage.actions_json, /Missing Account/);
 });
 
 void test("agent refuses deletion and streaming emits a traceable lifecycle", async (t) => {
@@ -692,8 +710,17 @@ void test("agent creates an explicit trip tag and assigns it to a transaction", 
   );
 
   assert.equal(calls.length, 2);
+  assert.equal(result.status, "awaiting_confirmation");
   assert.ok(events.some((event) => event.type === "actions_planned"));
-  assert.ok(events.some((event) => event.type === "action_started"));
+  assert.ok(
+    events.some((event) => event.type === "confirmation_requested"),
+  );
+  assert.equal(
+    events.some((event) =>
+      ["action_started", "action_finished"].includes(event.type),
+    ),
+    false,
+  );
   assert.equal(
     events.some((event) =>
       ["reasoning_delta", "reasoning_details", "response_delta"].includes(
@@ -704,10 +731,12 @@ void test("agent creates an explicit trip tag and assigns it to a transaction", 
   );
   assert.ok(events.some((event) => event.type === "final"));
   assert.equal(assertOrderedChatStreamLifecycle(events).status, "pass");
-  assert.deepEqual(
-    result.actions.map((action) => [action.type, action.status]),
-    [["create_transaction", "success"]],
+  assert.deepEqual(result.actions, []);
+  const confirmation = executePendingApprovals(
+    result.conversationId,
+    result.requestId,
   );
+  assert.equal(confirmation.status, "success");
   assert.deepEqual(
     getTags().map((tag) => ({ name: tag.name, type: tag.type })),
     [{ name: "Cabo Trip", type: "trip" }],
@@ -908,10 +937,13 @@ void test("agent does not infer tags without explicit tag wording", async (t) =>
   });
 
   assert.equal(calls.length, 2);
-  assert.deepEqual(
-    result.actions.map((action) => [action.type, action.status]),
-    [["create_transaction", "success"]],
+  assert.equal(result.status, "awaiting_confirmation");
+  assert.deepEqual(result.actions, []);
+  const confirmation = executePendingApprovals(
+    result.conversationId,
+    result.requestId,
   );
+  assert.equal(confirmation.status, "success");
   assert.equal(getTags().length, 0);
   const transaction = getTransactionsWithDetails({
     searchQuery: '"Hotel in Cabo"',

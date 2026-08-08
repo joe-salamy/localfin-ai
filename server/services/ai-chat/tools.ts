@@ -1,14 +1,24 @@
 import { tool } from "langchain";
 import { z } from "zod";
-import type { ChatActionResult } from "../../../shared/contracts/index.js";
+import type {
+  ChatActionResult,
+  PlannedChatAction,
+} from "../../../shared/contracts/index.js";
 import type { ChatStreamEmitter } from "../../../shared/contracts/parsing-ai.js";
 import { financeToolDefinitions } from "./tool-definitions.js";
 import type { FinanceToolName } from "./tool-definitions.js";
+import { getActionReceipt } from "./idempotency.js";
+import { dedupeActions, isReadOnlyTool } from "./approvals.js";
 import { executeFinanceAction } from "./action-executor.js";
 
 export interface AssistantToolRuntime {
   actions: ChatActionResult[];
   emit?: ChatStreamEmitter;
+  conversationId: string;
+  requestId?: string;
+  signal?: AbortSignal;
+  /** Mutating tool calls are buffered here for user approval instead of executing. */
+  pendingApprovals: PlannedChatAction[];
 }
 
 function createSerialQueue() {
@@ -30,6 +40,18 @@ type FinanceToolAction<Name extends FinanceToolName> = {
   input: FinanceToolInput<Name>;
 };
 
+const PENDING_APPROVAL_MESSAGE =
+  "This action requires your approval and was NOT executed. Do not retry it and do not work around it; finish your turn and summarize the proposed plan for the user.";
+
+function toolResult(executed: ChatActionResult): string {
+  if (executed.status === "error") {
+    return JSON.stringify({
+      ok: false,
+      error: executed.error ?? "Tool failed",
+    });
+  }
+  return JSON.stringify({ ok: true, result: executed.result ?? null });
+}
 
 function defineFinanceTool<Name extends FinanceToolName>(options: {
   name: Name;
@@ -44,26 +66,82 @@ function defineFinanceTool<Name extends FinanceToolName>(options: {
           type: options.name,
           input: rawInput,
         };
-        const index = options.runtime.actions.length;
-        await options.runtime.emit?.({
-          type: "action_started",
-          index,
-          action,
-        });
-        const executed = executeFinanceAction(action);
-        options.runtime.actions.push(executed);
-        await options.runtime.emit?.({
-          type: "action_finished",
-          index,
-          action: executed,
-        });
-        if (executed.status === "error") {
+
+        if (isReadOnlyTool(options.name)) {
+          const index = options.runtime.actions.length;
+          await options.runtime.emit?.({
+            type: "action_started",
+            index,
+            action,
+          });
+          const executed = executeFinanceAction(action);
+          options.runtime.actions.push(executed);
+          await options.runtime.emit?.({
+            type: "action_finished",
+            index,
+            action: executed,
+          });
+          return toolResult(executed);
+        }
+
+        if (options.runtime.signal?.aborted) {
+          return JSON.stringify({ ok: false, error: "Request cancelled" });
+        }
+
+        const pendingAction = action as PlannedChatAction;
+        const deduped = dedupeActions([
+          ...options.runtime.pendingApprovals,
+          pendingAction,
+        ]);
+        const index = deduped.findIndex(
+          (candidate) =>
+            candidate.type === pendingAction.type &&
+            JSON.stringify(candidate.input) ===
+              JSON.stringify(pendingAction.input),
+        );
+
+        if (options.runtime.requestId) {
+          const receipt = getActionReceipt(
+            options.runtime.conversationId,
+            options.runtime.requestId,
+            index,
+          );
+          if (receipt) {
+            options.runtime.actions.push(receipt);
+            await options.runtime.emit?.({
+              type: "action_started",
+              index,
+              action: pendingAction,
+            });
+            await options.runtime.emit?.({
+              type: "action_finished",
+              index,
+              action: receipt,
+            });
+            return toolResult(receipt);
+          }
+        }
+
+        const alreadyPending = options.runtime.pendingApprovals.some(
+          (candidate) =>
+            candidate.type === pendingAction.type &&
+            JSON.stringify(candidate.input) ===
+              JSON.stringify(pendingAction.input),
+        );
+        if (alreadyPending) {
           return JSON.stringify({
             ok: false,
-            error: executed.error ?? "Tool failed",
+            pending: true,
+            message: PENDING_APPROVAL_MESSAGE,
           });
         }
-        return JSON.stringify({ ok: true, result: executed.result ?? null });
+
+        options.runtime.pendingApprovals.push(pendingAction);
+        return JSON.stringify({
+          ok: false,
+          pending: true,
+          message: PENDING_APPROVAL_MESSAGE,
+        });
       }),
     {
       name: options.name,

@@ -5,6 +5,7 @@ import type {
   Subcategory,
   Tag,
   TagType,
+  TransactionKind,
 } from "../../../shared/contracts/index.js";
 
 export interface EntityReference {
@@ -123,6 +124,26 @@ export function resolveSubcategory(
   subcategories: Subcategory[],
 ): string | undefined {
   return resolveEntityReference(subcategories, reference);
+}
+
+/**
+ * Narrows subcategories to those whose parent category type matches the
+ * transaction kind, so name-based resolution of system rows like "Unassigned"
+ * (which exists once per income/expense type) is unambiguous. Returns the
+ * full list when the kind is not income/expense (no narrowing possible).
+ */
+export function subcategoriesForKind(
+  subcategories: Subcategory[],
+  categories: Category[],
+  kind: TransactionKind | undefined,
+): Subcategory[] {
+  if (kind !== "income" && kind !== "expense") return subcategories;
+  return subcategories.filter((subcategory) =>
+    categories.some(
+      (category) =>
+        category.id === subcategory.category_id && category.type === kind,
+    ),
+  );
 }
 
 export function resolveRequestedSubcategory(

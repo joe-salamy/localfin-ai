@@ -3,15 +3,19 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { OPENROUTER_CONFIG } from "../config/app.js";
 
-function safeLogId(value: string): string {
-  return (
-    value
-      .replace(/[^a-zA-Z0-9_.-]/g, "_")
-      .slice(0, OPENROUTER_CONFIG.maxLogIdLength) || crypto.randomUUID()
-  );
+// Cap on cached (conversationId -> log file) entries; beyond it the cache is
+// dropped wholesale and filenames are re-resolved on demand.
+const MAX_CACHED_LOG_FILES = 2_000;
+
+/**
+ * Stable, collision-free filesystem key for a conversation id: hashing the
+ * full id means ids that share sanitized prefixes never share a log file.
+ */
+function logIdHash(value: string): string {
+  return crypto.createHash("sha256").update(value).digest("hex").slice(0, 32);
 }
 
-const conversationLogFiles = new Map<string, string>();
+const conversationLogFiles = new Map<string, Promise<string>>();
 
 export function sortableTimestamp(date = new Date()): string {
   const parts = Object.fromEntries(
@@ -33,22 +37,35 @@ export function sortableTimestamp(date = new Date()): string {
   return `${parts.year}-${parts.month}-${parts.day}_${parts.hour}-${parts.minute}-${parts.second}-${parts.fractionalSecond}PT`;
 }
 
-async function resolveConversationLogFile(
+function resolveConversationLogFile(
   conversationId: string,
 ): Promise<string> {
-  const safeConversationId = safeLogId(conversationId);
-  const cachedFileName = conversationLogFiles.get(safeConversationId);
-  if (cachedFileName) return cachedFileName;
+  // Single-flight: concurrent first appends for the same conversation share
+  // one filename resolution instead of racing to create different files.
+  const cached = conversationLogFiles.get(conversationId);
+  if (cached) return cached;
 
-  const fileSuffix = `-${safeConversationId}.jsonl`;
-  const existingFileName = (await readdir(OPENROUTER_CONFIG.logDirectory))
-    .filter((name) => name.endsWith(fileSuffix))
-    .sort()[0];
-  const fileName =
-    existingFileName ?? `${sortableTimestamp()}-${safeConversationId}.jsonl`;
+  const resolution = (async () => {
+    const fileSuffix = `-${logIdHash(conversationId)}.jsonl`;
+    const existingFileName = (await readdir(OPENROUTER_CONFIG.logDirectory))
+      .filter((name) => name.endsWith(fileSuffix))
+      .sort()[0];
+    return (
+      existingFileName ??
+      `${sortableTimestamp()}-${logIdHash(conversationId)}.jsonl`
+    );
+  })();
 
-  conversationLogFiles.set(safeConversationId, fileName);
-  return fileName;
+  conversationLogFiles.set(conversationId, resolution);
+  void resolution.finally(() => {
+    if (conversationLogFiles.get(conversationId) === resolution) {
+      conversationLogFiles.delete(conversationId);
+    }
+    if (conversationLogFiles.size > MAX_CACHED_LOG_FILES) {
+      conversationLogFiles.clear();
+    }
+  });
+  return resolution;
 }
 
 export async function appendConversationLog(
@@ -59,5 +76,6 @@ export async function appendConversationLog(
   const fileName = await resolveConversationLogFile(conversationId);
   const logFile = path.join(OPENROUTER_CONFIG.logDirectory, fileName);
   await appendFile(logFile, `${JSON.stringify(event)}\n`, "utf8");
-  return logFile;
+  // Return the basename: absolute server paths leak the deployment layout.
+  return fileName;
 }

@@ -111,6 +111,144 @@ void test("JSON parser failures and CORS rejection use safe operational envelope
   assert.equal((await envelope(cors)).error, "Origin not allowed by CORS");
 });
 
+void test("chat confirm executes approved plans, rejects discard, and replays retries", async (t) => {
+  const baseUrl = await useApp(t);
+  const { createAgentConversation } = await import(
+    "./services/agent-conversations.js"
+  );
+  const { savePendingApprovals } = await import(
+    "./services/ai-chat/approvals.js"
+  );
+  createAgentConversation({ id: "confirm-conv" });
+  const jsonPost = (body: unknown) =>
+    fetch(`${baseUrl}/api/ai/chat/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  const missing = await jsonPost({
+    conversationId: "confirm-conv",
+    requestId: "req-missing",
+    approve: true,
+  });
+  assert.equal(missing.status, 400);
+
+  savePendingApprovals("confirm-conv", "req-approve", [
+    { type: "create_account", input: { name: "Approved Checking", type: "asset" } },
+  ]);
+  const approved = await jsonPost({
+    conversationId: "confirm-conv",
+    requestId: "req-approve",
+    approve: true,
+  });
+  assert.equal(approved.status, 200);
+  const approvedBody = (await envelope(approved)) as Envelope & {
+    data: { message: string; actions: Array<{ status: string; type: string }> };
+  };
+  assert.equal(approvedBody.data.actions.length, 1);
+  assert.equal(approvedBody.data.actions[0].status, "success");
+  assert.equal(approvedBody.data.actions[0].type, "create_account");
+
+  const accounts = await (await fetch(`${baseUrl}/api/accounts`)).json() as {
+    data: Array<{ name: string }>;
+  };
+  assert.ok(
+    accounts.data.some((account) => account.name === "Approved Checking"),
+    "approved plan must have created the account",
+  );
+
+  const messages = await (await fetch(
+    `${baseUrl}/api/ai/conversations/confirm-conv/messages`,
+  )).json() as {
+    data: Array<{ role: string; request_id: string; content: string }>;
+  };
+  assert.ok(
+    messages.data.some(
+      (message) =>
+        message.role === "assistant" && message.request_id === "req-approve",
+    ),
+    "approved plan outcome must be persisted as an assistant message",
+  );
+
+  const replay = await jsonPost({
+    conversationId: "confirm-conv",
+    requestId: "req-approve",
+    approve: true,
+  });
+  assert.equal(replay.status, 200, "a retried confirm replays the completed run");
+  const replayBody = (await envelope(replay)) as Envelope & {
+    data: { message: string; actions: Array<{ status: string }> };
+  };
+  assert.equal(replayBody.data.message, approvedBody.data.message);
+  assert.equal(replayBody.data.actions.length, 1);
+
+  // Crash-window recovery: plan rows still present, all actions receipted.
+  savePendingApprovals("confirm-conv", "req-crash", [
+    { type: "create_account", input: { name: "Crash Checking", type: "asset" } },
+    { type: "create_category", input: { name: "Crash Category", type: "expense" } },
+  ]);
+  const firstCrashRun = await jsonPost({
+    conversationId: "confirm-conv",
+    requestId: "req-crash",
+    approve: true,
+  });
+  assert.equal(firstCrashRun.status, 200);
+  // Re-create the plan rows as if the process crashed before cleanup.
+  savePendingApprovals("confirm-conv", "req-crash", [
+    { type: "create_account", input: { name: "Crash Checking", type: "asset" } },
+    { type: "create_category", input: { name: "Crash Category", type: "expense" } },
+  ]);
+  const retriedCrashRun = await jsonPost({
+    conversationId: "confirm-conv",
+    requestId: "req-crash",
+    approve: true,
+  });
+  assert.equal(retriedCrashRun.status, 200);
+  const retriedCrashBody = (await envelope(retriedCrashRun)) as Envelope & {
+    data: { actions: Array<{ status: string }> };
+  };
+  assert.equal(
+    retriedCrashBody.data.actions.length,
+    2,
+    "retry must replay both receipted actions",
+  );
+  assert.ok(
+    retriedCrashBody.data.actions.every((action) => action.status === "success"),
+  );
+  const accountsAfterCrash = await (await fetch(`${baseUrl}/api/accounts`)).json() as {
+    data: Array<{ name: string }>;
+  };
+  assert.equal(
+    accountsAfterCrash.data.filter((account) => account.name === "Crash Checking")
+      .length,
+    1,
+    "crash-window retry must not duplicate executed actions",
+  );
+
+  savePendingApprovals("confirm-conv", "req-reject", [
+    { type: "create_category", input: { name: "Rejected Category", type: "expense" } },
+  ]);
+  const rejected = await jsonPost({
+    conversationId: "confirm-conv",
+    requestId: "req-reject",
+    approve: false,
+  });
+  assert.equal(rejected.status, 200);
+  const rejectedBody = await envelope(rejected);
+  assert.equal(
+    (rejectedBody.data as { actions: unknown[] }).actions.length,
+    0,
+  );
+  const categories = await (await fetch(`${baseUrl}/api/categories`)).json() as {
+    data: Array<{ name: string }>;
+  };
+  assert.ok(
+    !categories.data.some((category) => category.name === "Rejected Category"),
+    "rejected plan must not mutate anything",
+  );
+});
+
 void test("central handler hides unknown failures and exposes only stable upstream literals", async (t) => {
   const app = express();
   app.get("/unknown", () => {

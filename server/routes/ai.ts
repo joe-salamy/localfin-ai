@@ -2,12 +2,19 @@ import { Router } from "express";
 import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { accountTypeSchema } from "../../shared/contracts/accounts.js";
+import type { ChatStreamEvent } from "../../shared/contracts/parsing-ai.js";
 import { HTTP_HEADERS } from "../config/app.js";
 import { publicErrorMessage } from "../errors.js";
+import { getDb } from "../db/index.js";
 import { categorizeTransactions } from "../services/ai.js";
 import {
+  appendPlanOutcomeMessage,
   chatWithAssistant,
+  clearPendingApprovals,
+  executePendingApprovals,
+  loadPendingApprovals,
   normalizeMaxAssistantTurns,
+  serializeConversation,
   streamChatWithAssistant,
 } from "../services/ai-chat.js";
 import {
@@ -50,12 +57,18 @@ export const chatSchema = z.object({
   message: nonEmptyString.max(10_000),
   currentPage: z.string().optional(),
   maxAssistantTurns: maxAssistantTurnsSchema.optional(),
+  requestId: nonEmptyString.optional(),
 });
 const createConversationSchema = z.object({
   currentPage: z.string().optional(),
 });
 const conversationParamsSchema = z.object({
   id: nonEmptyString,
+});
+const confirmSchema = z.object({
+  conversationId: nonEmptyString,
+  requestId: nonEmptyString,
+  approve: z.boolean(),
 });
 
 router.post("/categorize", async (req: Request, res: Response) => {
@@ -94,9 +107,79 @@ router.post("/chat", async (req: Request, res: Response) => {
   res.json({ success: true, data });
 });
 
+router.post("/chat/confirm", (req: Request, res: Response) => {
+  const body = parseRequest(confirmSchema, req.body);
+
+  if (!body.approve) {
+    const pending = loadPendingApprovals(body.conversationId, body.requestId);
+    if (pending.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: "No pending actions for this request",
+      });
+      return;
+    }
+    getDb().transaction(() => {
+      clearPendingApprovals(body.conversationId, body.requestId);
+      appendPlanOutcomeMessage({
+        conversationId: body.conversationId,
+        requestId: body.requestId,
+        content: "The proposed changes were rejected; nothing was modified.",
+        status: "success",
+      });
+    })();
+    res.json({
+      success: true,
+      data: {
+        conversationId: body.conversationId,
+        requestId: body.requestId,
+        message: "The proposed changes were rejected; nothing was modified.",
+        actions: [],
+        status: "success",
+      },
+    });
+    return;
+  }
+
+  const data = serializeConversation(body.conversationId, () =>
+    executePendingApprovals(body.conversationId, body.requestId),
+  );
+  data
+    .then((result) => {
+      res.json({ success: true, data: result });
+    })
+    .catch((error: unknown) => {
+      res.status(400).json({
+        success: false,
+        error: publicErrorMessage(error),
+      });
+    });
+});
+
 router.post(
   "/chat/stream",
   async (req: Request, res: Response, next: NextFunction) => {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    // `req` close fires as soon as the body is consumed, so it cannot be used
+    // for disconnect detection; `aborted` covers request interruption and
+    // `res` close (guarded by writableEnded) covers client disconnect.
+    const onResponseClose = () => {
+      if (!res.writableEnded) abort();
+    };
+    req.on("aborted", abort);
+    res.on("close", onResponseClose);
+
+    // Writes after the client disconnects must not throw into the runner.
+    const safeEmit = (event: ChatStreamEvent) => {
+      try {
+        res.write(`event: ${event.type}\n`);
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      } catch {
+        // Socket is gone; the abort signal stops the runner.
+      }
+    };
+
     try {
       const body = parseRequest(chatSchema, req.body);
       res.setHeader(HTTP_HEADERS.contentType, HTTP_HEADERS.sseContentType);
@@ -104,21 +187,37 @@ router.post(
       res.setHeader(HTTP_HEADERS.connection, HTTP_HEADERS.sseConnection);
       res.flushHeaders();
 
-      await streamChatWithAssistant(body, (event) => {
-        res.write(`event: ${event.type}\n`);
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      await streamChatWithAssistant(body, safeEmit, {
+        signal: controller.signal,
       });
       res.end();
     } catch (error) {
+      const aborted =
+        error instanceof Error && error.name === "AbortError";
       if (!res.headersSent) {
+        if (aborted) {
+          res.end();
+          return;
+        }
         next(error);
         return;
       }
-      res.write("event: error\n");
-      res.write(
-        `data: ${JSON.stringify({ type: "error", message: publicErrorMessage(error) })}\n\n`,
-      );
+      if (aborted) {
+        res.end();
+        return;
+      }
+      try {
+        res.write("event: error\n");
+        res.write(
+          `data: ${JSON.stringify({ type: "error", message: publicErrorMessage(error) })}\n\n`,
+        );
+      } catch {
+        // Socket is gone; nothing left to do.
+      }
       res.end();
+    } finally {
+      req.removeListener("aborted", abort);
+      res.removeListener("close", onResponseClose);
     }
   },
 );

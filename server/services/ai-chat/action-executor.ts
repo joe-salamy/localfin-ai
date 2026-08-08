@@ -29,6 +29,7 @@ import {
   resolveOrCreateTagsByName,
   updateTag,
 } from "../tags.js";
+import { getDb } from "../../db/index.js";
 import { calculateExpression } from "./calculator.js";
 import type {
   ChatActionResult,
@@ -50,6 +51,7 @@ import {
   resolveRequestedTag,
   resolveSubcategory,
   resolveTag,
+  subcategoriesForKind,
 } from "./entity-resolution.js";
 import {
   categoryTypeForSubcategory,
@@ -385,7 +387,7 @@ export function executeFinanceAction(action: FinanceAction): ChatActionResult {
           input.subcategory_id === undefined
             ? resolveRequestedSubcategory(
                 { name: input.subcategory_name },
-                subcategories,
+                subcategoriesForKind(subcategories, categories, input.kind),
                 action.type,
               )
             : input.subcategory_id;
@@ -397,20 +399,23 @@ export function executeFinanceAction(action: FinanceAction): ChatActionResult {
             "create_transaction requires account, date, name, and amount",
           );
         }
-        const data: CreateTransactionData = {
-          account_id: accountId,
-          date: input.date,
-          name: input.name,
-          amount: input.amount,
-          kind,
-          subcategory_id: subcategoryId ?? null,
-          comment: normalizeComment(input.comment) ?? null,
-          tag_ids: explicitTagIds(input, tags, action.type),
-        };
+        const result = getDb().transaction(() => {
+          const data: CreateTransactionData = {
+            account_id: accountId,
+            date: input.date,
+            name: input.name,
+            amount: input.amount,
+            kind,
+            subcategory_id: subcategoryId ?? null,
+            comment: normalizeComment(input.comment) ?? null,
+            tag_ids: explicitTagIds(input, tags, action.type),
+          };
+          return createTransaction(data);
+        })();
         return {
           ...action,
           status: "success",
-          result: createTransaction(data),
+          result,
         };
       }
 
@@ -499,28 +504,31 @@ export function executeFinanceAction(action: FinanceAction): ChatActionResult {
             ? null
             : resolveRequestedSubcategory(
                 { id: updateInput.subcategory_id ?? undefined, name: updateInput.subcategory_name },
-                subcategories,
+                subcategoriesForKind(subcategories, categories, updateInput.kind),
                 action.type,
               )
           : undefined;
 
         if (hasCommentUpdate) {
-          for (const transaction of filtersResult) {
-            const currentIds = transaction.tags.map((tag) => tag.id);
-            const nextTagIds = new Set(currentIds);
-            for (const tagId of addTagIds) nextTagIds.add(tagId);
-            for (const tagId of removeTagIds) nextTagIds.delete(tagId);
-            updateTransaction(transaction.id, {
-              ...(hasKindUpdate ? { kind: updateInput.kind } : {}),
-              ...(hasSubcategoryUpdate
-                ? { subcategory_id: subcategoryId }
-                : {}),
-              comment: normalizeComment(updateInput.comment) ?? null,
-              ...(addTagIds.length > 0 || removeTagIds.length > 0
-                ? { tag_ids: Array.from(nextTagIds) }
-                : {}),
-            });
-          }
+          const updateAll = getDb().transaction(() => {
+            for (const transaction of filtersResult) {
+              const currentIds = transaction.tags.map((tag) => tag.id);
+              const nextTagIds = new Set(currentIds);
+              for (const tagId of addTagIds) nextTagIds.add(tagId);
+              for (const tagId of removeTagIds) nextTagIds.delete(tagId);
+              updateTransaction(transaction.id, {
+                ...(hasKindUpdate ? { kind: updateInput.kind } : {}),
+                ...(hasSubcategoryUpdate
+                  ? { subcategory_id: subcategoryId }
+                  : {}),
+                comment: normalizeComment(updateInput.comment) ?? null,
+                ...(addTagIds.length > 0 || removeTagIds.length > 0
+                  ? { tag_ids: Array.from(nextTagIds) }
+                  : {}),
+              });
+            }
+          });
+          updateAll();
         } else {
           bulkUpdateTransactions(transactionIds, {
             ...(hasKindUpdate ? { kind: updateInput.kind } : {}),
@@ -579,7 +587,7 @@ export function executeFinanceAction(action: FinanceAction): ChatActionResult {
             ? null
             : resolveRequestedSubcategory(
                 { id: input.subcategory_id ?? undefined, name: input.subcategory_name },
-                subcategories,
+                subcategoriesForKind(subcategories, categories, input.kind),
                 action.type,
               );
         const existingTransaction = getTransactionById(input.id);
