@@ -1,4 +1,6 @@
+import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { createInterface } from "node:readline";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -7,6 +9,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 
 export type LogEvent = Record<string, unknown>;
+
+export const MAX_LOG_EVENTS = 50_000;
+
+const truncatedEventLists = new WeakSet<LogEvent[]>();
 
 type PromptClass =
   | "prompt-system"
@@ -169,16 +175,29 @@ function requireLogEvent(value: unknown, index: number): LogEvent {
 }
 
 function parseEventArray(value: unknown[]): LogEvent[] {
-  return value.map((entry, index) => requireLogEvent(entry, index));
+  const events: LogEvent[] = [];
+  const limit = Math.min(value.length, MAX_LOG_EVENTS);
+  for (let index = 0; index < limit; index += 1) {
+    events.push(requireLogEvent(value[index], index));
+  }
+  if (value.length > MAX_LOG_EVENTS) {
+    truncatedEventLists.add(events);
+  }
+  return events;
 }
 
 function parseJsonLines(text: string): LogEvent[] {
   const events: LogEvent[] = [];
   const lines = text.split(/\r?\n/);
+  let truncated = false;
 
   for (const [zeroBasedIndex, line] of lines.entries()) {
     if (line.trim() === "") {
       continue;
+    }
+    if (events.length >= MAX_LOG_EVENTS) {
+      truncated = true;
+      break;
     }
 
     try {
@@ -193,6 +212,9 @@ function parseJsonLines(text: string): LogEvent[] {
     }
   }
 
+  if (truncated) {
+    truncatedEventLists.add(events);
+  }
   return events;
 }
 
@@ -233,6 +255,138 @@ export function parseLogText(text: string, inputPath: string): LogEvent[] {
     "Unsupported log JSON shape: expected an array, { events }, { entries }, { messages }, or one event object.",
   );
 }
+
+async function parseJsonLinesFile(
+  inputPath: string,
+): Promise<{ events: LogEvent[]; truncated: boolean }> {
+  const events: LogEvent[] = [];
+  const input = createReadStream(inputPath, { encoding: "utf8" });
+  const lines = createInterface({ input, crlfDelay: Infinity });
+  let lineIndex = 0;
+  let truncated = false;
+
+  try {
+    for await (const line of lines) {
+      if (line.trim() === "") {
+        lineIndex += 1;
+        continue;
+      }
+      if (events.length >= MAX_LOG_EVENTS) {
+        truncated = true;
+        break;
+      }
+
+      try {
+        events.push(requireLogEvent(parseJson(line), lineIndex));
+      } catch (error) {
+        if (messageFromError(error).startsWith("Unsupported log entry")) {
+          throw error;
+        }
+        throw new Error(
+          `Invalid JSON on line ${lineIndex + 1}: ${messageFromError(error)}`,
+        );
+      }
+      lineIndex += 1;
+    }
+  } finally {
+    lines.close();
+    input.destroy();
+  }
+
+  return { events, truncated };
+}
+
+async function parseJsonArrayFile(
+  inputPath: string,
+): Promise<{ events: LogEvent[]; truncated: boolean } | null> {
+  const events: LogEvent[] = [];
+  const input = createReadStream(inputPath, { encoding: "utf8" });
+  let sawRoot = false;
+  let rootClosed = false;
+  let value = "";
+  let depth = 0;
+  let valueStarted = false;
+  let inString = false;
+  let escaped = false;
+  let truncated = false;
+
+  const parseValue = (): void => {
+    events.push(requireLogEvent(parseJson(value), events.length));
+    value = "";
+    depth = 0;
+    valueStarted = false;
+    inString = false;
+    escaped = false;
+  };
+
+  try {
+    for await (const chunk of input) {
+      const text = String(chunk);
+      for (const character of text) {
+        if (!sawRoot) {
+          if (/\s/.test(character)) continue;
+          if (character !== "[") return null;
+          sawRoot = true;
+          continue;
+        }
+        if (rootClosed) continue;
+
+        if (!valueStarted) {
+          if (/\s/.test(character) || character === ",") continue;
+          if (character === "]") {
+            rootClosed = true;
+            continue;
+          }
+          if (events.length >= MAX_LOG_EVENTS) {
+            truncated = true;
+            rootClosed = true;
+            break;
+          }
+          value = character;
+          valueStarted = true;
+          if (character === "{") {
+            depth = 1;
+          } else if (character === "[") {
+            depth = 1;
+          } else {
+            depth = 0;
+          }
+          continue;
+        }
+
+        value += character;
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+          } else if (character === "\\") {
+            escaped = true;
+          } else if (character === '"') {
+            inString = false;
+          }
+          continue;
+        }
+        if (character === '"') {
+          inString = true;
+        } else if (character === "{" || character === "[") {
+          depth += 1;
+        } else if (character === "}" || character === "]") {
+          depth -= 1;
+          if (depth === 0) parseValue();
+        }
+      }
+      if (truncated) break;
+    }
+  } finally {
+    input.destroy();
+  }
+
+  if (!sawRoot) return null;
+  if (valueStarted && !truncated) {
+    parseValue();
+  }
+  return { events, truncated };
+}
+
 
 export function outputPathFor(inputPath: string): string {
   return path.join(
@@ -591,9 +745,13 @@ function statusClassFor(status: unknown): string {
   if (typeof status !== "string" || status.trim() === "") {
     return "unknown";
   }
-  return status.toLowerCase().replaceAll(/[^a-z0-9_-]+/g, "-");
+  const normalized = status.trim().toLowerCase();
+  return normalized === "success" ||
+    normalized === "error" ||
+    normalized === "partial"
+    ? normalized
+    : "unknown";
 }
-
 function renderEventHeader(event: LogEvent, index: number): string {
   const status = typeof event.status === "string" ? event.status : "unknown";
   const operation =
@@ -632,10 +790,14 @@ function cssForPromptClasses(): string {
     .join("\n");
 }
 
-function renderDocument(sourcePath: string, events: LogEvent[]): string {
+function renderDocument(
+  sourcePath: string,
+  events: LogEvent[],
+  truncated: boolean,
+): string {
   const title = `Log viewer: ${path.basename(sourcePath)}`;
   const generatedAt = new Date().toISOString();
-
+  const eventLimit = MAX_LOG_EVENTS.toLocaleString("en-US");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -767,10 +929,6 @@ h1 {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.prompt-card h5 {
-  margin-bottom: 8px;
-  font-size: 0.95rem;
-}
 .prompt-body p {
   white-space: pre-line;
 }
@@ -805,6 +963,7 @@ ${cssForPromptClasses()}
 <h1>Log viewer</h1>
 <p class="source-path"><strong>Source:</strong> ${escapeHtml(sourcePath)}</p>
 <p><strong>Events:</strong> ${events.length} events</p>
+${truncated ? `<p role="status">This log exceeded ${eventLimit} events; showing only the first ${eventLimit}.</p>` : ""}
 <p><strong>Generated:</strong> ${escapeHtml(generatedAt)}</p>
 </header>
 ${events.map(renderEvent).join("\n")}
@@ -815,7 +974,10 @@ ${events.map(renderEvent).join("\n")}
 }
 
 export function renderLogHtml(events: LogEvent[], sourcePath: string): string {
-  return renderDocument(sourcePath, events);
+  const truncated = truncatedEventLists.has(events) || events.length > MAX_LOG_EVENTS;
+  const visibleEvents =
+    events.length > MAX_LOG_EVENTS ? events.slice(0, MAX_LOG_EVENTS) : events;
+  return renderDocument(sourcePath, visibleEvents, truncated);
 }
 
 export async function renderLogHtmlFile(rawInputPath: string): Promise<string> {
@@ -832,8 +994,29 @@ export async function renderLogHtmlFile(rawInputPath: string): Promise<string> {
     throw new Error(`Log file not found: ${inputPath}`);
   }
 
-  const text = await readFile(inputPath, "utf8");
-  const events = parseLogText(text, inputPath);
+  let events: LogEvent[];
+  const extension = path.extname(inputPath).toLowerCase();
+  if (extension === ".jsonl") {
+    const parsed = await parseJsonLinesFile(inputPath);
+    events = parsed.events;
+    if (parsed.truncated) {
+      truncatedEventLists.add(events);
+    }
+  } else if (extension === ".json") {
+    const parsed = await parseJsonArrayFile(inputPath);
+    if (parsed) {
+      events = parsed.events;
+      if (parsed.truncated) {
+        truncatedEventLists.add(events);
+      }
+    } else {
+      const text = await readFile(inputPath, "utf8");
+      events = parseLogText(text, inputPath);
+    }
+  } else {
+    const text = await readFile(inputPath, "utf8");
+    events = parseLogText(text, inputPath);
+  }
   const outputPath = outputPathFor(inputPath);
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, renderLogHtml(events, inputPath), "utf8");
