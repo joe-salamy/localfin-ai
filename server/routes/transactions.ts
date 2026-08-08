@@ -56,7 +56,7 @@ const transactionFiltersSchema = z.object({
   needsCategory: optionalQueryBoolean,
   startDate: isoDateString.optional(),
   endDate: isoDateString.optional(),
-  searchQuery: z.string().trim().min(1).optional(),
+  searchQuery: z.string().trim().min(1).max(200).optional(),
   limit: z.coerce.number().int().positive().max(500).optional(),
   offset: z.coerce.number().int().nonnegative().optional(),
 });
@@ -126,13 +126,8 @@ const transferCheckSchema = z
   .object({
     amount: finiteNumber,
     date: isoDateString,
-    account_id: nonEmptyString.optional(),
-    accountId: nonEmptyString.optional(),
-  })
-  .refine(
-    (value) => value.account_id || value.accountId,
-    "account_id is required",
-  );
+    account_id: nonEmptyString,
+  });
 const suspectScanSchema = z.object({
   filters: transactionFiltersSchema.optional(),
   flaggedWords: z.array(nonEmptyString).max(100).optional(),
@@ -148,10 +143,17 @@ const suspectFindingStatusSchema = z.object({
   status: sharedSuspectFindingStatusSchema,
 });
 
+// Bounded server-side default so omitted `limit` never triggers a full-table
+// scan; `offset` without `limit` now paginates instead of being ignored.
+const DEFAULT_LIST_LIMIT = 500;
+
 router.get("/", (req: Request, res: Response) => {
   const filters = parseRequest(transactionFiltersSchema, req.query);
 
-  const data = getTransactionsWithDetails(filters);
+  const data = getTransactionsWithDetails({
+    ...filters,
+    limit: filters.limit ?? DEFAULT_LIST_LIMIT,
+  });
   res.json({ success: true, data });
 });
 
@@ -201,7 +203,7 @@ router.post("/check-transfer", (req: Request, res: Response) => {
 
   const data = checkTransferMatch(
     body.amount,
-    body.account_id ?? (body.accountId as string),
+    body.account_id,
     body.date,
   );
   res.json({ success: true, data });

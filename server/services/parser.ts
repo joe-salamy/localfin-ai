@@ -206,8 +206,19 @@ export async function parseStatement(
   // Parse lines
   const parsed: ParsedTransaction[] = [];
   let failedLines = 0;
+  const MAX_LINE_LENGTH = 1_000;
 
   for (const line of lines) {
+    if (line.length > MAX_LINE_LENGTH) {
+      failedLines++;
+      if (failedLines <= 5) {
+        errors.push(
+          `Line too long (${line.length} chars): "${line.slice(0, 80)}"`,
+        );
+      }
+      continue;
+    }
+
     const pattern = detectedFormat?.pattern ?? null;
     let match: RegExpMatchArray | null = null;
 
@@ -256,6 +267,17 @@ export async function parseStatement(
 
   if (failedLines > 5) {
     errors.push(`... and ${failedLines - 5} more unparseable lines`);
+  }
+
+  // Fail fast before duplicate queries and LLM categorization: an unbounded
+  // record count would let one request fan out into unbounded DB and
+  // OpenRouter work (the route caps input chars, not parsed records).
+  const MAX_PARSED_RECORDS = 200;
+  if (parsed.length > MAX_PARSED_RECORDS) {
+    errors.push(
+      `Input produced ${parsed.length} transactions; the maximum is ${MAX_PARSED_RECORDS}.`,
+    );
+    parsed.length = MAX_PARSED_RECORDS;
   }
 
   const db = getDb();

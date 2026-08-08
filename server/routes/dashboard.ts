@@ -20,13 +20,26 @@ const dateRangeQueryShape = {
   startDate: isoDateString,
   endDate: isoDateString,
 };
+// Date spans beyond this would generate unbounded per-day balance points and
+// SQLite work for the net-worth chart.
+const MAX_REPORT_SPAN_DAYS = 3660;
+
+const maxSpanRefine = (value: { startDate: string; endDate: string }) => {
+  const spanDays =
+    (Date.parse(`${value.endDate}T00:00:00Z`) -
+      Date.parse(`${value.startDate}T00:00:00Z`)) /
+    86_400_000;
+  return spanDays <= MAX_REPORT_SPAN_DAYS;
+};
+
 const dateRangeQuerySchema = z
   .object(dateRangeQueryShape)
   .refine(
     (value) => value.startDate <= value.endDate,
     "startDate must be on or before endDate",
-  );
-const transactionReportQuerySchema = dateRangeQuerySchema.extend({
+  )
+  .refine(maxSpanRefine, `Date range must not exceed ${MAX_REPORT_SPAN_DAYS} days`);
+const transactionReportQuerySchema = dateRangeQuerySchema.safeExtend({
   tagIds: optionalQueryStringArray,
 });
 
