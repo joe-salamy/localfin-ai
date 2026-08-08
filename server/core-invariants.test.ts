@@ -213,6 +213,7 @@ void test("transaction updates normalize signs by account type and kind", async 
   });
   const liabilityKindUpdate = updateTransaction(liabilityExpense.id, {
     kind: "income",
+    subcategory_id: null,
   });
 
   const assetIncome = createTransaction({
@@ -234,7 +235,10 @@ void test("transaction updates normalize signs by account type and kind", async 
     kind: "expense",
     subcategory_id: subcategoryId,
   });
-  bulkUpdateTransactions([bulkTarget.id], { kind: "income" });
+  bulkUpdateTransactions([bulkTarget.id], {
+    kind: "income",
+    subcategory_id: null,
+  });
   const bulkUpdated = getTransactionById(bulkTarget.id);
 
   assert.equal(liabilityAmountUpdate?.amount, 31);
@@ -243,25 +247,48 @@ void test("transaction updates normalize signs by account type and kind", async 
   assert.equal(bulkUpdated?.amount, -45);
 });
 
-void test("transfer and adjustment transactions remain uncategorized", async (t) => {
+void test("transfer and adjustment transactions reject subcategories", async (t) => {
   await useTempDatabase(t);
   const { assetAccountId, subcategoryId } = createSubcategoryFixture();
 
+  assert.throws(
+    () =>
+      createTransaction({
+        account_id: assetAccountId,
+        date: "2026-05-05",
+        name: "Card Payment",
+        amount: -100,
+        kind: "transfer",
+        subcategory_id: subcategoryId,
+      }),
+    /cannot have a subcategory/,
+  );
+  assert.throws(
+    () =>
+      createTransaction({
+        account_id: assetAccountId,
+        date: "2026-05-06",
+        name: "Balance Correction",
+        amount: -15,
+        kind: "adjustment",
+        subcategory_id: subcategoryId,
+      }),
+    /cannot have a subcategory/,
+  );
+
   const transfer = createTransaction({
     account_id: assetAccountId,
-    date: "2026-05-05",
+    date: "2026-05-07",
     name: "Card Payment",
     amount: -100,
     kind: "transfer",
-    subcategory_id: subcategoryId,
   });
   const adjustment = createTransaction({
     account_id: assetAccountId,
-    date: "2026-05-06",
+    date: "2026-05-08",
     name: "Balance Correction",
     amount: -15,
     kind: "adjustment",
-    subcategory_id: subcategoryId,
   });
 
   assert.equal(transfer.amount, -100);
@@ -270,7 +297,7 @@ void test("transfer and adjustment transactions remain uncategorized", async (t)
   assert.equal(adjustment.subcategory_id, null);
 });
 
-void test("updating a categorized transaction to transfer or adjustment clears its subcategory", async (t) => {
+void test("updating a categorized transaction requires clearing its subcategory", async (t) => {
   await useTempDatabase(t);
   const { assetAccountId, subcategoryId } = createSubcategoryFixture();
   const transferTarget = createTransaction({
@@ -290,8 +317,34 @@ void test("updating a categorized transaction to transfer or adjustment clears i
     subcategory_id: subcategoryId,
   });
 
-  updateTransaction(transferTarget.id, { kind: "transfer" });
-  updateTransaction(adjustmentTarget.id, { kind: "adjustment" });
+  assert.throws(
+    () => updateTransaction(transferTarget.id, { kind: "transfer" }),
+    /cannot have a subcategory/,
+  );
+  assert.throws(
+    () => updateTransaction(adjustmentTarget.id, { kind: "adjustment" }),
+    /cannot have a subcategory/,
+  );
+
+  const unclearedTransfer = getTransactionsWithDetails({
+    searchQuery: 'name:"Transfer Target"',
+  })[0];
+  const unclearedAdjustment = getTransactionsWithDetails({
+    searchQuery: 'name:"Adjustment Target"',
+  })[0];
+  assert.equal(unclearedTransfer?.kind, "expense");
+  assert.equal(unclearedTransfer?.subcategory_id, subcategoryId);
+  assert.equal(unclearedAdjustment?.kind, "expense");
+  assert.equal(unclearedAdjustment?.subcategory_id, subcategoryId);
+
+  updateTransaction(transferTarget.id, {
+    kind: "transfer",
+    subcategory_id: null,
+  });
+  updateTransaction(adjustmentTarget.id, {
+    kind: "adjustment",
+    subcategory_id: null,
+  });
 
   const transfer = getTransactionsWithDetails({
     searchQuery: 'name:"Transfer Target"',
@@ -934,7 +987,7 @@ void test("same-key restore conflicts leave deleted rows deleted", async (t) => 
   createCategory({ name: deletedCategory.name, type: "expense" });
   assert.throws(
     () => restoreCategory(deletedCategory.id),
-    /A category with the name "Conflict Restore Category" and type "expense" already exists/,
+    /A category with the name "Conflict Restore Category" already exists/,
   );
   assert.equal(getCategoryById(deletedCategory.id), undefined);
   assert.ok(deletedAtFor("categories", deletedCategory.id));

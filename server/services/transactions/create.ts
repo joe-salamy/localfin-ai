@@ -4,7 +4,7 @@ import { fromBool, getDb } from "../../db/index.js";
 import { NotFoundError } from "../../errors.js";
 import { assertActiveTags, replaceTransactionTags } from "../tags.js";
 import { getTransactionById } from "./read.js";
-import { assertActiveSubcategory, getActiveAccountType, normalizeTransactionFields } from "./validation.js";
+import { assertActiveSubcategory, assertKindSubcategoryCompatible, getActiveAccountType, normalizeTransactionFields } from "./validation.js";
 
 export function createTransaction(
   data: CreateTransactionData,
@@ -14,6 +14,7 @@ export function createTransaction(
   const now = new Date().toISOString();
   const accountType = getActiveAccountType(data.account_id);
   const normalized = normalizeTransactionFields(data, accountType);
+  assertKindSubcategoryCompatible(normalized.kind, data.subcategory_id);
   const tagIds = assertActiveTags(data.tag_ids ?? []);
 
   if (normalized.subcategory_id) {
@@ -70,6 +71,7 @@ export function bulkCreateTransactions(
     for (const data of transactions) {
       const accountType = getActiveAccountType(data.account_id);
       const normalized = normalizeTransactionFields(data, accountType);
+      assertKindSubcategoryCompatible(normalized.kind, data.subcategory_id);
       const tagIds = assertActiveTags(data.tag_ids ?? []);
       if (normalized.subcategory_id) {
         assertActiveSubcategory(normalized.subcategory_id);

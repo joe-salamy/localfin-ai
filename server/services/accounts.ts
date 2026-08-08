@@ -183,6 +183,17 @@ export function updateAccount(
   const initialBalance = updates.initial_balance ?? existing.initial_balance;
   const color = updates.color !== undefined ? updates.color : existing.color;
 
+  if (updates.type !== undefined && updates.type !== existing.type) {
+    const transaction = db
+      .prepare(
+        "SELECT 1 FROM transactions WHERE account_id = ? AND deleted_at IS NULL LIMIT 1",
+      )
+      .get(id);
+    if (transaction) {
+      throw new ConflictError("Cannot change account type while transactions exist");
+    }
+  }
+
   db.prepare(
     "UPDATE accounts SET name = ?, type = ?, initial_balance = ?, color = ?, updated_at = ? WHERE id = ?",
   ).run(name, type, initialBalance, color, now, id);
@@ -291,14 +302,7 @@ export function restoreAccount(id: string): Account {
     throw new NotFoundError(`Account with id "${id}" not found`)
   }
 
-  const conflict = db
-    .prepare(
-      "SELECT 1 FROM accounts WHERE name = ? AND deleted_at IS NULL AND id != ?",
-    )
-    .get(existing.name, id);
-  if (conflict) {
-    throw new ConflictError(`An account with the name "${existing.name}" already exists`)
-  }
+  assertEntityNameIsUnique(existing.name, { table: "accounts", id });
 
   db.prepare(
     "UPDATE accounts SET deleted_at = NULL, updated_at = ? WHERE id = ?",

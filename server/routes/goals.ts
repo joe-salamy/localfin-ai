@@ -42,6 +42,14 @@ const updateGoalSchema = z
   .refine(
     (value) => Object.keys(value).length > 0,
     "At least one update field is required",
+  )
+  .refine(
+    (value) =>
+      value.start_date === undefined ||
+      value.end_date === undefined ||
+      value.end_date === null ||
+      value.start_date <= value.end_date,
+    "start_date must be on or before end_date",
   );
 const progressQuerySchema = z.object({
   referenceDate: isoDateString.optional(),

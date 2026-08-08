@@ -1,7 +1,7 @@
 import type { AccountType, CreateTransactionData, TransactionKind } from "../../../shared/contracts/index.js";
 import { inferTransactionKindForAccount, normalizeTransactionAmount } from "../../../shared/finance/transactionAmounts.js";
 import { getDb } from "../../db/index.js";
-import { NotFoundError } from "../../errors.js";
+import { BadRequestError, NotFoundError } from "../../errors.js";
 
 export function getActiveAccountType(accountId: string): AccountType {
   const db = getDb();
@@ -29,6 +29,49 @@ export function assertActiveSubcategory(subcategoryId: string): void {
 
   if (!subcategory) {
     throw new NotFoundError(`Subcategory with id "${subcategoryId}" not found`)
+  }
+}
+
+export function assertKindSubcategoryCompatible(
+  kind: TransactionKind | undefined,
+  subcategoryId: string | null | undefined,
+): void {
+  if (kind === undefined) return;
+
+  if (
+    (kind === "transfer" || kind === "adjustment") &&
+    subcategoryId !== null &&
+    subcategoryId !== undefined
+  ) {
+    throw new BadRequestError(
+      `Transaction kind "${kind}" cannot have a subcategory`,
+    );
+  }
+
+  if (
+    (kind !== "income" && kind !== "expense") ||
+    subcategoryId === null ||
+    subcategoryId === undefined
+  ) {
+    return;
+  }
+
+  const db = getDb();
+  const subcategory = db
+    .prepare(
+      `
+      SELECT c.type
+      FROM subcategories s
+      JOIN categories c ON c.id = s.category_id
+      WHERE s.id = ?
+    `,
+    )
+    .get(subcategoryId) as { type: "income" | "expense" } | undefined;
+
+  if (subcategory && subcategory.type !== kind) {
+    throw new BadRequestError(
+      `Transaction kind "${kind}" requires a "${kind}" subcategory`,
+    );
   }
 }
 

@@ -4,7 +4,7 @@ import { fromBool, getDb } from "../../db/index.js";
 import { NotFoundError } from "../../errors.js";
 import { assertActiveTags, replaceTransactionTags } from "../tags.js";
 import { getTransactionById } from "./read.js";
-import { assertActiveSubcategory } from "./validation.js";
+import { assertActiveSubcategory, assertKindSubcategoryCompatible } from "./validation.js";
 
 export function updateTransaction(
   id: string,
@@ -15,7 +15,7 @@ export function updateTransaction(
   const existing = db
     .prepare(
       `
-    SELECT t.id, t.kind, t.amount, a.type AS account_type
+    SELECT t.id, t.kind, t.amount, t.subcategory_id, a.type AS account_type
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
     WHERE t.id = ? AND t.deleted_at IS NULL
@@ -26,6 +26,7 @@ export function updateTransaction(
         id: string;
         kind: TransactionKind;
         amount: number;
+        subcategory_id: string | null;
         account_type: AccountType;
       }
     | undefined;
@@ -35,6 +36,15 @@ export function updateTransaction(
   }
 
   const nextKind = updates.kind ?? existing.kind;
+  const nextSubcategoryId =
+    updates.subcategory_id !== undefined
+      ? updates.subcategory_id
+      : existing.subcategory_id;
+  assertKindSubcategoryCompatible(nextKind, nextSubcategoryId);
+  if (updates.subcategory_id !== undefined && nextSubcategoryId) {
+    assertActiveSubcategory(nextSubcategoryId);
+  }
+
   const nextAmount =
     updates.amount !== undefined || updates.kind !== undefined
       ? normalizeTransactionAmount(
@@ -65,22 +75,8 @@ export function updateTransaction(
   if (updates.kind !== undefined) {
     setClauses.push("kind = ?");
     params.push(updates.kind);
-    if (
-      (updates.kind === "transfer" || updates.kind === "adjustment") &&
-      updates.subcategory_id === undefined
-    ) {
-      setClauses.push("subcategory_id = ?");
-      params.push(null);
-    }
   }
   if (updates.subcategory_id !== undefined) {
-    const nextSubcategoryId =
-      nextKind === "transfer" || nextKind === "adjustment"
-        ? null
-        : updates.subcategory_id;
-    if (nextSubcategoryId) {
-      assertActiveSubcategory(nextSubcategoryId);
-    }
     setClauses.push("subcategory_id = ?");
     params.push(nextSubcategoryId);
   }

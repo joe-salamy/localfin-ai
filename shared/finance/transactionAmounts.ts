@@ -1,7 +1,8 @@
 import type { AccountType, TransactionKind } from "../contracts/index.js";
 
 function roundCurrencyAmount(amount: number): number {
-  return Math.round(amount * 100) / 100;
+  const sign = amount < 0 ? -1 : 1;
+  return sign * Math.round((Math.abs(amount) + Number.EPSILON) * 100) / 100;
 }
 
 export function normalizeTransactionAmount(

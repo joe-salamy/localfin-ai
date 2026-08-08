@@ -12,6 +12,12 @@ const ENTITY_LABELS: Record<EntityNameTable, string> = {
   subcategories: "subcategory",
 };
 
+const ENTITY_ARTICLES: Record<EntityNameTable, string> = {
+  accounts: "An",
+  categories: "A",
+  subcategories: "A",
+};
+
 const ENTITY_NAME_QUERIES: Record<EntityNameTable, string> = {
   accounts: "SELECT 1 FROM accounts WHERE name = ? AND deleted_at IS NULL",
   categories: "SELECT 1 FROM categories WHERE name = ? AND deleted_at IS NULL",
@@ -38,7 +44,7 @@ export function assertEntityNameIsUnique(
       : db.prepare(ENTITY_NAME_QUERIES[table]).get(name);
     if (row) {
       throw new ConflictError(
-        `A ${ENTITY_LABELS[table]} with the name "${name}" already exists`,
+        `${ENTITY_ARTICLES[table]} ${ENTITY_LABELS[table]} with the name "${name}" already exists`,
       );
     }
   }

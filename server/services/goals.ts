@@ -13,7 +13,7 @@ import {
 } from "date-fns";
 import { getDb } from "../db/index.js";
 import { DATE_CONFIG } from "../config/app.js";
-import { ConflictError, NotFoundError } from "../errors.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../errors.js";
 import type { CreateSpendingGoalData,
 GoalPeriod,
 SpendingGoal,
@@ -100,6 +100,12 @@ function getPeriodBoundaries(
   };
 }
 
+function assertGoalDateRange(startDate: string, endDate: string | null): void {
+  if (endDate !== null && startDate > endDate) {
+    throw new BadRequestError("start_date must be on or before end_date");
+  }
+}
+
 function assertActiveSubcategory(subcategoryId: string): void {
   const db = getDb();
   const subcategory = db
@@ -125,6 +131,7 @@ export function createSpendingGoal(data: CreateSpendingGoalData): SpendingGoal {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
 
+  assertGoalDateRange(data.start_date, data.end_date ?? null);
   assertActiveSubcategory(data.subcategory_id);
 
   // Enforce one goal per subcategory
@@ -234,6 +241,7 @@ export function updateSpendingGoal(
   const startDate = updates.start_date ?? existing.start_date;
   const endDate =
     updates.end_date !== undefined ? updates.end_date : existing.end_date;
+  assertGoalDateRange(startDate, endDate);
 
   db.prepare(
     `UPDATE spending_goals SET amount = ?, period = ?, start_date = ?, end_date = ?, updated_at = ? WHERE id = ?`,
@@ -288,18 +296,25 @@ export function getSpendingProgress(
     goal.period as GoalPeriod,
     refDate,
   );
+  const boundedStartDate =
+    periodStart < goal.start_date ? goal.start_date : periodStart;
+  const boundedEndDate =
+    goal.end_date !== null && periodEnd > goal.end_date
+      ? goal.end_date
+      : periodEnd;
 
   // Sum absolute value of spending for the subcategory in the period
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(ABS(t.amount)), 0) AS spent
      FROM transactions t
+     JOIN accounts a ON a.id = t.account_id AND a.deleted_at IS NULL
      WHERE t.subcategory_id = ?
        AND t.date >= ? AND t.date <= ?
        AND t.deleted_at IS NULL
        AND t.kind = 'expense'`,
     )
-    .get(goal.subcategory_id, periodStart, periodEnd) as SpentRow;
+    .get(goal.subcategory_id, boundedStartDate, boundedEndDate) as SpentRow;
 
   const spent = row.spent;
   const remaining = Math.max(0, goal.amount - spent);

@@ -3,7 +3,7 @@ import { normalizeTransactionAmount } from "../../../shared/finance/transactionA
 import { getDb } from "../../db/index.js";
 import { BadRequestError } from "../../errors.js";
 import { addTransactionTags, assertActiveTags, removeTransactionTags } from "../tags.js";
-import { assertActiveSubcategory } from "./validation.js";
+import { assertActiveSubcategory, assertKindSubcategoryCompatible } from "./validation.js";
 
 export function bulkUpdateTransactions(
   ids: string[],
@@ -38,37 +38,34 @@ export function bulkUpdateTransactions(
   const updateRows = db
     .prepare(
       `
-      SELECT t.id, t.amount, t.kind, a.type AS account_type
+      SELECT t.id, t.amount, t.kind, t.subcategory_id, a.type AS account_type
       FROM transactions t
       JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
       WHERE t.deleted_at IS NULL AND t.id IN (${placeholders})
-    `,
-    )
+    `)
     .all(...ids) as {
     id: string;
     amount: number;
     kind: TransactionKind;
+    subcategory_id: string | null;
     account_type: AccountType;
   }[];
 
-  if (updates.kind !== undefined) {
-    const nextKind = updates.kind;
+  for (const row of updateRows) {
+    const nextKind = updates.kind ?? row.kind;
     const nextSubcategoryId =
       updates.subcategory_id !== undefined
-        ? nextKind === "transfer" || nextKind === "adjustment"
-          ? null
-          : updates.subcategory_id
-        : undefined;
-    if (nextSubcategoryId) {
+        ? updates.subcategory_id
+        : row.subcategory_id;
+    assertKindSubcategoryCompatible(nextKind, nextSubcategoryId);
+    if (updates.subcategory_id !== undefined && nextSubcategoryId) {
       assertActiveSubcategory(nextSubcategoryId);
     }
-
+  }
+  if (updates.kind !== undefined) {
+    const nextKind = updates.kind;
     const clauses = ["kind = ?", "amount = ?"];
-    if (
-      nextSubcategoryId !== undefined ||
-      nextKind === "transfer" ||
-      nextKind === "adjustment"
-    ) {
+    if (updates.subcategory_id !== undefined) {
       clauses.push("subcategory_id = ?");
     }
     clauses.push("updated_at = ?");
@@ -84,12 +81,8 @@ export function bulkUpdateTransactions(
           nextKind,
         );
         const rowParams: unknown[] = [nextKind, amount];
-        if (
-          nextSubcategoryId !== undefined ||
-          nextKind === "transfer" ||
-          nextKind === "adjustment"
-        ) {
-          rowParams.push(nextSubcategoryId ?? null);
+        if (updates.subcategory_id !== undefined) {
+          rowParams.push(updates.subcategory_id);
         }
         rowParams.push(now, row.id);
         stmt.run(...rowParams);
@@ -103,18 +96,8 @@ export function bulkUpdateTransactions(
   }
 
   if (updates.subcategory_id !== undefined) {
-    const nextSubcategoryId = updates.subcategory_id;
-    if (nextSubcategoryId) {
-      assertActiveSubcategory(nextSubcategoryId);
-    }
-    if (nextSubcategoryId !== null) {
-      setClauses.push(
-        "subcategory_id = CASE WHEN kind IN ('transfer', 'adjustment') THEN NULL ELSE ? END",
-      );
-    } else {
-      setClauses.push("subcategory_id = ?");
-    }
-    params.push(nextSubcategoryId);
+    setClauses.push("subcategory_id = ?");
+    params.push(updates.subcategory_id);
   }
 
   const updateAll = db.transaction(() => {

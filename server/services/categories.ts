@@ -129,6 +129,28 @@ export function updateCategory(
   const type = updates.type ?? existing.type;
   const color = updates.color !== undefined ? updates.color : existing.color;
 
+  if (updates.type !== undefined && updates.type !== existing.type) {
+    const activeSubcategory = db
+      .prepare(
+        "SELECT 1 FROM subcategories WHERE category_id = ? AND deleted_at IS NULL LIMIT 1",
+      )
+      .get(id);
+    const transaction = db
+      .prepare(
+        `SELECT 1
+         FROM transactions t
+         JOIN subcategories s ON s.id = t.subcategory_id
+         WHERE s.category_id = ? AND t.deleted_at IS NULL
+         LIMIT 1`,
+      )
+      .get(id);
+    if (activeSubcategory || transaction) {
+      throw new ConflictError(
+        "Cannot change category type while subcategories or transactions exist",
+      );
+    }
+  }
+
   db.prepare(
     "UPDATE categories SET name = ?, type = ?, color = ?, updated_at = ? WHERE id = ?",
   ).run(name, type, color, now, id);
@@ -178,19 +200,7 @@ export function restoreCategory(id: string): Category {
     throw new NotFoundError(`Category with id "${id}" not found`)
   }
 
-  const conflict = db
-    .prepare(
-      `SELECT 1
-       FROM categories
-       WHERE name = ?
-         AND type = ?
-         AND deleted_at IS NULL
-         AND id != ?`,
-    )
-    .get(existing.name, existing.type, id);
-  if (conflict) {
-    throw new ConflictError(`A category with the name "${existing.name}" and type "${existing.type}" already exists`)
-  }
+  assertEntityNameIsUnique(existing.name, { table: "categories", id });
 
   db.prepare(
     "UPDATE categories SET deleted_at = NULL, updated_at = ? WHERE id = ?",
@@ -305,12 +315,24 @@ export function updateSubcategory(
     });
   }
 
-  if (updates.category_id !== undefined) {
+  if (
+    updates.category_id !== undefined &&
+    updates.category_id !== existing.category_id
+  ) {
     const category = db
       .prepare("SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL")
       .get(updates.category_id) as CategoryRow | undefined;
     if (!category) {
       throw new NotFoundError(`Category with id "${updates.category_id}" not found`)
+    }
+
+    const sourceCategory = db
+      .prepare("SELECT type FROM categories WHERE id = ?")
+      .get(existing.category_id) as { type: CategoryType } | undefined;
+    if (sourceCategory && sourceCategory.type !== category.type) {
+      throw new ConflictError(
+        "Cannot move subcategory between income and expense categories",
+      );
     }
   }
 
@@ -371,19 +393,10 @@ export function restoreSubcategory(id: string): Subcategory {
     throw new NotFoundError(`Category with id "${existing.category_id}" not found`)
   }
 
-  const conflict = db
-    .prepare(
-      `SELECT 1
-       FROM subcategories
-       WHERE name = ?
-         AND category_id = ?
-         AND deleted_at IS NULL
-         AND id != ?`,
-    )
-    .get(existing.name, existing.category_id, id);
-  if (conflict) {
-    throw new ConflictError(`A subcategory with the name "${existing.name}" already exists in this category`)
-  }
+  assertEntityNameIsUnique(existing.name, {
+    table: "subcategories",
+    id,
+  });
 
   db.prepare(
     "UPDATE subcategories SET deleted_at = NULL, updated_at = ? WHERE id = ?",

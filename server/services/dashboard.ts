@@ -1,4 +1,4 @@
-import { differenceInDays, parseISO } from "date-fns";
+import { addMonths, differenceInDays, endOfMonth, parseISO, startOfMonth } from "date-fns";
 import { getDb } from "../db/index.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
 import type { AccountSummary,
@@ -100,6 +100,33 @@ function buildTagFilterClause(
   };
 }
 
+function prorateMonthlyGoal(
+  monthlyGoal: number,
+  startDate: string,
+  endDate: string,
+): number {
+  const rangeStart = parseISO(startDate);
+  const rangeEnd = parseISO(endDate);
+  let monthStart = startOfMonth(rangeStart);
+  let total = 0;
+
+  while (monthStart <= rangeEnd) {
+    const monthEnd = endOfMonth(monthStart);
+    const overlapStart = rangeStart > monthStart ? rangeStart : monthStart;
+    const overlapEnd = rangeEnd < monthEnd ? rangeEnd : monthEnd;
+
+    if (overlapStart <= overlapEnd) {
+      const elapsedDays = differenceInDays(overlapEnd, overlapStart) + 1;
+      const daysInMonth = differenceInDays(monthEnd, monthStart) + 1;
+      total += (monthlyGoal * elapsedDays) / daysInMonth;
+    }
+
+    monthStart = addMonths(monthStart, 1);
+  }
+
+  return total;
+}
+
 // === Dashboard Functions ===
 
 export function getAccountSummary(
@@ -195,8 +222,6 @@ export function getCategorySummary(
     startDate,
     endDate,
   );
-  const rangeDays =
-    differenceInDays(parseISO(endDate), parseISO(effectiveStartDate)) + 1;
   const tagFilter = buildTagFilterClause("t", tagIds);
 
   const rows = db
@@ -217,6 +242,11 @@ export function getCategorySummary(
        ON t.subcategory_id = s.id
        AND t.date >= ? AND t.date <= ?
        AND t.deleted_at IS NULL
+       AND EXISTS (
+         SELECT 1
+         FROM accounts a
+         WHERE a.id = t.account_id AND a.deleted_at IS NULL
+       )
        AND t.kind = c.type
        ${tagFilter.clause}
      WHERE c.deleted_at IS NULL
@@ -249,7 +279,9 @@ export function getCategorySummary(
     }
 
     const scaledGoal =
-      row.monthly_goal != null ? (row.monthly_goal / 30.42) * rangeDays : null;
+      row.monthly_goal != null
+        ? prorateMonthlyGoal(row.monthly_goal, effectiveStartDate, endDate)
+        : null;
 
     const subcategory: SubcategorySummary = {
       subcategory_id: row.subcategory_id,
@@ -294,7 +326,7 @@ export function getDashboardMetrics(
     .prepare(
       `SELECT
        COALESCE(SUM(CASE WHEN t.kind = 'income' THEN t.amount ELSE 0 END), 0) AS totalIncome,
-       COALESCE(SUM(CASE WHEN t.kind = 'expense' THEN t.amount ELSE 0 END), 0) AS totalExpenses
+       COALESCE(SUM(CASE WHEN t.kind = 'expense' THEN ABS(t.amount) ELSE 0 END), 0) AS totalExpenses
      FROM transactions t
      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
      WHERE t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
@@ -305,7 +337,7 @@ export function getDashboardMetrics(
   return {
     totalIncome: row.totalIncome,
     totalExpenses: row.totalExpenses,
-    netChange: row.totalIncome + row.totalExpenses,
+    netChange: row.totalIncome - row.totalExpenses,
   };
 }
 
