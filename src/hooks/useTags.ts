@@ -11,7 +11,8 @@ export function useTags() {
     queryKey: queryKeys.tags.list(),
     queryFn: () => apiGet<Tag[]>("/tags"),
     select: (res) => res.data ?? [],
-    staleTime: Infinity,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const invalidateRelated = () => invalidateFinanceQueries(queryClient, "tags");

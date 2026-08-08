@@ -50,7 +50,8 @@ export function useAccountLinking() {
         providerConnectionSummarySchema.array(),
       ),
     select: (res) => res.data ?? [],
-    staleTime: Infinity,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const invalidateRelated = () =>

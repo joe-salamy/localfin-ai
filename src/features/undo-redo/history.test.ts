@@ -92,3 +92,14 @@ test("failed execute, undo, and redo attempts leave stacks unchanged", async () 
   expect(withUndoAndRedo.undoStack.map((item) => item.id)).toEqual(["first"]);
   expect(withUndoAndRedo.redoStack.map((item) => item.id)).toEqual(["second"]);
 });
+
+test("caps undo history while preserving newest actions", () => {
+  let history = emptyUndoRedoHistory();
+  for (let index = 0; index < 105; index++) {
+    history = pushUndoAction(history, action(`action-${index}`));
+  }
+
+  expect(history.undoStack).toHaveLength(100);
+  expect(history.undoStack[0]?.id).toBe("action-5");
+  expect(history.undoStack.at(-1)?.id).toBe("action-104");
+});

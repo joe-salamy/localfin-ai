@@ -123,6 +123,7 @@ export type CellApplyMode = "paste" | "clear";
 export interface CellApplyResult {
   row: TransactionRow;
   applied: boolean;
+  unknownTags?: string[];
 }
 
 export function applyCellValue(
@@ -241,13 +242,25 @@ export function applyCellValue(
   }
 
   if (field === "tag_ids") {
-    const tagIds = resolveTagIds(value, tags);
-    return tagIds.length > 0
-      ? { row: { ...row, tag_ids: tagIds }, applied: true }
-      : { row, applied: false };
+    const resolved = resolveTagIds(value, tags);
+    return resolved.tagIds.length > 0
+      ? {
+          row: { ...row, tag_ids: resolved.tagIds },
+          applied: true,
+          unknownTags: resolved.unknown,
+        }
+      : { row, applied: false, unknownTags: resolved.unknown };
   }
 
-  const subcategoryId = resolveSubcategoryId(value, categories, subcategories);
+  const currentCategoryId = subcategories.find(
+    (subcategory) => subcategory.id === row.subcategory_id,
+  )?.category_id;
+  const subcategoryId = resolveSubcategoryId(
+    value,
+    categories,
+    subcategories,
+    currentCategoryId,
+  );
   return subcategoryId && kindHasSubcategory(row.kind)
     ? {
         row: {

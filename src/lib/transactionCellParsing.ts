@@ -51,9 +51,19 @@ export function kindHasSubcategory(kind: TransactionKind): boolean {
 }
 
 export function parsePastedAmount(value: string): number | null {
-  const cleaned = value.replace(/[$,\s]/g, "");
-  if (!cleaned) return null;
-  const amount = Number(cleaned);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  // Keep comma grouping strict: commas may only separate complete three-digit
+  // groups, while ungrouped amounts may contain one decimal point and up to
+  // two decimal places.
+  const match =
+    /^([+-]?)\$?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)$/.exec(
+      trimmed,
+    );
+  if (!match) return null;
+
+  const amount = Number(trimmed.replace("$", "").replace(/,/g, ""));
   return Number.isFinite(amount) ? amount : null;
 }
 
@@ -120,14 +130,13 @@ export function resolveSubcategoryId(
   value: string,
   categories: Category[],
   subcategories: Subcategory[],
+  currentCategoryId?: string | null,
 ): string | null {
   const normalized = normaliseClipboardValue(value);
   if (!normalized) return null;
 
   const direct = subcategories.find(
-    (subcategory) =>
-      subcategory.id.toLowerCase() === normalized ||
-      subcategory.name.toLowerCase() === normalized,
+    (subcategory) => subcategory.id.toLowerCase() === normalized,
   );
   if (direct) return direct.id;
 
@@ -136,30 +145,52 @@ export function resolveSubcategoryId(
     .map((part) => part.trim())
     .filter(Boolean);
   if (parts.length >= 2) {
-    const categoryName = normaliseClipboardValue(parts[0]);
-    const subcategoryName = normaliseClipboardValue(parts[parts.length - 1]);
-    const category = categories.find(
-      (cat) => cat.name.toLowerCase() === categoryName,
-    );
-    const scoped = subcategories.find(
+    const categoryName = normaliseClipboardValue(parts[0] ?? "");
+    const subcategoryName = normaliseClipboardValue(parts.at(-1) ?? "");
+    const categoryIds = categories
+      .filter((category) => category.name.toLowerCase() === categoryName)
+      .map((category) => category.id);
+    const scoped = subcategories.filter(
       (subcategory) =>
-        subcategory.category_id === category?.id &&
+        categoryIds.includes(subcategory.category_id) &&
         subcategory.name.toLowerCase() === subcategoryName,
     );
-    if (scoped) return scoped.id;
+    return scoped.length === 1 ? scoped[0]?.id ?? null : null;
   }
 
-  return null;
+  const matches = subcategories.filter(
+    (subcategory) => subcategory.name.toLowerCase() === normalized,
+  );
+  if (currentCategoryId) {
+    const scoped = matches.filter(
+      (subcategory) => subcategory.category_id === currentCategoryId,
+    );
+    if (scoped.length > 0) {
+      return scoped.length === 1 ? scoped[0]?.id ?? null : null;
+    }
+  }
+
+  return matches.length === 1 ? matches[0]?.id ?? null : null;
 }
 
-export function resolveTagIds(value: string, tags: Tag[]): string[] {
+export interface ResolvedTagIds {
+  tagIds: string[];
+  unknown: string[];
+}
+
+export function resolveTagIds(
+  value: string,
+  tags: Tag[],
+): ResolvedTagIds {
   const tokens = value
     .split(",")
     .map((token) => token.trim())
     .filter(Boolean);
-  if (tokens.length === 0) return [];
+  if (tokens.length === 0) return { tagIds: [], unknown: [] };
 
   const selected: string[] = [];
+  const unknown: string[] = [];
+  const unknownKeys = new Set<string>();
   for (const token of tokens) {
     const normalized = normaliseClipboardValue(token);
     const tag = tags.find(
@@ -167,7 +198,13 @@ export function resolveTagIds(value: string, tags: Tag[]): string[] {
         item.id.toLowerCase() === normalized ||
         item.name.toLowerCase() === normalized,
     );
-    if (tag && !selected.includes(tag.id)) selected.push(tag.id);
+    if (tag) {
+      if (!selected.includes(tag.id)) selected.push(tag.id);
+    } else if (!unknownKeys.has(normalized)) {
+      unknownKeys.add(normalized);
+      unknown.push(token);
+    }
   }
-  return selected;
+  return { tagIds: selected, unknown };
 }
+

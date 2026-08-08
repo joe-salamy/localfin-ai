@@ -91,6 +91,7 @@ interface TransactionTableProps {
     options?: TagPickerCreateOptions,
   ) => Promise<Tag>;
   suspectFindings?: SuspectTransactionFinding[];
+  selectionIdentity?: string;
 }
 
 interface EditState {
@@ -119,6 +120,7 @@ export function TransactionTable({
   suspectFindings = [],
   tags,
   onCreateTag,
+  selectionIdentity,
 }: TransactionTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState>({
@@ -138,6 +140,7 @@ export function TransactionTable({
     transactions[0]?.id ?? null,
   );
   const [tableFocused, setTableFocused] = useState(false);
+  const selectionIdentityRef = useRef(selectionIdentity);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const {
     selectedRanges,
@@ -153,6 +156,7 @@ export function TransactionTable({
   } = useSpreadsheetSelection({
     rowCount: transactions.length,
     columnCount: historyTransactionCellFields.length,
+    rowIdentity: selectionIdentity,
     containerRef: tableContainerRef,
     focusCell: (cell) => {
       tableContainerRef.current
@@ -227,6 +231,12 @@ export function TransactionTable({
       setFocusedId(transactions[0]?.id ?? null);
     }
   }, [focusedId, transactions]);
+
+  useEffect(() => {
+    if (selectionIdentityRef.current === selectionIdentity) return;
+    selectionIdentityRef.current = selectionIdentity;
+    clearSelection();
+  }, [clearSelection, selectionIdentity]);
 
   const toggleAll = useCallback(() => {
     if (allSelected) {
@@ -415,9 +425,35 @@ export function TransactionTable({
       .filter(Boolean);
     if (values.length === 0) return;
 
-    const resolvedIds = values.map((value) =>
-      resolveSubcategoryId(value, categories, subcategories),
-    );
+    const targetTransactions =
+      selectedIds.size > 0
+        ? transactions.filter((item) => selectedIds.has(item.id))
+        : transactions.slice(
+            transactions.findIndex((item) => item.id === transaction.id),
+          );
+    const updates =
+      values.length === 1
+        ? targetTransactions.map((item) => ({
+            item,
+            subcategoryId: resolveSubcategoryId(
+              values[0] ?? "",
+              categories,
+              subcategories,
+              item.category_id,
+            ),
+          }))
+        : targetTransactions
+            .slice(0, values.length)
+            .map((item, index) => ({
+              item,
+              subcategoryId: resolveSubcategoryId(
+                values[index] ?? "",
+                categories,
+                subcategories,
+                item.category_id,
+              ),
+            }));
+    const resolvedIds = updates.map((update) => update.subcategoryId);
     if (resolvedIds.every((id) => !id)) return;
 
     e.preventDefault();
@@ -434,25 +470,6 @@ export function TransactionTable({
       }
       return;
     }
-
-    const targetTransactions =
-      selectedIds.size > 0
-        ? transactions.filter((item) => selectedIds.has(item.id))
-        : transactions.slice(
-            transactions.findIndex((item) => item.id === transaction.id),
-          );
-    const updates =
-      values.length === 1
-        ? targetTransactions.map((item) => ({
-            item,
-            subcategoryId: resolvedIds[0],
-          }))
-        : targetTransactions
-            .slice(0, resolvedIds.length)
-            .map((item, index) => ({
-              item,
-              subcategoryId: resolvedIds[index],
-            }));
 
     const changes = updates.flatMap((update) =>
       update.subcategoryId
@@ -525,7 +542,6 @@ export function TransactionTable({
     },
     [],
   );
-
   const parseHistoryCellValue = useCallback(
     (
       field: HistoryTransactionCellField,
@@ -533,7 +549,11 @@ export function TransactionTable({
       transaction: TransactionWithDetails,
       mode: "paste" | "clear",
       draftKind: TransactionKind = transaction.kind,
-    ): { updates: UpdateTransactionData; applied: boolean } => {
+    ): {
+      updates: UpdateTransactionData;
+      applied: boolean;
+      unknownTags?: string[];
+    } => {
       if (mode === "clear") {
         if (field === "subcategory_id")
           return { updates: { subcategory_id: null }, applied: true };
@@ -582,17 +602,26 @@ export function TransactionTable({
           value,
           categories,
           subcategories,
+          transaction.category_id,
         );
         return subcategoryId
           ? { updates: { subcategory_id: subcategoryId }, applied: true }
           : { updates: {}, applied: false };
       }
       if (field === "tag_ids") {
-        const tagIds = resolveTagIds(value, tags);
-        if (tagIds.length === 0 || tagIds.length > 50) {
-          return { updates: {}, applied: false };
+        const resolved = resolveTagIds(value, tags);
+        if (resolved.tagIds.length === 0 || resolved.tagIds.length > 50) {
+          return {
+            updates: {},
+            applied: false,
+            unknownTags: resolved.unknown,
+          };
         }
-        return { updates: { tag_ids: tagIds }, applied: true };
+        return {
+          updates: { tag_ids: resolved.tagIds },
+          applied: true,
+          unknownTags: resolved.unknown,
+        };
       }
 
       return { updates: { comment: value.trim() || null }, applied: true };
@@ -633,6 +662,7 @@ export function TransactionTable({
         { updates: UpdateTransactionData; cells: number }
       >();
       let skipped = 0;
+      const unknownTags = new Set<string>();
 
       for (let rowOffset = 0; rowOffset < matrix.length; rowOffset++) {
         const transaction = transactions[startRow + rowOffset];
@@ -657,6 +687,7 @@ export function TransactionTable({
             mode,
             draftKind,
           );
+          result.unknownTags?.forEach((tag) => unknownTags.add(tag));
           if (!result.applied) {
             skipped++;
             continue;
@@ -692,9 +723,13 @@ export function TransactionTable({
           `Updated ${updatedCells} cell(s) across ${updatedRows} row(s).`,
         );
       }
-      if (skipped > 0 || !ok) {
+      if (skipped > 0 || !ok || unknownTags.size > 0) {
+        const unknownTagWarning =
+          unknownTags.size > 0
+            ? ` Unknown tags were dropped: ${Array.from(unknownTags).join(", ")}.`
+            : "";
         toast.warning(
-          `Skipped ${skipped} invalid cell(s); ${ok ? 0 : 1} row update(s) failed.`,
+          `Skipped ${skipped} invalid cell(s); ${ok ? 0 : 1} row update(s) failed.${unknownTagWarning}`,
         );
       }
     },

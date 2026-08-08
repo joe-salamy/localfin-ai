@@ -12,12 +12,15 @@ export function emptyUndoRedoHistory(): UndoRedoHistory {
   };
 }
 
+const MAX_UNDO_HISTORY_ENTRIES = 100;
+
 export function pushUndoAction(
   history: UndoRedoHistory,
   action: UndoableAction,
 ): UndoRedoHistory {
+  const undoStack = [...history.undoStack, action];
   return {
-    undoStack: [...history.undoStack, action],
+    undoStack: undoStack.slice(-MAX_UNDO_HISTORY_ENTRIES),
     redoStack: [],
   };
 }

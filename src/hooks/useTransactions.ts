@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
@@ -48,6 +49,13 @@ export function useTransactions(filters?: TransactionFilters) {
       ),
     select: (res) => res.data ?? [],
   });
+  const getTransaction = useCallback(async (id: string) => {
+    const response = await apiGet<TransactionWithDetails>(
+      `/transactions/${id}`,
+      transactionWithDetailsSchema,
+    );
+    return response.data ?? null;
+  }, []);
 
   const invalidateRelated = () =>
     invalidateFinanceQueries(queryClient, "transactions");
@@ -139,6 +147,7 @@ export function useTransactions(filters?: TransactionFilters) {
     createTransaction,
     updateTransaction,
     deleteTransaction,
+    getTransaction,
     restoreTransaction,
     bulkUpdateTransactions,
     bulkDeleteTransactions,

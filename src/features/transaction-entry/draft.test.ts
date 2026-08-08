@@ -96,6 +96,39 @@ describe("transaction entry draft", () => {
     expect(isRowValid(tagged.row)).toBeTruthy();
   });
 
+  test("rejects malformed amounts and reports unknown tags", () => {
+    const malformed = applyCellValue(
+      row(),
+      "amount",
+      "1,2",
+      accounts,
+      categories,
+      subcategories,
+      tags,
+      "paste",
+    );
+    expect(malformed).toMatchObject({
+      applied: false,
+      row: { amount: "10.00" },
+    });
+
+    const tagged = applyCellValue(
+      row(),
+      "tag_ids",
+      "Trip, Missing",
+      accounts,
+      categories,
+      subcategories,
+      tags,
+      "paste",
+    );
+    expect(tagged).toMatchObject({
+      applied: true,
+      row: { tag_ids: ["trip"] },
+      unknownTags: ["Missing"],
+    });
+  });
+
   test("clear preserves kind but clears editable cells", () => {
     expect(
       applyCellValue(

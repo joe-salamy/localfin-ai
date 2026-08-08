@@ -75,6 +75,10 @@ import {
   type CellApplyMode,
   type TransactionRow,
 } from "@/features/transaction-entry/draft";
+import {
+  applyDuplicateCheckResults,
+  buildDuplicateCheckPayload,
+} from "@/features/transaction-entry/duplicateCheck";
 import { useTransactionDraft } from "@/features/transaction-entry/useTransactionDraft";
 import { StatementImportPanel } from "@/features/transaction-entry/StatementImportPanel";
 import { TransactionDraftActions } from "@/features/transaction-entry/TransactionDraftActions";
@@ -196,8 +200,8 @@ export function MultiTransactionTable() {
     statementAccountId,
     setStatementAccountId,
     parseSummary,
-    captureSnapshot: captureDraftSnapshot,
-    executeSnapshotAction: executeDraftSnapshotAction,
+    captureSnapshot,
+    executeSnapshotAction,
   } = useTransactionDraft();
   const [saving, setSaving] = useState(false);
   const [flaggedWarningMatches, setFlaggedWarningMatches] = useState<
@@ -208,8 +212,11 @@ export function MultiTransactionTable() {
   const statementTextRef = useRef<HTMLTextAreaElement>(null);
   const cellRefs = useRef<Array<HTMLElement | null>>([]);
   const gridContainerRef = useRef<HTMLDivElement>(null);
+  const draftRevisionRef = useRef(0);
+  const markDraftEdited = useCallback(() => {
+    draftRevisionRef.current += 1;
+  }, []);
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
-  const [gridFocused, setGridFocused] = useState(false);
   const {
     selectedRanges,
     activeCell,
@@ -248,17 +255,13 @@ export function MultiTransactionTable() {
 
 
   useShortcutScope("transactionInput");
-  useShortcutScope("transactionInputGrid", gridFocused);
-
-
-  // ── Row manipulation ──────────────────────────────────────────────
-
   const updateRow = useCallback(
     (
       id: string,
       field: keyof TransactionRow,
       value: string | boolean | string[],
     ) => {
+      markDraftEdited();
       setRows((prev) =>
         prev.map((r) =>
           r.id === id ? { ...r, [field]: value, isDuplicate: false } : r,
@@ -266,16 +269,23 @@ export function MultiTransactionTable() {
       );
       setDuplicatesChecked(false);
     },
-    [setDuplicatesChecked, setRows],
+    [markDraftEdited, setDuplicatesChecked, setRows],
   );
 
   const addRow = useCallback(() => {
-    const before = captureDraftSnapshot();
-    const after = captureDraftSnapshot({
+    markDraftEdited();
+    const before = captureSnapshot();
+    const after = captureSnapshot({
       rows: [...cloneRows(rows), emptyRow()],
+      duplicatesChecked: false,
     });
-    void executeDraftSnapshotAction("Add transaction row", before, after);
-  }, [captureDraftSnapshot, executeDraftSnapshotAction, rows]);
+    void executeSnapshotAction("Add transaction row", before, after);
+  }, [
+    captureSnapshot,
+    executeSnapshotAction,
+    markDraftEdited,
+    rows,
+  ]);
 
   const handleSubcategoryChange = useCallback(
     (row: TransactionRow, value: string) => {
@@ -300,6 +310,7 @@ export function MultiTransactionTable() {
 
   const handleKindChange = useCallback(
     (row: TransactionRow, kind: TransactionKind) => {
+      markDraftEdited();
       setRows((prev) =>
         prev.map((r) =>
           r.id === row.id
@@ -314,37 +325,64 @@ export function MultiTransactionTable() {
                 subcategory_id: kindHasSubcategory(kind)
                   ? r.subcategory_id
                   : "",
+                isDuplicate: false,
               }
             : r,
         ),
       );
       setDuplicatesChecked(false);
     },
-    [accounts, setDuplicatesChecked, setRows],
+    [accounts, markDraftEdited, setDuplicatesChecked, setRows],
   );
 
   const removeRow = useCallback(
     (id: string) => {
-      const before = captureDraftSnapshot();
+      markDraftEdited();
+      const before = captureSnapshot();
       const nextRows =
         rows.length <= 1 ? [emptyRow()] : rows.filter((row) => row.id !== id);
-      const after = captureDraftSnapshot({
+      const after = captureSnapshot({
         rows: nextRows,
         duplicatesChecked: false,
       });
-      void executeDraftSnapshotAction("Remove transaction row", before, after);
+      void executeSnapshotAction("Remove transaction row", before, after);
     },
-    [captureDraftSnapshot, executeDraftSnapshotAction, rows],
+    [
+      captureSnapshot,
+      executeSnapshotAction,
+      markDraftEdited,
+      rows,
+    ],
   );
 
   const clearAll = useCallback(() => {
-    const before = captureDraftSnapshot();
-    const after = captureDraftSnapshot({
+    markDraftEdited();
+    const before = captureSnapshot();
+    const after = captureSnapshot({
       rows: initialRows(),
       duplicatesChecked: false,
     });
-    void executeDraftSnapshotAction("Clear transactions", before, after);
-  }, [captureDraftSnapshot, executeDraftSnapshotAction]);
+    void executeSnapshotAction("Clear transactions", before, after);
+  }, [
+    captureSnapshot,
+    executeSnapshotAction,
+    markDraftEdited,
+  ]);
+  const handleStatementTextChange = useCallback(
+    (value: string) => {
+      markDraftEdited();
+      setStatementText(value);
+    },
+    [markDraftEdited, setStatementText],
+  );
+
+  const handleStatementAccountChange = useCallback(
+    (value: string) => {
+      markDraftEdited();
+      setStatementAccountId(value);
+    },
+    [markDraftEdited, setStatementAccountId],
+  );
 
   const focusCell = useCallback((index: number) => {
     const cells = cellRefs.current.filter(
@@ -515,6 +553,7 @@ export function MultiTransactionTable() {
       const next = cloneRows(rows);
       let changed = false;
       let skipped = 0;
+      const unknownTags = new Set<string>();
 
       for (let rowOffset = 0; rowOffset < matrix.length; rowOffset++) {
         const targetRow = startRow + rowOffset;
@@ -535,6 +574,7 @@ export function MultiTransactionTable() {
             tags,
             mode,
           );
+          result.unknownTags?.forEach((tag) => unknownTags.add(tag));
           row = result.row;
           rowChanged ||= result.applied;
           changed ||= result.applied;
@@ -547,15 +587,21 @@ export function MultiTransactionTable() {
         if (skipped > 0) {
           toast.warning(`Skipped ${skipped} invalid pasted cell(s).`);
         }
+        if (unknownTags.size > 0) {
+          toast.warning(
+            `Unknown tags were dropped: ${Array.from(unknownTags).join(", ")}.`,
+          );
+        }
         return;
       }
 
-      const before = captureDraftSnapshot();
-      const after = captureDraftSnapshot({
+      markDraftEdited();
+      const before = captureSnapshot();
+      const after = captureSnapshot({
         rows: next,
         duplicatesChecked: false,
       });
-      void executeDraftSnapshotAction(
+      void executeSnapshotAction(
         mode === "clear"
           ? "Clear transaction cells"
           : "Paste transaction cells",
@@ -565,14 +611,20 @@ export function MultiTransactionTable() {
           if (skipped > 0) {
             toast.warning(`Skipped ${skipped} invalid pasted cell(s).`);
           }
+          if (unknownTags.size > 0) {
+            toast.warning(
+              `Unknown tags were dropped: ${Array.from(unknownTags).join(", ")}.`,
+            );
+          }
         },
       );
     },
     [
       accounts,
-      captureDraftSnapshot,
+      captureSnapshot,
       categories,
-      executeDraftSnapshotAction,
+      executeSnapshotAction,
+      markDraftEdited,
       rows,
       subcategories,
       tags,
@@ -606,19 +658,21 @@ export function MultiTransactionTable() {
       }
       if (!changed) return false;
 
-      const before = captureDraftSnapshot();
-      const after = captureDraftSnapshot({
+      markDraftEdited();
+      const before = captureSnapshot();
+      const after = captureSnapshot({
         rows: next,
         duplicatesChecked: false,
       });
-      void executeDraftSnapshotAction(label, before, after);
+      void executeSnapshotAction(label, before, after);
       return true;
     },
     [
       accounts,
-      captureDraftSnapshot,
+      captureSnapshot,
       categories,
-      executeDraftSnapshotAction,
+      executeSnapshotAction,
+      markDraftEdited,
       rows,
       subcategories,
       tags,
@@ -632,6 +686,7 @@ export function MultiTransactionTable() {
       const next = cloneRows(rows);
       let changed = false;
       let skipped = 0;
+      const unknownTags = new Set<string>();
 
       for (const cell of selectedCells) {
         const field = addTransactionCellFields[cell.col];
@@ -647,6 +702,7 @@ export function MultiTransactionTable() {
           tags,
           "paste",
         );
+        result.unknownTags?.forEach((tag) => unknownTags.add(tag));
         if (!result.applied) {
           skipped++;
           continue;
@@ -659,15 +715,21 @@ export function MultiTransactionTable() {
         if (skipped > 0) {
           toast.warning(`Skipped ${skipped} invalid pasted cell(s).`);
         }
+        if (unknownTags.size > 0) {
+          toast.warning(
+            `Unknown tags were dropped: ${Array.from(unknownTags).join(", ")}.`,
+          );
+        }
         return;
       }
 
-      const before = captureDraftSnapshot();
-      const after = captureDraftSnapshot({
+      markDraftEdited();
+      const before = captureSnapshot();
+      const after = captureSnapshot({
         rows: next,
         duplicatesChecked: false,
       });
-      void executeDraftSnapshotAction(
+      void executeSnapshotAction(
         "Fill transaction cells",
         before,
         after,
@@ -675,19 +737,26 @@ export function MultiTransactionTable() {
           if (skipped > 0) {
             toast.warning(`Skipped ${skipped} invalid pasted cell(s).`);
           }
+          if (unknownTags.size > 0) {
+            toast.warning(
+              `Unknown tags were dropped: ${Array.from(unknownTags).join(", ")}.`,
+            );
+          }
         },
       );
     },
     [
       accounts,
-      captureDraftSnapshot,
+      captureSnapshot,
       categories,
-      executeDraftSnapshotAction,
+      executeSnapshotAction,
+      markDraftEdited,
       rows,
       subcategories,
       tags,
     ],
   );
+
 
   const handlePaste = useCallback(
     (
@@ -943,6 +1012,7 @@ export function MultiTransactionTable() {
       return;
     }
 
+    const requestRevision = draftRevisionRef.current;
     const conversationId = crypto.randomUUID();
     setLastRunId(conversationId);
 
@@ -962,6 +1032,7 @@ export function MultiTransactionTable() {
           date: row.date ? toApiDate(row.date) : undefined,
         })),
       });
+      if (draftRevisionRef.current !== requestRevision) return;
       const data = result.data ?? [];
       const byId = new Map(
         eligibleRows.map((row, index) => [row.id, data[index]]),
@@ -980,9 +1051,10 @@ export function MultiTransactionTable() {
             cat.source === "ai" ? cat.subcategory_id : null,
         };
       });
-      const before = captureDraftSnapshot();
-      const after = captureDraftSnapshot({ rows: nextRows });
-      await executeDraftSnapshotAction(
+      markDraftEdited();
+      const before = captureSnapshot();
+      const after = captureSnapshot({ rows: nextRows });
+      await executeSnapshotAction(
         "Categorize transactions",
         before,
         after,
@@ -995,10 +1067,11 @@ export function MultiTransactionTable() {
     }
   }, [
     accounts,
-    captureDraftSnapshot,
+    captureSnapshot,
     categorize,
-    executeDraftSnapshotAction,
+    executeSnapshotAction,
     filledRows,
+    markDraftEdited,
     rows,
     successToast,
   ]);
@@ -1009,11 +1082,13 @@ export function MultiTransactionTable() {
       return;
     }
 
+    const requestRevision = draftRevisionRef.current;
     try {
       const result = await parseStatement.mutateAsync({
         text: statementText,
         accountId: statementAccountId,
       });
+      if (draftRevisionRef.current !== requestRevision) return;
       const data = result.data;
       if (!data) return;
 
@@ -1034,15 +1109,16 @@ export function MultiTransactionTable() {
           tx.categorizationSource === "ai" ? tx.subcategory_id : null,
         tag_ids: [],
       }));
-      const before = captureDraftSnapshot();
-      const after = captureDraftSnapshot({
+      markDraftEdited();
+      const before = captureSnapshot();
+      const after = captureSnapshot({
         rows: nextRows,
         duplicatesChecked: data.summary.duplicates > 0,
         parseSummary: summary,
         statementText: "",
         statementAccountId: "",
       });
-      await executeDraftSnapshotAction("Parse statement", before, after, () =>
+      await executeSnapshotAction("Parse statement", before, after, () =>
         successToast(`Parsed ${data.summary.total} transaction(s).`),
       );
     } catch (err) {
@@ -1051,13 +1127,15 @@ export function MultiTransactionTable() {
       );
     }
   }, [
-    captureDraftSnapshot,
-    executeDraftSnapshotAction,
+    captureSnapshot,
+    executeSnapshotAction,
+    markDraftEdited,
     parseStatement,
     statementAccountId,
     statementText,
     successToast,
   ]);
+
 
   const handleSave = useCallback(async () => {
     // Validate
@@ -1083,36 +1161,30 @@ export function MultiTransactionTable() {
     }
 
     setSaving(true);
+    const saveRevision = draftRevisionRef.current;
 
     try {
       // Check duplicates if not already checked
       if (!duplicatesChecked) {
-        const dupPayload = filledRows.map((r) => ({
-          date: toApiDate(r.date),
-          name: r.name,
-          amount: displayAmountToNumber(normalizeRowAmountDisplay(r, accounts)),
-          account_id: r.account_id,
-        }));
-
+        const dupPayload = buildDuplicateCheckPayload(filledRows, accounts);
         const dupResult = await checkDuplicates.mutateAsync(dupPayload);
+        if (draftRevisionRef.current !== saveRevision) return;
         const dupData = dupResult.data ?? [];
         const hasDuplicates = dupData.some(Boolean);
 
         if (hasDuplicates) {
-          const filledIds = filledRows.map((r) => r.id);
-          let filledIdx = 0;
-          const nextRows = rows.map((row) => {
-            if (!filledIds.includes(row.id)) return row;
-            const isDuplicate = dupData[filledIdx] ?? false;
-            filledIdx++;
-            return { ...row, isDuplicate };
-          });
-          const before = captureDraftSnapshot();
-          const after = captureDraftSnapshot({
+          const nextRows = applyDuplicateCheckResults(
+            rows,
+            filledRows,
+            dupData,
+          );
+          markDraftEdited();
+          const before = captureSnapshot();
+          const after = captureSnapshot({
             rows: nextRows,
             duplicatesChecked: true,
           });
-          await executeDraftSnapshotAction(
+          await executeSnapshotAction(
             "Mark duplicate transactions",
             before,
             after,
@@ -1124,6 +1196,8 @@ export function MultiTransactionTable() {
           return;
         }
       }
+
+      if (draftRevisionRef.current !== saveRevision) return;
 
       // Build payload
       const payload: CreateTransactionData[] = filledRows.map((r) => ({
@@ -1181,19 +1255,19 @@ export function MultiTransactionTable() {
     bulkCreateTransactions,
     bulkDeleteTransactions,
     bulkRestoreTransactions,
-    captureDraftSnapshot,
+    captureSnapshot,
     checkDuplicates,
     duplicatesChecked,
     execute,
-    executeDraftSnapshotAction,
+    executeSnapshotAction,
     filledRows,
     findTransactionMatches,
+    markDraftEdited,
     rows,
     setDuplicatesChecked,
     setRows,
     successToast,
   ]);
-
   const handleGridContainerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (handleGridKeyDown(event)) return;
@@ -1343,8 +1417,8 @@ export function MultiTransactionTable() {
         parsing={parseStatement.isPending}
         accountRef={statementAccountRef}
         textRef={statementTextRef}
-        onAccountChange={setStatementAccountId}
-        onTextChange={setStatementText}
+        onAccountChange={handleStatementAccountChange}
+        onTextChange={handleStatementTextChange}
         onParse={() => void handleParseStatement()}
       />
 
@@ -1358,10 +1432,8 @@ export function MultiTransactionTable() {
         onPaste={handleGridPaste}
         onKeyDownCapture={handleGridContainerKeyDownCapture}
         onKeyDown={handleGridContainerKeyDown}
-        onFocus={() => setGridFocused(true)}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) {
-            setGridFocused(false);
             setFocusedRowId(null);
             setEditingCell(null);
             clearCopied();
@@ -1495,17 +1567,7 @@ export function MultiTransactionTable() {
                     placeholder="0.00"
                     value={row.amount}
                     onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      setRows((prev) =>
-                        prev.map((r) =>
-                          r.id === row.id
-                            ? {
-                                ...r,
-                                amount: e.target.value,
-                                isDuplicate: false,
-                              }
-                            : r,
-                        ),
-                      )
+                      updateRow(row.id, "amount", e.target.value)
                     }
                     onBlur={() =>
                       updateRow(
@@ -1560,6 +1622,7 @@ export function MultiTransactionTable() {
                     value={row.account_id}
                     onChange={(e) => {
                       const accountId = e.target.value;
+                      markDraftEdited();
                       setRows((prev) =>
                         prev.map((r) =>
                           r.id === row.id

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import type { BulkTransactionUpdateData,
 CreateTagData,
 Tag,
@@ -33,6 +33,7 @@ import type { CommandId } from "@/features/shortcuts/commands";
 import { AlertTriangle, CheckCircle2, EyeOff, ScanSearch } from "lucide-react";
 import { useUndoRedo } from "@/features/undo-redo/hooks";
 import { transactionSnapshotToUpdate } from "@/features/undo-redo/financeSnapshots";
+import { transactionVersionsMatch } from "@/features/transaction-entry/duplicateCheck";
 import type { TagPickerCreateOptions } from "@/components/features/TagPicker";
 
 const today = format(new Date(), DATE_FORMAT);
@@ -83,6 +84,7 @@ export function TransactionHistoryPage() {
     isLoading,
     error,
     updateTransaction,
+    getTransaction,
     deleteTransaction,
     restoreTransaction,
     bulkUpdateTransactions,
@@ -173,6 +175,17 @@ export function TransactionHistoryPage() {
     });
     return sorted;
   }, [transactions, sortColumn, sortDirection]);
+  const orderedTransactionIds = sortedTransactions
+    .map((transaction) => transaction.id)
+    .join("|");
+  const previousOrderedTransactionIdsRef = useRef(orderedTransactionIds);
+  useEffect(() => {
+    if (previousOrderedTransactionIdsRef.current === orderedTransactionIds) {
+      return;
+    }
+    previousOrderedTransactionIdsRef.current = orderedTransactionIds;
+    setSelectedIds(new Set());
+  }, [orderedTransactionIds]);
 
   const handleSort = useCallback(
     (column: string) => {
@@ -202,12 +215,19 @@ export function TransactionHistoryPage() {
         }
       }
 
+      const expectedUpdatedAt = new Map([[id, before.updated_at]]);
       const applied = await execute({
         id: crypto.randomUUID(),
         label: "Edit transaction",
         apply: async () => {
           try {
-            await updateTransaction.mutateAsync({ id, ...updates });
+            const result = await updateTransaction.mutateAsync({
+              id,
+              ...updates,
+            });
+            if (result.data?.updated_at) {
+              expectedUpdatedAt.set(id, result.data.updated_at);
+            }
             if (!options?.silent) successToast("Transaction updated");
           } catch {
             if (!options?.silent) toast.error("Failed to update transaction");
@@ -215,18 +235,61 @@ export function TransactionHistoryPage() {
           }
         },
         undo: async () => {
-          await updateTransaction.mutateAsync({
+          let matches = false;
+          try {
+            matches = await transactionVersionsMatch(
+              [before],
+              expectedUpdatedAt,
+              getTransaction,
+            );
+          } catch {
+            matches = false;
+          }
+          if (!matches) {
+            toast.warning("This transaction changed elsewhere; undo skipped");
+            return;
+          }
+          const result = await updateTransaction.mutateAsync({
             id,
             ...transactionSnapshotToUpdate(before),
           });
+          if (result.data?.updated_at) {
+            expectedUpdatedAt.set(id, result.data.updated_at);
+          }
         },
         redo: async () => {
-          await updateTransaction.mutateAsync({ id, ...updates });
+          let matches = false;
+          try {
+            matches = await transactionVersionsMatch(
+              [before],
+              expectedUpdatedAt,
+              getTransaction,
+            );
+          } catch {
+            matches = false;
+          }
+          if (!matches) {
+            toast.warning("This transaction changed elsewhere; redo skipped");
+            return;
+          }
+          const result = await updateTransaction.mutateAsync({
+            id,
+            ...updates,
+          });
+          if (result.data?.updated_at) {
+            expectedUpdatedAt.set(id, result.data.updated_at);
+          }
         },
       });
       return applied;
     },
-    [execute, successToast, transactions, updateTransaction],
+    [
+      execute,
+      getTransaction,
+      successToast,
+      transactions,
+      updateTransaction,
+    ],
   );
 
   const handleEditMany = useCallback(
@@ -256,16 +319,22 @@ export function TransactionHistoryPage() {
         snapshots.push(before);
       }
 
-      return execute({
+      const expectedUpdatedAt = new Map(
+        snapshots.map((snapshot) => [snapshot.id, snapshot.updated_at]),
+      );
+      const applied = await execute({
         id: crypto.randomUUID(),
         label: options?.label ?? "Edit transactions",
         apply: async () => {
           try {
             for (const change of changes) {
-              await updateTransaction.mutateAsync({
+              const result = await updateTransaction.mutateAsync({
                 id: change.id,
                 ...change.updates,
               });
+              if (result.data?.updated_at) {
+                expectedUpdatedAt.set(change.id, result.data.updated_at);
+              }
             }
           } catch {
             if (!options?.silent) toast.error("Failed to update transactions");
@@ -273,24 +342,59 @@ export function TransactionHistoryPage() {
           }
         },
         undo: async () => {
+          let matches = false;
+          try {
+            matches = await transactionVersionsMatch(
+              snapshots,
+              expectedUpdatedAt,
+              getTransaction,
+            );
+          } catch {
+            matches = false;
+          }
+          if (!matches) {
+            toast.warning("This transaction changed elsewhere; undo skipped");
+            return;
+          }
           for (const snapshot of snapshots) {
-            await updateTransaction.mutateAsync({
+            const result = await updateTransaction.mutateAsync({
               id: snapshot.id,
               ...transactionSnapshotToUpdate(snapshot),
             });
+            if (result.data?.updated_at) {
+              expectedUpdatedAt.set(snapshot.id, result.data.updated_at);
+            }
           }
         },
         redo: async () => {
+          let matches = false;
+          try {
+            matches = await transactionVersionsMatch(
+              snapshots,
+              expectedUpdatedAt,
+              getTransaction,
+            );
+          } catch {
+            matches = false;
+          }
+          if (!matches) {
+            toast.warning("This transaction changed elsewhere; redo skipped");
+            return;
+          }
           for (const change of changes) {
-            await updateTransaction.mutateAsync({
+            const result = await updateTransaction.mutateAsync({
               id: change.id,
               ...change.updates,
             });
+            if (result.data?.updated_at) {
+              expectedUpdatedAt.set(change.id, result.data.updated_at);
+            }
           }
         },
       });
+      return applied;
     },
-    [execute, transactions, updateTransaction],
+    [execute, getTransaction, transactions, updateTransaction],
   );
 
   const handleDelete = useCallback(
@@ -369,6 +473,18 @@ export function TransactionHistoryPage() {
         return;
       }
 
+      const expectedUpdatedAt = new Map(
+        snapshots.map((snapshot) => [snapshot.id, snapshot.updated_at]),
+      );
+      const refreshExpectedVersions = async () => {
+        for (const snapshot of snapshots) {
+          const current = await getTransaction(snapshot.id);
+          if (current?.updated_at) {
+            expectedUpdatedAt.set(snapshot.id, current.updated_at);
+          }
+        }
+      };
+
       const applied = await execute({
         id: crypto.randomUUID(),
         label: "Bulk edit transactions",
@@ -378,24 +494,57 @@ export function TransactionHistoryPage() {
               ids: selectedIdList,
               updates,
             });
+            await refreshExpectedVersions();
           } catch {
             toast.error("Failed to bulk update");
             throw new Error("Failed to bulk update");
           }
         },
         undo: async () => {
+          let matches = false;
+          try {
+            matches = await transactionVersionsMatch(
+              snapshots,
+              expectedUpdatedAt,
+              getTransaction,
+            );
+          } catch {
+            matches = false;
+          }
+          if (!matches) {
+            toast.warning("This transaction changed elsewhere; undo skipped");
+            return;
+          }
           for (const snapshot of snapshots) {
-            await updateTransaction.mutateAsync({
+            const result = await updateTransaction.mutateAsync({
               id: snapshot.id,
               ...transactionSnapshotToUpdate(snapshot),
             });
+            if (result.data?.updated_at) {
+              expectedUpdatedAt.set(snapshot.id, result.data.updated_at);
+            }
           }
         },
         redo: async () => {
+          let matches = false;
+          try {
+            matches = await transactionVersionsMatch(
+              snapshots,
+              expectedUpdatedAt,
+              getTransaction,
+            );
+          } catch {
+            matches = false;
+          }
+          if (!matches) {
+            toast.warning("This transaction changed elsewhere; redo skipped");
+            return;
+          }
           await bulkUpdateTransactions.mutateAsync({
             ids: selectedIdList,
             updates,
           });
+          await refreshExpectedVersions();
         },
       });
       if (!applied) return;
@@ -406,6 +555,7 @@ export function TransactionHistoryPage() {
     [
       bulkUpdateTransactions,
       execute,
+      getTransaction,
       selectedIds,
       sortedTransactions,
       successToast,
@@ -934,15 +1084,13 @@ export function TransactionHistoryPage() {
           </div>
         )}
       </div>
-
-
-      {/* Loading state */}
       {isLoading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
           Loading...
         </div>
       ) : (
         <TransactionTable
+          selectionIdentity={orderedTransactionIds}
           transactions={sortedTransactions}
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}

@@ -16,6 +16,7 @@ import {
 export interface UseSpreadsheetSelectionOptions {
   rowCount: number;
   columnCount: number;
+  rowIdentity?: string;
   containerRef: RefObject<HTMLElement | null>;
   focusCell(cell: CellCoord): void;
   copiedHighlightMs?: number;
@@ -89,6 +90,7 @@ function clampRangesToGrid(
 export function useSpreadsheetSelection({
   rowCount,
   columnCount,
+  rowIdentity,
   containerRef,
   focusCell,
   copiedHighlightMs = 1200,
@@ -106,6 +108,7 @@ export function useSpreadsheetSelection({
   const anchorCellRef = useRef(anchorCell);
   const activeCellRef = useRef(activeCell);
 
+  const [appliedRowIdentity, setAppliedRowIdentity] = useState(rowIdentity);
   const previousGridSizeRef = useRef({ rowCount, columnCount });
   const dragBaseRangesRef = useRef<CellRange[]>([]);
   const pointerSelectingRef = useRef(false);
@@ -119,6 +122,19 @@ export function useSpreadsheetSelection({
     anchorCellRef.current = anchorCell;
     activeCellRef.current = activeCell;
   }, [activeCell, anchorCell, copiedRanges, selectedRanges]);
+
+  // When the underlying row identity changes (sort, filter, delete), the
+  // numeric selection would silently point at different transactions. Reset
+  // during render (the React-sanctioned "adjust state when props change"
+  // pattern) so children never see the stale selection.
+  if (appliedRowIdentity !== rowIdentity) {
+    setAppliedRowIdentity(rowIdentity);
+    setSelectedRanges([]);
+    setCopiedRanges([]);
+    setAnchorCell(null);
+    setActiveCell(null);
+    setDragSelection(null);
+  }
   const selectSingle = useCallback((cell: CellCoord) => {
     setSelectedRanges([rectangleFrom(cell, cell)]);
     setAnchorCell(cell);

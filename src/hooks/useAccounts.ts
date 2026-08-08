@@ -15,7 +15,8 @@ export function useAccounts() {
     queryKey: queryKeys.accounts.list(),
     queryFn: () => apiGet<AccountWithBalance[]>("/accounts"),
     select: (res) => res.data ?? [],
-    staleTime: Infinity,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const invalidateRelated = () =>
