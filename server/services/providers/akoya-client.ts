@@ -1,5 +1,9 @@
 import { ENV_KEYS, PROVIDER_CONFIG } from "../../config/app.js";
 import { UpstreamServiceError } from "../../errors.js";
+import { redactSecrets } from "./redact.js";
+
+/** Hard per-request network deadline for Akoya calls. */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
 
 export interface AkoyaRuntimeConfig {
   clientId: string;
@@ -58,21 +62,43 @@ function readEnv(envKey: string, fallback?: string): string {
   return value;
 }
 
-function redactProviderText(value: string): string {
-  return value
-    .replace(
-      /("(?:access_token|refresh_token|id_token|public_token|token|secret)"\s*:\s*")[^"]+(")/gi,
-      "$1[REDACTED]$2",
-    )
-    .replace(
-      /((?:access_token|refresh_token|id_token|public_token|token|secret)=)[^&\s]+/gi,
-      "$1[REDACTED]",
-    )
-    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, "$1[REDACTED]");
-}
-
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+/**
+ * Provider base URLs come from the environment; a compromised or misconfigured
+ * environment must not turn them into SSRF targets or cleartext credential
+ * exfiltration. Require HTTPS, a known Akoya host, and no IP-literal/loopback
+ * destinations.
+ */
+export function assertProviderBaseUrl(raw: string | undefined, label: string): string {
+  const value = raw?.trim();
+  if (!value) {
+    throw new Error(`${label} is required before linking Akoya accounts.`);
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${label} must be a valid URL.`);
+  }
+  if (url.protocol !== "https:") {
+    throw new Error(`${label} must use https:.`);
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (!hostname.endsWith("ddp.akoya.com")) {
+    throw new Error(`${label} host "${hostname}" is not an allowed Akoya host.`);
+  }
+  if (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) ||
+    hostname === "::1"
+  ) {
+    throw new Error(`${label} must not point at loopback or IP addresses.`);
+  }
+  return trimTrailingSlash(value);
 }
 
 export function getAkoyaRuntimeConfig(): AkoyaRuntimeConfig {
@@ -83,11 +109,13 @@ export function getAkoyaRuntimeConfig(): AkoyaRuntimeConfig {
   return {
     clientId: readEnv(ENV_KEYS.akoyaClientId),
     clientSecret: readEnv(ENV_KEYS.akoyaClientSecret),
-    authBaseUrl: trimTrailingSlash(
+    authBaseUrl: assertProviderBaseUrl(
       readEnv(ENV_KEYS.akoyaAuthBaseUrl, PROVIDER_CONFIG.akoyaAuthBaseUrl),
+      ENV_KEYS.akoyaAuthBaseUrl,
     ),
-    apiBaseUrl: trimTrailingSlash(
+    apiBaseUrl: assertProviderBaseUrl(
       readEnv(ENV_KEYS.akoyaApiBaseUrl, PROVIDER_CONFIG.akoyaApiBaseUrl),
+      ENV_KEYS.akoyaApiBaseUrl,
     ),
     redirectUri: readEnv(ENV_KEYS.akoyaRedirectUri),
     connector,
@@ -117,7 +145,10 @@ async function requestAkoya(
   init?: RequestInit,
 ): Promise<Response> {
   try {
-    return await fetch(input, init);
+    return await fetch(input, {
+      ...init,
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+    });
   } catch (error) {
     throw new UpstreamServiceError("Akoya request failed", { cause: error });
   }
@@ -131,7 +162,7 @@ async function parseJsonResponse<T>(
     if (!response.ok) {
       const body = await readResponseText(response);
       throw new Error(
-        `Akoya ${providerAction} failed status ${response.status}: ${redactProviderText(body)}`,
+        `Akoya ${providerAction} failed status ${response.status}: ${redactSecrets(body)}`,
       );
     }
 
@@ -255,7 +286,7 @@ export async function revokeToken(input: RevokeTokenInput): Promise<void> {
   const responseBody = await readResponseText(response);
   throw new UpstreamServiceError("Akoya request failed", {
     cause: new Error(
-      `Akoya token revocation failed status ${response.status}: ${redactProviderText(responseBody)}`,
+      `Akoya token revocation failed status ${response.status}: ${redactSecrets(responseBody)}`,
     ),
   });
 }

@@ -8,7 +8,17 @@ import {
   NotFoundError,
   UpstreamServiceError,
 } from "../errors.js";
-import { decryptSecret, encryptSecret } from "./secret-encryption.js";
+import {
+  decryptSecretWithMigration,
+  encryptSecret,
+} from "./secret-encryption.js";
+import { redactSecrets } from "./providers/redact.js";
+
+/** Hard cap on provider pagination pages per sync so an upstream
+ *  `has_more`/full-page loop cannot run forever or exhaust memory. */
+const MAX_SYNC_PAGES = 100;
+/** Connections with a sync currently in flight (per-process guard). */
+const activeSyncs = new Set<string>();
 import {
   mapAkoyaAccountTypeToLocal,
   mapAkoyaTransactionToLocal,
@@ -262,11 +272,28 @@ function encryptedColumns(plaintext: string) {
 
 function decryptAccessToken(connection: ProviderConnectionRow) {
   try {
-    return decryptSecret({
+    const { plaintext, migrated } = decryptSecretWithMigration({
       ciphertext: connection.encrypted_access_token,
       iv: connection.access_token_iv,
       tag: connection.access_token_tag,
     });
+    if (migrated) {
+      const encrypted = encryptSecret(plaintext);
+      getDb()
+        .prepare(
+          `UPDATE provider_connections
+           SET encrypted_access_token = ?, access_token_iv = ?, access_token_tag = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          encrypted.ciphertext,
+          encrypted.iv,
+          encrypted.tag,
+          nowIso(),
+          connection.id,
+        );
+    }
+    return plaintext;
   } catch {
     markConnectionError(
       connection.id,
@@ -289,11 +316,28 @@ function decryptRefreshToken(connection: ProviderConnectionRow) {
   }
 
   try {
-    return decryptSecret({
+    const { plaintext, migrated } = decryptSecretWithMigration({
       ciphertext: connection.encrypted_refresh_token,
       iv: connection.refresh_token_iv,
       tag: connection.refresh_token_tag,
     });
+    if (migrated) {
+      const encrypted = encryptSecret(plaintext);
+      getDb()
+        .prepare(
+          `UPDATE provider_connections
+           SET encrypted_refresh_token = ?, refresh_token_iv = ?, refresh_token_tag = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          encrypted.ciphertext,
+          encrypted.iv,
+          encrypted.tag,
+          nowIso(),
+          connection.id,
+        );
+    }
+    return plaintext;
   } catch {
     markConnectionError(
       connection.id,
@@ -381,7 +425,9 @@ function markConnectionError(
        SET status = ?, last_error = ?, updated_at = ?
        WHERE id = ? AND deleted_at IS NULL`,
     )
-    .run(status, message, nowIso(), connectionId);
+    // Provider error bodies can echo credentials in unexpected fields;
+    // redact before persisting so /connections never discloses them.
+    .run(status, redactSecrets(message), nowIso(), connectionId);
 }
 
 function inferInstitutionFromPlaidMetadata(metadata: unknown) {
@@ -861,7 +907,14 @@ async function fetchPlaidPayload(
     const added: unknown[] = [];
     const modified: unknown[] = [];
     const removedIds: string[] = [];
+    let pages = 0;
     for (;;) {
+      if (pages >= MAX_SYNC_PAGES) {
+        throw new Error(
+          `Plaid sync exceeded ${MAX_SYNC_PAGES} pages; aborting to bound memory and request work`,
+        );
+      }
+      pages += 1;
       const page = await client.syncTransactions({
         accessToken,
         cursor,
@@ -941,7 +994,14 @@ async function fetchAkoyaPayload(
     for (const account of accounts) {
       let offset = 0;
       const limit = 500;
+      let pages = 0;
       for (;;) {
+        if (pages >= MAX_SYNC_PAGES) {
+          throw new Error(
+            `Akoya sync exceeded ${MAX_SYNC_PAGES} pages; aborting to bound memory and request work`,
+          );
+        }
+        pages += 1;
         const page = await client.getTransactions({
           idToken,
           accountId: account.providerAccountId,
@@ -1112,8 +1172,10 @@ function createAkoyaAuthorizationUrl(
        ) VALUES (?, 'akoya', 'fidelity', ?, ?)`,
     )
     .run(state, redirectUri, expiresAt);
-  const authBaseUrl =
-    process.env[ENV_KEYS.akoyaAuthBaseUrl] ?? PROVIDER_CONFIG.akoyaAuthBaseUrl;
+  const authBaseUrl = akoyaClient.assertProviderBaseUrl(
+    process.env[ENV_KEYS.akoyaAuthBaseUrl] ?? PROVIDER_CONFIG.akoyaAuthBaseUrl,
+    ENV_KEYS.akoyaAuthBaseUrl,
+  );
   const connector =
     process.env[ENV_KEYS.akoyaConnector] ?? PROVIDER_CONFIG.akoyaConnector;
   const scope = encodeURIComponent(PROVIDER_CONFIG.akoyaScope);
@@ -1133,17 +1195,29 @@ async function handleAkoyaCallback(
   dependencies: AccountLinkingDependencies,
 ): Promise<ProviderConnectionSummary> {
   const db = getDb();
-  const stateRow = db
+  // Atomically claim the state: only one concurrent callback can flip
+  // consumed_at, so a replayed/raced callback cannot exchange the code twice.
+  const now = new Date().toISOString();
+  const claimed = db
     .prepare(
-      `SELECT * FROM provider_oauth_states
-       WHERE state = ? AND provider = 'akoya' AND target_institution = 'fidelity'`,
+      `UPDATE provider_oauth_states
+          SET consumed_at = ?
+        WHERE state = ? AND provider = 'akoya' AND target_institution = 'fidelity'
+          AND consumed_at IS NULL AND expires_at >= ?`,
     )
-    .get(input.state) as
-    | { state: string; expires_at: string; consumed_at: string | null }
-    | undefined;
-  if (!stateRow || stateRow.consumed_at) throw new BadRequestError("Invalid Akoya state")
-  if (new Date(stateRow.expires_at).getTime() < Date.now()) {
-    throw new BadRequestError("Akoya state expired")
+    .run(now, input.state, now);
+  if (claimed.changes === 0) {
+    const stateRow = db
+      .prepare(
+        `SELECT consumed_at, expires_at FROM provider_oauth_states WHERE state = ?`,
+      )
+      .get(input.state) as
+      | { consumed_at: string | null; expires_at: string }
+      | undefined;
+    if (!stateRow || stateRow.consumed_at) {
+      throw new BadRequestError("Invalid Akoya state");
+    }
+    throw new BadRequestError("Akoya state expired");
   }
 
   const redirectUri = requireEnv(ENV_KEYS.akoyaRedirectUri);
@@ -1166,9 +1240,6 @@ async function handleAkoyaCallback(
   const timestamp = nowIso();
   const connectionId = crypto.randomUUID();
   db.transaction(() => {
-    db.prepare(
-      `UPDATE provider_oauth_states SET consumed_at = ? WHERE state = ?`,
-    ).run(timestamp, input.state);
     db.prepare(
       `INSERT INTO provider_connections (
          id, provider, target_institution, institution_name, akoya_provider_id,
@@ -1226,20 +1297,40 @@ async function syncProviderConnections(
 
   const results: ProviderSyncResult[] = [];
   for (const connection of connections) {
+    if (activeSyncs.has(connection.id)) {
+      results.push({
+        connectionId: connection.id,
+        provider: connection.provider,
+        accountsUpserted: 0,
+        transactionsAdded: 0,
+        transactionsUpdated: 0,
+        transactionsRemoved: 0,
+        balanceAdjustmentsCreated: 0,
+        warnings: ["Sync already in progress for this connection; skipped."],
+        syncedAt: nowIso(),
+      });
+      continue;
+    }
+
     const warnings: string[] = [];
     const syncedAt = nowIso();
-    const payload =
-      connection.provider === "plaid"
-        ? await fetchPlaidPayload(connection, dependencies.plaid)
-        : await fetchAkoyaPayload(connection, dependencies.akoya);
-    const counts = applyNetworkPayload(connection, payload, syncedAt, warnings);
-    results.push({
-      connectionId: connection.id,
-      provider: connection.provider,
-      ...counts,
-      warnings,
-      syncedAt,
-    });
+    activeSyncs.add(connection.id);
+    try {
+      const payload =
+        connection.provider === "plaid"
+          ? await fetchPlaidPayload(connection, dependencies.plaid)
+          : await fetchAkoyaPayload(connection, dependencies.akoya);
+      const counts = applyNetworkPayload(connection, payload, syncedAt, warnings);
+      results.push({
+        connectionId: connection.id,
+        provider: connection.provider,
+        ...counts,
+        warnings,
+        syncedAt,
+      });
+    } finally {
+      activeSyncs.delete(connection.id);
+    }
   }
   return results;
 }

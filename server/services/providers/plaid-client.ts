@@ -13,6 +13,10 @@ import type {
 } from "plaid";
 import { ENV_KEYS, PROVIDER_CONFIG } from "../../config/app.js";
 import { UpstreamServiceError } from "../../errors.js";
+import { redactSecrets } from "./redact.js";
+
+/** Hard per-request network deadline for Plaid calls. */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
 
 export type PlaidAccount = AccountBase;
 export type PlaidTransaction = Transaction;
@@ -62,19 +66,6 @@ function getPlaidEnv(): PlaidEnv {
   );
 }
 
-function redactProviderText(value: string): string {
-  return value
-    .replace(
-      /("(?:access_token|refresh_token|id_token|public_token|token|secret)"\s*:\s*")[^"]+(")/gi,
-      "$1[REDACTED]$2",
-    )
-    .replace(
-      /((?:access_token|refresh_token|id_token|public_token|token|secret)=)[^&\s]+/gi,
-      "$1[REDACTED]",
-    )
-    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, "$1[REDACTED]");
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -89,10 +80,10 @@ function providerError(action: string, error: unknown): UpstreamServiceError {
     const data = "data" in error.response ? error.response.data : undefined;
     const message =
       typeof data === "string" ? data : JSON.stringify(data ?? {});
-    detail = `Plaid ${action} failed${status}: ${redactProviderText(message)}`;
+    detail = `Plaid ${action} failed${status}: ${redactSecrets(message)}`;
   } else {
     const message = error instanceof Error ? error.message : String(error);
-    detail = `Plaid ${action} failed: ${redactProviderText(message)}`;
+    detail = `Plaid ${action} failed: ${redactSecrets(message)}`;
   }
 
   return new UpstreamServiceError("Plaid request failed", {
@@ -106,6 +97,7 @@ function getPlaidClient(): PlaidApi {
   const configuration = new Configuration({
     basePath: PLAID_BASE_URLS[getPlaidEnv()],
     baseOptions: {
+      timeout: PROVIDER_REQUEST_TIMEOUT_MS,
       headers: {
         "PLAID-CLIENT-ID": clientId,
         "PLAID-SECRET": secret,
