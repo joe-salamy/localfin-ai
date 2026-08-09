@@ -4,21 +4,20 @@ import { z } from "zod";
 import { accountTypeSchema } from "../../shared/contracts/accounts.js";
 import type { ChatStreamEvent } from "../../shared/contracts/parsing-ai.js";
 import { HTTP_HEADERS } from "../config/app.js";
-import { publicErrorMessage } from "../errors.js";
-import { getDb } from "../db/index.js";
+import { NotFoundError, publicErrorMessage } from "../errors.js";
 import { categorizeTransactions } from "../services/ai.js";
 import {
-  appendPlanOutcomeMessage,
   chatWithAssistant,
-  clearPendingApprovals,
   executePendingApprovals,
-  loadPendingApprovals,
+  listPendingApprovals,
   normalizeMaxAssistantTurns,
+  rejectPendingApprovals,
   serializeConversation,
   streamChatWithAssistant,
 } from "../services/ai-chat.js";
 import {
   createAgentConversation,
+  getAgentConversation,
   getAgentMessages,
   listAgentConversations,
   softDeleteAgentConversation,
@@ -96,10 +95,21 @@ router.get("/conversations/:id/messages", (req: Request, res: Response) => {
 });
 
 router.delete("/conversations/:id", (req: Request, res: Response) => {
+
   const params = parseRequest(conversationParamsSchema, req.params);
   softDeleteAgentConversation(params.id);
   res.json({ success: true, data: { id: params.id } });
 });
+router.get(
+  "/conversations/:id/pending-approvals",
+  (req: Request, res: Response) => {
+    const params = parseRequest(conversationParamsSchema, req.params);
+    if (!getAgentConversation(params.id)) {
+      throw new NotFoundError("Assistant conversation not found.");
+    }
+    res.json({ success: true, data: listPendingApprovals(params.id) });
+  },
+);
 
 router.post("/chat", async (req: Request, res: Response) => {
   const body = parseRequest(chatSchema, req.body);
@@ -110,39 +120,10 @@ router.post("/chat", async (req: Request, res: Response) => {
 router.post("/chat/confirm", (req: Request, res: Response) => {
   const body = parseRequest(confirmSchema, req.body);
 
-  if (!body.approve) {
-    const pending = loadPendingApprovals(body.conversationId, body.requestId);
-    if (pending.length === 0) {
-      res.status(400).json({
-        success: false,
-        error: "No pending actions for this request",
-      });
-      return;
-    }
-    getDb().transaction(() => {
-      clearPendingApprovals(body.conversationId, body.requestId);
-      appendPlanOutcomeMessage({
-        conversationId: body.conversationId,
-        requestId: body.requestId,
-        content: "The proposed changes were rejected; nothing was modified.",
-        status: "success",
-      });
-    })();
-    res.json({
-      success: true,
-      data: {
-        conversationId: body.conversationId,
-        requestId: body.requestId,
-        message: "The proposed changes were rejected; nothing was modified.",
-        actions: [],
-        status: "success",
-      },
-    });
-    return;
-  }
-
   const data = serializeConversation(body.conversationId, () =>
-    executePendingApprovals(body.conversationId, body.requestId),
+    body.approve
+      ? executePendingApprovals(body.conversationId, body.requestId)
+      : rejectPendingApprovals(body.conversationId, body.requestId),
   );
   data
     .then((result) => {
@@ -155,6 +136,7 @@ router.post("/chat/confirm", (req: Request, res: Response) => {
       });
     });
 });
+
 
 router.post(
   "/chat/stream",

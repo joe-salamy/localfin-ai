@@ -53,6 +53,7 @@ import {
   resolveKind,
   resolveSubcategoryId,
   resolveTagIds,
+  subcategoryMatchesKind,
 } from "@/lib/transactionCellParsing";
 import type { HistoryTransactionCellField } from "@/lib/transactionCellParsing";
 import {
@@ -307,9 +308,16 @@ export function TransactionTable({
         name: editState.name,
         amount: parseFloat(editState.amount),
         kind: editState.kind,
-        subcategory_id: kindHasSubcategory(editState.kind)
-          ? editState.subcategory_id || null
-          : null,
+        subcategory_id:
+          kindHasSubcategory(editState.kind) &&
+          subcategoryMatchesKind(
+            editState.subcategory_id,
+            editState.kind,
+            categories,
+            subcategories,
+          )
+            ? editState.subcategory_id || null
+            : null,
         comment: editState.comment || null,
         tag_ids: editState.tag_ids,
       });
@@ -317,8 +325,7 @@ export function TransactionTable({
     } finally {
       setSaving(false);
     }
-  }, [editState, editingId, onEdit]);
-
+  }, [categories, editState, editingId, onEdit, subcategories]);
   function handleEditRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>) {
     if (saving) return;
     if (event.key === "Escape") {
@@ -431,26 +438,41 @@ export function TransactionTable({
         : transactions.slice(
             transactions.findIndex((item) => item.id === transaction.id),
           );
+    const resolveForTransaction = (
+      value: string,
+      item: TransactionWithDetails,
+    ): string | null => {
+      const subcategoryId = resolveSubcategoryId(
+        value,
+        categories,
+        subcategories,
+        item.category_id,
+      );
+      const targetKind =
+        editingId === item.id ? editState.kind : item.kind;
+      return subcategoryId &&
+        subcategoryMatchesKind(
+          subcategoryId,
+          targetKind,
+          categories,
+          subcategories,
+        )
+        ? subcategoryId
+        : null;
+    };
     const updates =
       values.length === 1
         ? targetTransactions.map((item) => ({
             item,
-            subcategoryId: resolveSubcategoryId(
-              values[0] ?? "",
-              categories,
-              subcategories,
-              item.category_id,
-            ),
+            subcategoryId: resolveForTransaction(values[0] ?? "", item),
           }))
         : targetTransactions
             .slice(0, values.length)
             .map((item, index) => ({
               item,
-              subcategoryId: resolveSubcategoryId(
+              subcategoryId: resolveForTransaction(
                 values[index] ?? "",
-                categories,
-                subcategories,
-                item.category_id,
+                item,
               ),
             }));
     const resolvedIds = updates.map((update) => update.subcategoryId);
@@ -549,6 +571,7 @@ export function TransactionTable({
       transaction: TransactionWithDetails,
       mode: "paste" | "clear",
       draftKind: TransactionKind = transaction.kind,
+      draftSubcategoryId: string | null = transaction.subcategory_id,
     ): {
       updates: UpdateTransactionData;
       applied: boolean;
@@ -588,9 +611,16 @@ export function TransactionTable({
         return {
           updates: {
             kind,
-            subcategory_id: kindHasSubcategory(kind)
-              ? transaction.subcategory_id
-              : null,
+            subcategory_id:
+              kindHasSubcategory(kind) &&
+              subcategoryMatchesKind(
+                draftSubcategoryId,
+                kind,
+                categories,
+                subcategories,
+              )
+                ? draftSubcategoryId
+                : null,
           },
           applied: true,
         };
@@ -604,8 +634,17 @@ export function TransactionTable({
           subcategories,
           transaction.category_id,
         );
-        return subcategoryId
-          ? { updates: { subcategory_id: subcategoryId }, applied: true }
+        return subcategoryId &&
+          subcategoryMatchesKind(
+            subcategoryId,
+            draftKind,
+            categories,
+            subcategories,
+          )
+          ? {
+              updates: { subcategory_id: subcategoryId },
+              applied: true,
+            }
           : { updates: {}, applied: false };
       }
       if (field === "tag_ids") {
@@ -680,12 +719,17 @@ export function TransactionTable({
           const field = historyTransactionCellFields[startCol + colOffset];
           if (!field) break;
           const draftKind = existing.updates.kind ?? transaction.kind;
+          const draftSubcategoryId =
+            existing.updates.subcategory_id !== undefined
+              ? existing.updates.subcategory_id
+              : transaction.subcategory_id;
           const result = parseHistoryCellValue(
             field,
             values[colOffset] ?? "",
             transaction,
             mode,
             draftKind,
+            draftSubcategoryId,
           );
           result.unknownTags?.forEach((tag) => unknownTags.add(tag));
           if (!result.applied) {
@@ -753,12 +797,17 @@ export function TransactionTable({
           cells: 0,
         };
         const draftKind = existing.updates.kind ?? transaction.kind;
+        const draftSubcategoryId =
+          existing.updates.subcategory_id !== undefined
+            ? existing.updates.subcategory_id
+            : transaction.subcategory_id;
         const result = parseHistoryCellValue(
           field,
           "",
           transaction,
           "clear",
           draftKind,
+          draftSubcategoryId,
         );
         if (!result.applied) continue;
 
@@ -814,12 +863,17 @@ export function TransactionTable({
           cells: 0,
         };
         const draftKind = existing.updates.kind ?? transaction.kind;
+        const draftSubcategoryId =
+          existing.updates.subcategory_id !== undefined
+            ? existing.updates.subcategory_id
+            : transaction.subcategory_id;
         const result = parseHistoryCellValue(
           field,
           value,
           transaction,
           "paste",
           draftKind,
+          draftSubcategoryId,
         );
         if (!result.applied) {
           skipped++;
@@ -1309,17 +1363,21 @@ export function TransactionTable({
                     {isEditing ? (
                       <select
                         value={editState.kind}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const nextKind = e.target.value as TransactionKind;
                           setEditState({
                             ...editState,
-                            kind: e.target.value as TransactionKind,
-                            subcategory_id:
-                              e.target.value === "transfer" ||
-                              e.target.value === "adjustment"
-                                ? ""
-                                : editState.subcategory_id,
-                          })
-                        }
+                            kind: nextKind,
+                            subcategory_id: subcategoryMatchesKind(
+                              editState.subcategory_id,
+                              nextKind,
+                              categories,
+                              subcategories,
+                            )
+                              ? editState.subcategory_id
+                              : "",
+                          });
+                        }}
                         className="h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       >
                         <option value="income">Income</option>
@@ -1362,11 +1420,20 @@ export function TransactionTable({
                         className="h-7 w-full rounded border border-border bg-input px-1.5 text-xs text-foreground"
                       >
                         <option value="">None</option>
-                        {subcategories.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {formatSubcategoryLabel(s, categoryLookup)}
-                          </option>
-                        ))}
+                        {subcategories
+                          .filter((subcategory) =>
+                            subcategoryMatchesKind(
+                              subcategory.id,
+                              editState.kind,
+                              categories,
+                              subcategories,
+                            ),
+                          )
+                          .map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {formatSubcategoryLabel(s, categoryLookup)}
+                            </option>
+                          ))}
                       </select>
                     ) : (
                       <span className="text-xs">

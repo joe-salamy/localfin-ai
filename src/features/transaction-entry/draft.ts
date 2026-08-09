@@ -1,7 +1,16 @@
 import { format, isValid, parse } from "date-fns";
 import type { AccountType, Category, Subcategory, Tag, TransactionKind } from "@shared/contracts";
 import { normalizeTransactionAmount } from "@shared/finance/transactionAmounts";
-import { kindHasSubcategory, parsePastedAmount, parsePastedDate, resolveAccountId, resolveKind, resolveSubcategoryId, resolveTagIds } from "@/lib/transactionCellParsing";
+import {
+  kindHasSubcategory,
+  parsePastedAmount,
+  parsePastedDate,
+  resolveAccountId,
+  resolveKind,
+  resolveSubcategoryId,
+  resolveTagIds,
+  subcategoryMatchesKind,
+} from "@/lib/transactionCellParsing";
 import type { TransactionCellField } from "@/lib/transactionCellParsing";
 
 // ── Row type ──────────────────────────────────────────────────────────
@@ -212,7 +221,14 @@ export function applyCellValue(
               getAccountType(row.account_id, accounts),
               kind,
             ),
-            subcategory_id: kindHasSubcategory(kind) ? row.subcategory_id : "",
+            subcategory_id: subcategoryMatchesKind(
+              row.subcategory_id,
+              kind,
+              categories,
+              subcategories,
+            )
+              ? row.subcategory_id
+              : "",
           },
           applied: true,
         }
@@ -261,7 +277,14 @@ export function applyCellValue(
     subcategories,
     currentCategoryId,
   );
-  return subcategoryId && kindHasSubcategory(row.kind)
+  return subcategoryId &&
+    kindHasSubcategory(row.kind) &&
+    subcategoryMatchesKind(
+      subcategoryId,
+      row.kind,
+      categories,
+      subcategories,
+    )
     ? {
         row: {
           ...row,

@@ -101,21 +101,19 @@ export function bulkUpdateTransactions(
   }
 
   const updateAll = db.transaction(() => {
-    if (setClauses.length > 0) {
-      setClauses.push("updated_at = ?");
-      params.push(now);
-      params.push(...ids);
+    setClauses.push("updated_at = ?");
+    params.push(now);
+    params.push(...ids);
 
-      db.prepare(
-        `UPDATE transactions SET ${setClauses.join(", ")}
-         WHERE deleted_at IS NULL
-           AND id IN (${placeholders})
-           AND EXISTS (
-             SELECT 1 FROM accounts a
-             WHERE a.id = transactions.account_id AND a.deleted_at IS NULL
-           )`,
-      ).run(...params);
-    }
+    db.prepare(
+      `UPDATE transactions SET ${setClauses.join(", ")}
+       WHERE deleted_at IS NULL
+         AND id IN (${placeholders})
+         AND EXISTS (
+           SELECT 1 FROM accounts a
+           WHERE a.id = transactions.account_id AND a.deleted_at IS NULL
+         )`,
+    ).run(...params);
     if (hasTagUpdates) {
       for (const row of updateRows) {
         if (addTagIds.length > 0) addTransactionTags(row.id, addTagIds);

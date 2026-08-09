@@ -87,7 +87,9 @@ export function assertProviderBaseUrl(raw: string | undefined, label: string): s
     throw new Error(`${label} must use https:.`);
   }
   const hostname = url.hostname.toLowerCase();
-  if (!hostname.endsWith("ddp.akoya.com")) {
+  const isAllowedAkoyaHost =
+    hostname === "ddp.akoya.com" || hostname.endsWith(".ddp.akoya.com");
+  if (!isAllowedAkoyaHost) {
     throw new Error(`${label} host "${hostname}" is not an allowed Akoya host.`);
   }
   if (

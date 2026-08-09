@@ -4,6 +4,7 @@ import type {
   ChatActionResult,
   ChatConfirmResult,
   ChatResult,
+  PendingChatApproval,
   PlannedChatAction,
 } from "../../../shared/contracts/index.js";
 import { appendAgentMessage } from "../agent-conversations.js";
@@ -44,6 +45,10 @@ interface PendingApprovalRow {
   action_input: string;
 }
 
+interface PendingApprovalListRow extends PendingApprovalRow {
+  request_id: string;
+  action_index: number;
+}
 /**
  * Persists the mutating plan for (conversationId, requestId). Replaces any
  * previously stored plan for the same key. Deduplication happens in the tool
@@ -94,6 +99,32 @@ export function loadPendingApprovals(
     input: JSON.parse(row.action_input) as Record<string, unknown>,
   }));
 }
+export function listPendingApprovals(
+  conversationId: string,
+): PendingChatApproval[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT request_id, action_index, action_type, action_input
+       FROM agent_pending_approvals
+       WHERE conversation_id = ?
+       ORDER BY created_at ASC, request_id ASC, action_index ASC`,
+    )
+    .all(conversationId) as PendingApprovalListRow[];
+  const grouped = new Map<string, PlannedChatAction[]>();
+  for (const row of rows) {
+    const actions = grouped.get(row.request_id) ?? [];
+    actions.push({
+      type: row.action_type,
+      input: JSON.parse(row.action_input) as Record<string, unknown>,
+    });
+    grouped.set(row.request_id, actions);
+  }
+  return Array.from(grouped, ([requestId, actions]) => ({
+    requestId,
+    actions,
+  }));
+}
+
 
 export function clearPendingApprovals(
   conversationId: string,
@@ -254,6 +285,7 @@ export function getCompletedRun(
   return {
     conversationId,
     requestId,
+
     message: row.content,
     actions: row.actions_json
       ? (JSON.parse(row.actions_json) as ChatActionResult[])
@@ -279,4 +311,45 @@ export function appendPlanOutcomeMessage(input: {
     actions: input.actions ?? null,
     status: input.status,
   });
+}
+const REJECTED_APPROVAL_MESSAGE =
+  "The proposed changes were rejected; nothing was modified.";
+
+export function rejectPendingApprovals(
+  conversationId: string,
+  requestId: string,
+): ChatConfirmResult {
+  const completed = getCompletedRun(conversationId, requestId);
+  if (completed) {
+    return {
+      conversationId,
+      requestId,
+      message: completed.message,
+      actions: completed.actions,
+      status: completed.status === "partial" ? "partial" : "success",
+    };
+  }
+
+  if (loadPendingApprovals(conversationId, requestId).length === 0) {
+    throw new BadRequestError(`No pending actions for request "${requestId}"`);
+  }
+
+  const result: ChatConfirmResult = {
+    conversationId,
+    requestId,
+    message: REJECTED_APPROVAL_MESSAGE,
+    actions: [],
+    status: "success",
+  };
+  const db = getDb();
+  db.transaction(() => {
+    clearPendingApprovals(conversationId, requestId);
+    appendPlanOutcomeMessage({
+      conversationId,
+      requestId,
+      content: result.message,
+      status: result.status,
+    });
+  })();
+  return result;
 }

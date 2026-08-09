@@ -582,18 +582,22 @@ export function executeFinanceAction(action: FinanceAction): ChatActionResult {
           );
         }
 
+        const existingTransaction = getTransactionById(input.id);
+        if (!existingTransaction) {
+          throw new Error(`Transaction with id "${input.id}" not found`);
+        }
         const subcategoryId =
           input.subcategory_id === null
             ? null
             : resolveRequestedSubcategory(
                 { id: input.subcategory_id ?? undefined, name: input.subcategory_name },
-                subcategoriesForKind(subcategories, categories, input.kind),
+                subcategoriesForKind(
+                  subcategories,
+                  categories,
+                  input.kind ?? existingTransaction.kind,
+                ),
                 action.type,
               );
-        const existingTransaction = getTransactionById(input.id);
-        if (!existingTransaction) {
-          throw new Error(`Transaction with id "${input.id}" not found`);
-        }
         const replacementTagIds = hasReplacementTags
           ? explicitTagIds(input, tags, action.type)
           : undefined;

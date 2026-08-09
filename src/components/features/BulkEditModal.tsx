@@ -9,6 +9,7 @@ import {
 } from "@/lib/categoryLabels";
 import { TagPicker } from "@/components/features/TagPicker";
 import type { TagPickerCreateOptions } from "@/components/features/TagPicker";
+import { subcategoryMatchesKind } from "@/lib/transactionCellParsing";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 import { useShortcut, useShortcutScope } from "@/features/shortcuts/hooks";
 import type { Category } from "@shared/contracts"
@@ -72,9 +73,11 @@ export function BulkEditModal({
     if (!canConfirm) return;
     onConfirm({
       ...(kind !== "unchanged" ? { kind } : {}),
-      ...(subcategoryId && kindHasSubcategory
-        ? { subcategory_id: subcategoryId }
-        : {}),
+      ...(kind !== "unchanged" && !kindHasSubcategory
+        ? { subcategory_id: null }
+        : subcategoryId
+          ? { subcategory_id: subcategoryId }
+          : {}),
       ...(addTagIds.length > 0 ? { add_tag_ids: addTagIds } : {}),
       ...(removeTagIds.length > 0 ? { remove_tag_ids: removeTagIds } : {}),
     });
@@ -107,8 +110,19 @@ export function BulkEditModal({
         onChange={(e) => {
           const nextKind = e.target.value as typeof kind;
           setKind(nextKind);
-          if (nextKind === "transfer" || nextKind === "adjustment")
+          if (
+            nextKind === "transfer" ||
+            nextKind === "adjustment" ||
+            (nextKind !== "unchanged" &&
+              !subcategoryMatchesKind(
+                subcategoryId,
+                nextKind,
+                categories,
+                subcategories,
+              ))
+          ) {
             setSubcategoryId("");
+          }
         }}
         options={[
           { value: "unchanged", label: "Leave Type" },
@@ -122,10 +136,21 @@ export function BulkEditModal({
       <SimpleSelect
         value={subcategoryId}
         onChange={(e) => setSubcategoryId(e.target.value)}
-        options={subcategories.map((s) => ({
-          value: s.id,
-          label: formatSubcategoryLabel(s, categoryLookup),
-        }))}
+        options={subcategories
+          .filter(
+            (subcategory) =>
+              kind === "unchanged" ||
+              subcategoryMatchesKind(
+                subcategory.id,
+                kind,
+                categories,
+                subcategories,
+              ),
+          )
+          .map((s) => ({
+            value: s.id,
+            label: formatSubcategoryLabel(s, categoryLookup),
+          }))}
         placeholder="Select subcategory..."
         disabled={!kindHasSubcategory}
       />

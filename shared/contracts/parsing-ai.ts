@@ -89,6 +89,11 @@ export interface ChatConfirmResult {
   status: "success" | "partial";
 }
 
+export interface PendingChatApproval {
+  requestId: string;
+  actions: PlannedChatAction[];
+}
+
 export interface AgentConversation {
   id: string;
   title: string;
@@ -207,6 +212,11 @@ export const chatConfirmResultSchema: z.ZodType<ChatConfirmResult> = z.object({
   actions: z.array(chatActionResultSchema),
   status: z.enum(["success", "partial"]),
 });
+export const pendingChatApprovalSchema: z.ZodType<PendingChatApproval> =
+  z.object({
+    requestId: z.string(),
+    actions: z.array(plannedChatActionSchema),
+  });
 
 export const agentConversationSchema: z.ZodType<AgentConversation> = z.object({
   id: z.string(),

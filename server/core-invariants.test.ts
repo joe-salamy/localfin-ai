@@ -357,6 +357,22 @@ void test("updating a categorized transaction requires clearing its subcategory"
   assert.equal(transfer?.subcategory_id, null);
   assert.equal(adjustment?.kind, "adjustment");
   assert.equal(adjustment?.subcategory_id, null);
+  const bulkTarget = createTransaction({
+    account_id: assetAccountId,
+    date: "2026-05-09",
+    name: "Bulk Transfer Target",
+    amount: 40,
+    kind: "expense",
+    subcategory_id: subcategoryId,
+  });
+  bulkUpdateTransactions([bulkTarget.id], {
+    kind: "transfer",
+    subcategory_id: null,
+  });
+  const bulkTransfer = getTransactionById(bulkTarget.id);
+  assert.equal(bulkTransfer?.kind, "transfer");
+  assert.equal(bulkTransfer?.subcategory_id, null);
+
 });
 
 void test("transaction search treats SQL and LIKE metacharacters as literal parameters", async (t) => {
@@ -481,11 +497,17 @@ void test("bulk tag edits add and remove without replacing unrelated tags", asyn
     subcategory_id: subcategoryId,
     tag_ids: [other.id],
   });
+  getDb()
+    .prepare("UPDATE transactions SET updated_at = ? WHERE id IN (?, ?)")
+    .run("2026-01-01T00:00:00.000Z", first.id, second.id);
+  const beforeUpdatedAt = getTransactionById(first.id)?.updated_at;
 
   bulkUpdateTransactions([first.id, second.id], {
     add_tag_ids: [cabo.id],
     remove_tag_ids: [old.id],
   });
+
+  assert.notEqual(getTransactionById(first.id)?.updated_at, beforeUpdatedAt);
 
   const firstTags = getTransactionById(first.id)
     ?.tags.map((tag) => tag.name)

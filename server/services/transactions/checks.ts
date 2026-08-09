@@ -1,6 +1,4 @@
 import type { Transaction } from "../../../shared/contracts/index.js";
-import { normalizeTransactionAmount } from "../../../shared/finance/transactionAmounts.js";
-import { getActiveAccountType } from "./validation.js";
 import { getDb } from "../../db/index.js";
 import {
   type DuplicateCheckItem,
@@ -19,9 +17,7 @@ export function checkDuplicates(transactions: DuplicateCheckItem[]): boolean[] {
   `);
 
   return transactions.map((t) => {
-    const accountType = getActiveAccountType(t.account_id);
-    const amount = normalizeTransactionAmount(t.amount, accountType, "expense");
-    const row = stmt.get(t.date, t.name, amount, t.account_id) as {
+    const row = stmt.get(t.date, t.name, t.amount, t.account_id) as {
       cnt: number;
     };
     return row.cnt > 0;

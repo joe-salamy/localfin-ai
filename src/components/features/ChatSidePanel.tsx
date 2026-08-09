@@ -112,6 +112,7 @@ export function ChatSidePanel({
     createConversation,
     deleteConversation,
     loadConversationMessages,
+    loadPendingApprovals,
     streamChat,
   } = useAI();
 
@@ -205,9 +206,21 @@ export function ChatSidePanel({
       if (isConversationBusy || pendingApprovalRef.current) return;
       setLoadingConversationId(conversation.id);
       try {
-        const loaded = await loadConversationMessages(conversation.id);
+        const [loaded, pendingApprovals] = await Promise.all([
+          loadConversationMessages(conversation.id),
+          loadPendingApprovals(conversation.id),
+        ]);
         setConversationId(conversation.id);
-        updatePendingApproval(null);
+        const pending = pendingApprovals.at(-1);
+        updatePendingApproval(
+          pending
+            ? {
+                conversationId: conversation.id,
+                requestId: pending.requestId,
+                actions: pending.actions,
+              }
+            : null,
+        );
         dispatch({
           type: "messages_loaded",
           messages: loaded.map(messageFromPersisted),
@@ -225,6 +238,7 @@ export function ChatSidePanel({
     [
       isConversationBusy,
       loadConversationMessages,
+      loadPendingApprovals,
       updatePendingApproval,
     ],
   );

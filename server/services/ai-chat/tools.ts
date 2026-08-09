@@ -57,6 +57,7 @@ function defineFinanceTool<Name extends FinanceToolName>(options: {
   name: Name;
   runtime: AssistantToolRuntime;
   enqueue: <R>(work: () => Promise<R> | R) => Promise<R>;
+  actionIndexFor?: (action: PlannedChatAction) => number;
 }) {
   const definition = financeToolDefinitions[options.name];
   return tool(
@@ -93,12 +94,14 @@ function defineFinanceTool<Name extends FinanceToolName>(options: {
           ...options.runtime.pendingApprovals,
           pendingAction,
         ]);
-        const index = deduped.findIndex(
-          (candidate) =>
-            candidate.type === pendingAction.type &&
-            JSON.stringify(candidate.input) ===
-              JSON.stringify(pendingAction.input),
-        );
+        const index =
+          options.actionIndexFor?.(pendingAction) ??
+          deduped.findIndex(
+            (candidate) =>
+              candidate.type === pendingAction.type &&
+              JSON.stringify(candidate.input) ===
+                JSON.stringify(pendingAction.input),
+          );
 
         if (options.runtime.requestId) {
           const receipt = getActionReceipt(
@@ -106,7 +109,12 @@ function defineFinanceTool<Name extends FinanceToolName>(options: {
             options.runtime.requestId,
             index,
           );
-          if (receipt) {
+          if (
+            receipt &&
+            receipt.type === pendingAction.type &&
+            JSON.stringify(receipt.input) ===
+              JSON.stringify(pendingAction.input)
+          ) {
             options.runtime.actions.push(receipt);
             await options.runtime.emit?.({
               type: "action_started",
@@ -153,8 +161,22 @@ function defineFinanceTool<Name extends FinanceToolName>(options: {
 
 export function createAssistantTools(runtime: AssistantToolRuntime) {
   const enqueue = createSerialQueue();
+  const actionIndexes = new Map<string, number>();
+  let nextActionIndex = runtime.pendingApprovals.length;
+  for (const [index, action] of runtime.pendingApprovals.entries()) {
+    actionIndexes.set(`${action.type}:${JSON.stringify(action.input)}`, index);
+  }
+  const actionIndexFor = (action: PlannedChatAction): number => {
+    const key = `${action.type}:${JSON.stringify(action.input)}`;
+    const existing = actionIndexes.get(key);
+    if (existing !== undefined) return existing;
+    const index = nextActionIndex;
+    nextActionIndex += 1;
+    actionIndexes.set(key, index);
+    return index;
+  };
   const define = <Name extends FinanceToolName>(name: Name) =>
-    defineFinanceTool({ name, runtime, enqueue });
+    defineFinanceTool({ name, runtime, enqueue, actionIndexFor });
 
   return [
     define("calculate"),

@@ -10,7 +10,11 @@ import {
   normalizeMaxAssistantTurns,
   streamChatWithAssistant,
 } from "./services/ai-chat.js";
-import { executePendingApprovals } from "./services/ai-chat/approvals.js";
+import {
+  executePendingApprovals,
+  loadPendingApprovals,
+} from "./services/ai-chat/approvals.js";
+import { saveActionReceipt } from "./services/ai-chat/idempotency.js";
 import { createAccount } from "./services/accounts.js";
 import {
   createCategory,
@@ -399,10 +403,81 @@ void test("agent creates budget structure and captures a transaction through the
 
   const events = await loggedEvents(result);
   assert.ok(events.some((event) => event.operation === "assistant.chat"));
+
   assert.ok(
     events.some((event) => event.operation === "assistant.pending_approval"),
   );
 });
+void test(
+  "agent retries a persisted pending plan without another model call",
+  async (t) => {
+    const { db } = await createFixture(t);
+    const calls = installOpenRouterMock((_body, callNumber) =>
+      callNumber === 1
+        ? {
+            toolCalls: [
+              {
+                name: "create_account",
+                args: { name: "Retry Checking", type: "asset" },
+              },
+              {
+                name: "create_category",
+                args: { name: "Retry Food", type: "expense" },
+              },
+            ],
+          }
+        : { content: "The requested plan is ready for approval." },
+    );
+    const request = {
+      conversationId: "retry-pending",
+      requestId: "retry-request",
+      message: "Create the retry checking account and retry food category.",
+    };
+
+    const first = await chatWithAssistant(request);
+    assert.equal(first.status, "awaiting_confirmation");
+    assert.deepEqual(
+      loadPendingApprovals(request.conversationId, request.requestId).map(
+        (action) => action.type,
+      ),
+      ["create_account", "create_category"],
+    );
+
+    const executed = executeAction({
+      type: "create_account",
+      input: { name: "Retry Checking", type: "asset" },
+    });
+    saveActionReceipt(
+      request.conversationId,
+      request.requestId,
+      0,
+      executed,
+    );
+    const callsBeforeRetry = calls.length;
+
+    const retry = await chatWithAssistant(request);
+    assert.equal(calls.length, callsBeforeRetry);
+    assert.equal(retry.status, "awaiting_confirmation");
+    assert.deepEqual(retry.actions, []);
+
+    const confirmed = executePendingApprovals(
+      request.conversationId,
+      request.requestId,
+    );
+    assert.equal(confirmed.status, "success");
+    assert.deepEqual(
+      confirmed.actions.map((action) => [action.type, action.status]),
+      [
+        ["create_account", "success"],
+        ["create_category", "success"],
+      ],
+    );
+    const accountCountRow = db
+      .prepare("SELECT COUNT(*) AS count FROM accounts")
+      .get() as { count: number } | undefined;
+    assert.equal(accountCountRow?.count, 1);
+  },
+);
 
 void test("agent uses calculator results in a follow-up response", async (t) => {
   await createFixture(t);

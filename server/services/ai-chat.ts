@@ -20,8 +20,10 @@ import {
 export { runAssistantChat, type AssistantRunOptions } from "./ai-chat/chat-runner.js";
 export {
   executePendingApprovals,
+  listPendingApprovals,
   loadPendingApprovals,
   clearPendingApprovals,
+  rejectPendingApprovals,
   appendPlanOutcomeMessage,
 } from "./ai-chat/approvals.js";
 

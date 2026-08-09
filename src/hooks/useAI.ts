@@ -13,6 +13,7 @@ import {
   chatResultSchema,
   chatStreamEventSchema,
   parseStatementResultSchema,
+  pendingChatApprovalSchema,
   type AccountType,
   type AgentConversation,
   type AgentMessage,
@@ -22,6 +23,7 @@ import {
   type ChatResult,
   type ChatStreamEvent,
   type ParseStatementResult,
+  type PendingChatApproval,
 } from "@shared/contracts";
 export type {
   AgentConversation,
@@ -31,6 +33,7 @@ export type {
   ChatRequest,
   ChatResult,
   ChatStreamEvent,
+  PendingChatApproval,
   PlannedChatAction,
 } from "@shared/contracts";
 interface CategorizeTransaction {
@@ -118,6 +121,9 @@ export function useAI() {
         queryClient.removeQueries({
           queryKey: queryKeys.ai.conversationMessages(variables.conversationId),
         }),
+        queryClient.removeQueries({
+          queryKey: queryKeys.ai.pendingApprovals(variables.conversationId),
+        }),
       ]),
   });
 
@@ -153,6 +159,9 @@ export function useAI() {
         queryClient.removeQueries({
           queryKey: queryKeys.ai.conversationMessages(conversationId),
         }),
+        queryClient.removeQueries({
+          queryKey: queryKeys.ai.pendingApprovals(conversationId),
+        }),
       ]),
   });
 
@@ -172,6 +181,23 @@ export function useAI() {
           const response = await apiGet<AgentMessage[]>(
             `/ai/conversations/${conversationId}/messages`,
             agentMessageSchema.array(),
+          );
+          return response.data ?? [];
+        },
+        staleTime: 0,
+      });
+      return response;
+    },
+    [queryClient],
+  );
+  const loadPendingApprovals = useCallback(
+    async (conversationId: string) => {
+      const response = await queryClient.fetchQuery({
+        queryKey: queryKeys.ai.pendingApprovals(conversationId),
+        queryFn: async () => {
+          const response = await apiGet<PendingChatApproval[]>(
+            `/ai/conversations/${conversationId}/pending-approvals`,
+            pendingChatApprovalSchema.array(),
           );
           return response.data ?? [];
         },
@@ -208,6 +234,11 @@ export function useAI() {
                 event.data.conversationId,
               ),
             });
+            queryClient.removeQueries({
+              queryKey: queryKeys.ai.pendingApprovals(
+                event.data.conversationId,
+              ),
+            });
           }
         },
         signal,
@@ -227,5 +258,6 @@ export function useAI() {
     createConversation,
     deleteConversation,
     loadConversationMessages,
+    loadPendingApprovals,
   };
 }

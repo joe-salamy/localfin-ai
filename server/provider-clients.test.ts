@@ -3,6 +3,7 @@ import test from "node:test";
 import type { TestContext } from "node:test";
 import { UpstreamServiceError } from "./errors.js";
 import {
+  assertProviderBaseUrl,
   exchangeCodeForTokens,
   refreshTokens,
 } from "./services/providers/akoya-client.js";
@@ -129,5 +130,27 @@ void test("Akoya malformed successful responses use the stable upstream error co
     (error: unknown) =>
       error instanceof UpstreamServiceError &&
       error.message === "Akoya request failed",
+  );
+});
+void test("Akoya base URL validation requires a real Akoya subdomain", () => {
+  assert.equal(
+    assertProviderBaseUrl("https://sandbox-products.ddp.akoya.com", "AKOYA_API_BASE_URL"),
+    "https://sandbox-products.ddp.akoya.com",
+  );
+  assert.throws(
+    () =>
+      assertProviderBaseUrl(
+        "https://ddp.akoya.com.attacker.example",
+        "AKOYA_API_BASE_URL",
+      ),
+    /not an allowed Akoya host/,
+  );
+  assert.throws(
+    () =>
+      assertProviderBaseUrl(
+        "https://evilddp.akoya.com",
+        "AKOYA_API_BASE_URL",
+      ),
+    /not an allowed Akoya host/,
   );
 });

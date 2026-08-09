@@ -50,6 +50,21 @@ export function kindHasSubcategory(kind: TransactionKind): boolean {
   return kind !== "transfer" && kind !== "adjustment";
 }
 
+export function subcategoryMatchesKind(
+  subcategoryId: string | null | undefined,
+  kind: TransactionKind,
+  categories: Category[],
+  subcategories: Subcategory[],
+): boolean {
+  if (!subcategoryId) return true;
+  if (!kindHasSubcategory(kind)) return false;
+  const subcategory = subcategories.find((item) => item.id === subcategoryId);
+  const category = categories.find(
+    (item) => item.id === subcategory?.category_id,
+  );
+  return category?.type === kind;
+}
+
 export function parsePastedAmount(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;

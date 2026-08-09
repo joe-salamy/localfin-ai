@@ -991,10 +991,10 @@ async function fetchAkoyaPayload(
     const startTime = startDate.toISOString();
     const endTime = new Date().toISOString();
 
+    let pages = 0;
     for (const account of accounts) {
       let offset = 0;
       const limit = 500;
-      let pages = 0;
       for (;;) {
         if (pages >= MAX_SYNC_PAGES) {
           throw new Error(

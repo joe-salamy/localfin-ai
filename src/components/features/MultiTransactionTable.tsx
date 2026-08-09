@@ -51,6 +51,7 @@ import { useSpreadsheetSelection } from "@/features/spreadsheet-selection/useSpr
 import {
   addTransactionCellFields,
   kindHasSubcategory,
+  subcategoryMatchesKind,
 } from "@/lib/transactionCellParsing";
 import type { TransactionCellField } from "@/lib/transactionCellParsing";
 import {
@@ -92,6 +93,7 @@ interface GroupedSelectProps {
   onChange: (value: string) => void;
   categories: Category[];
   subcategories: Subcategory[];
+  kind: TransactionKind;
   className?: string;
   onPaste?: (event: ClipboardEvent<HTMLSelectElement>) => void;
   onFocus?: () => void;
@@ -105,6 +107,7 @@ function GroupedSubcategorySelect({
   onChange,
   categories,
   subcategories,
+  kind,
   className,
   onPaste,
   onFocus,
@@ -114,12 +117,13 @@ function GroupedSubcategorySelect({
 }: GroupedSelectProps) {
   const filtered = useMemo(() => {
     return categories
+      .filter((category) => category.type === kind)
       .map((cat) => ({
         category: cat,
         subs: subcategories.filter((s) => s.category_id === cat.id),
       }))
       .filter((g) => g.subs.length > 0);
-  }, [categories, subcategories]);
+  }, [categories, kind, subcategories]);
   const categoryLookup = useMemo(
     () => buildCategoryLookup(categories),
     [categories],
@@ -322,7 +326,12 @@ export function MultiTransactionTable() {
                   getAccountType(r.account_id, accounts),
                   kind,
                 ),
-                subcategory_id: kindHasSubcategory(kind)
+                subcategory_id: subcategoryMatchesKind(
+                  r.subcategory_id,
+                  kind,
+                  categories,
+                  subcategories,
+                )
                   ? r.subcategory_id
                   : "",
                 isDuplicate: false,
@@ -332,7 +341,14 @@ export function MultiTransactionTable() {
       );
       setDuplicatesChecked(false);
     },
-    [accounts, markDraftEdited, setDuplicatesChecked, setRows],
+    [
+      accounts,
+      categories,
+      markDraftEdited,
+      setDuplicatesChecked,
+      setRows,
+      subcategories,
+    ],
   );
 
   const removeRow = useCallback(
@@ -1043,7 +1059,12 @@ export function MultiTransactionTable() {
         return {
           ...row,
           kind: cat.kind,
-          subcategory_id: kindHasSubcategory(cat.kind)
+          subcategory_id: subcategoryMatchesKind(
+            cat.subcategory_id ?? row.subcategory_id,
+            cat.kind,
+            categories,
+            subcategories,
+          )
             ? (cat.subcategory_id ?? row.subcategory_id)
             : "",
           categorizationSource: cat.source,
@@ -1069,10 +1090,12 @@ export function MultiTransactionTable() {
     accounts,
     captureSnapshot,
     categorize,
+    categories,
     executeSnapshotAction,
     filledRows,
     markDraftEdited,
     rows,
+    subcategories,
     successToast,
   ]);
 
@@ -1224,9 +1247,16 @@ export function MultiTransactionTable() {
             createdIds = (result.data ?? []).map(
               (transaction) => transaction.id,
             );
-            successToast(`${payload.length} transaction(s) saved.`);
-            setRows(initialRows());
-            setDuplicatesChecked(false);
+            const draftUnchanged = draftRevisionRef.current === saveRevision;
+            successToast(
+              draftUnchanged
+                ? `${payload.length} transaction(s) saved.`
+                : `${payload.length} transaction(s) saved; newer draft edits were kept.`,
+            );
+            if (draftUnchanged) {
+              setRows(initialRows());
+              setDuplicatesChecked(false);
+            }
           } catch (err) {
             toast.error(
               err instanceof Error
@@ -1670,6 +1700,7 @@ export function MultiTransactionTable() {
                     onChange={(val) => handleSubcategoryChange(row, val)}
                     categories={categories}
                     subcategories={subcategories}
+                    kind={row.kind}
                     className={cn(
                       !kindHasSubcategory(row.kind) && "opacity-60",
                     )}

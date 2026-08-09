@@ -20,7 +20,11 @@ import { normalizeMaxAssistantTurns } from "./constants.js";
 import { assistantSystemMessage, buildUserPrompt } from "./prompting.js";
 import { createOpenRouterChatModel } from "../../ai/model.js";
 import { createAssistantTools } from "./tools.js";
-import { getCompletedRun, savePendingApprovals } from "./approvals.js";
+import {
+  getCompletedRun,
+  loadPendingApprovals,
+  savePendingApprovals,
+} from "./approvals.js";
 import { hasActionReceipts } from "./idempotency.js";
 
 export interface AssistantRunOptions {
@@ -88,7 +92,10 @@ export async function runAssistantChat(
   const requestId = request.requestId ?? crypto.randomUUID();
   const maxTurns = normalizeMaxAssistantTurns(request.maxAssistantTurns);
   const recursionLimit = Math.max(3, maxTurns * 2 + 1);
-  const signal = options.signal ?? AbortSignal.timeout(RUN_TIMEOUT_MS);
+  const timeoutSignal = AbortSignal.timeout(RUN_TIMEOUT_MS);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
 
   // Idempotent replay: when this exact request already completed (and its
   // approved plan was executed), replay the stored result without re-running
@@ -103,6 +110,33 @@ export async function runAssistantChat(
     await emit?.({ type: "final", data: completed });
     return completed;
   }
+  const persistedPending = loadPendingApprovals(
+    request.conversationId,
+    requestId,
+  );
+  if (persistedPending.length > 0) {
+    const pendingResult: ChatResult = {
+      conversationId: request.conversationId,
+      requestId,
+      message: `${persistedPending.length} proposed action${persistedPending.length === 1 ? " is" : "s are"} awaiting your approval.`,
+      actions: [],
+      logFile: "",
+      status: "awaiting_confirmation",
+    };
+    await emit?.({
+      type: "started",
+      conversationId: request.conversationId,
+      requestId,
+    });
+    await emit?.({
+      type: "confirmation_requested",
+      requestId,
+      actions: persistedPending,
+    });
+    await emit?.({ type: "final", data: pendingResult });
+    return pendingResult;
+  }
+
 
   await emit?.({
     type: "started",
@@ -207,12 +241,9 @@ export async function runAssistantChat(
         }
       }
     }
-    // The loop ends when the model stops calling tools (bounded by
-    // recursionLimit). All mutating intents were buffered by the tools and are
-    // persisted as one complete plan below, so approval covers the whole turn.
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw error;
+    if (signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+      throw abortError();
     }
     throw error;
   } finally {

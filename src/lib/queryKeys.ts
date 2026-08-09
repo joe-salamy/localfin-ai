@@ -102,5 +102,7 @@ export const queryKeys = {
     conversations: () => ["ai", "conversations"] as const,
     conversationMessages: (conversationId: string) =>
       ["ai", "conversations", conversationId, "messages"] as const,
+    pendingApprovals: (conversationId: string) =>
+      ["ai", "conversations", conversationId, "pending-approvals"] as const,
   },
 } as const;
