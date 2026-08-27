@@ -504,6 +504,17 @@ function createAgentApprovalAndReceipts(database: Database.Database): void {
   `);
 }
 
+function dropAgentTables(database: Database.Database): void {
+  database.exec(`
+    DROP TABLE IF EXISTS agent_pending_approvals;
+    DROP TABLE IF EXISTS agent_action_receipts;
+    DROP TABLE IF EXISTS pending_approvals;
+    DROP TABLE IF EXISTS action_receipts;
+    DROP TABLE IF EXISTS agent_messages;
+    DROP TABLE IF EXISTS agent_conversations;
+  `);
+}
+
 export const MIGRATIONS: readonly Migration[] = Object.freeze([
   {
     version: 1,
@@ -530,6 +541,11 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
     version: 7,
     name: "agent-approval-receipts",
     up: createAgentApprovalAndReceipts,
+  },
+  {
+    version: 8,
+    name: "drop-agent-tables",
+    up: dropAgentTables,
   },
 ]);
 

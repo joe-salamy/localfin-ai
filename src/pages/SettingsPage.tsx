@@ -25,11 +25,6 @@ import {
   validateShortcut,
 } from "@/features/shortcuts/normalize";
 import { useDisplaySettings } from "@/features/display-settings/hooks";
-import { useAssistantSettings } from "@/features/assistant-settings/hooks";
-import {
-  MAX_MAX_ASSISTANT_TURNS,
-  MIN_MAX_ASSISTANT_TURNS,
-} from "@/features/assistant-settings/storage";
 import { useFlaggedWords } from "@/features/flagged-words/hooks";
 import {
   DEFAULT_FLAGGED_WORDS,
@@ -66,7 +61,6 @@ export function SettingsPage() {
     setDisableSingleKeyShortcuts,
   } = useShortcuts();
   const displaySettings = useDisplaySettings();
-  const assistantSettings = useAssistantSettings();
   const flaggedWords = useFlaggedWords();
 
   const [query, setQuery] = useState("");
@@ -83,7 +77,6 @@ export function SettingsPage() {
   const [shortcutsTableFocused, setShortcutsTableFocused] = useState(false);
   const [apiKeyOpen, setApiKeyOpen] = useState(true);
   const [interfaceOpen, setInterfaceOpen] = useState(true);
-  const [assistantOpen, setAssistantOpen] = useState(true);
   const [flaggedWordsOpen, setFlaggedWordsOpen] = useState(true);
   const [amountColorsOpen, setAmountColorsOpen] = useState(true);
   const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(true);
@@ -94,7 +87,6 @@ export function SettingsPage() {
     getHeaderStyle,
     getResizeHandleProps,
   } = useResizableColumns("settings.shortcuts", SHORTCUT_COLUMNS);
-
   useShortcutScope("settings");
   useShortcutScope(
     "settingsShortcuts",
@@ -312,34 +304,6 @@ export function SettingsPage() {
               {tableLayoutMessage}
             </p>
           )}
-      </CollapsibleCard>
-
-      <CollapsibleCard
-        title="Assistant"
-        open={assistantOpen}
-        onOpenChange={setAssistantOpen}
-        contentClassName="space-y-3"
-      >
-          <Input
-            type="number"
-            min={MIN_MAX_ASSISTANT_TURNS}
-            max={MAX_MAX_ASSISTANT_TURNS}
-            step={1}
-            label="Max LLM turns per request"
-            value={assistantSettings.maxAssistantTurns}
-            onChange={(event) =>
-              assistantSettings.setMaxAssistantTurns(Number(event.target.value))
-            }
-            helperText="Controls how many times the assistant can continue after tool results. Default is 5."
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={assistantSettings.resetAssistantSettings}
-          >
-            <RotateCcw className="mr-1 h-3.5 w-3.5" />
-            Reset
-          </Button>
       </CollapsibleCard>
 
 

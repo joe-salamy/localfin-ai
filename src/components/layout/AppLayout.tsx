@@ -1,12 +1,9 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { Navbar } from "./Navbar";
-import { ChatSidePanel } from "@/components/features/ChatSidePanel";
 import { useShortcut } from "@/features/shortcuts/hooks";
 
 export function AppLayout() {
-  const [chatOpen, setChatOpen] = useState(false);
-  const assistantInputRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
 
   useShortcut(
@@ -39,26 +36,6 @@ export function AppLayout() {
       );
     }, [navigate]),
   );
-  useShortcut(
-    "global.toggleAssistant",
-    useCallback(() => {
-      setChatOpen((open) => !open);
-    }, []),
-  );
-  useShortcut(
-    "global.focusAssistant",
-    useCallback(() => {
-      setChatOpen(true);
-      window.setTimeout(() => assistantInputRef.current?.focus(), 0);
-    }, []),
-  );
-  useShortcut(
-    "global.close",
-    useCallback(() => {
-      setChatOpen(false);
-    }, []),
-    { enabled: chatOpen },
-  );
 
   return (
     <div className="min-h-screen bg-background text-foreground md:flex">
@@ -68,11 +45,6 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
-      <ChatSidePanel
-        open={chatOpen}
-        onOpenChange={setChatOpen}
-        inputRef={assistantInputRef}
-      />
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useAccounts } from "@/hooks/useAccounts";
-import { useAI } from "@/hooks/useAI";
+import { useParser } from "@/hooks/useParser";
 import { useCategories } from "@/hooks/useCategories";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useTags } from "@/hooks/useTags";
@@ -189,7 +189,7 @@ export function MultiTransactionTable() {
     bulkRestoreTransactions,
     checkDuplicates,
   } = useTransactions();
-  const { categorize, parseStatement } = useAI();
+  const { parseStatement } = useParser();
   const { findTransactionMatches } = useFlaggedWords();
   const successToast = useSuccessToast();
   const { execute } = useUndoRedo();
@@ -211,7 +211,6 @@ export function MultiTransactionTable() {
   const [flaggedWarningMatches, setFlaggedWarningMatches] = useState<
     FlaggedWordMatch[]
   >([]);
-  const [lastRunId, setLastRunId] = useState<string | null>(null);
   const statementAccountRef = useRef<HTMLSelectElement>(null);
   const statementTextRef = useRef<HTMLTextAreaElement>(null);
   const cellRefs = useRef<Array<HTMLElement | null>>([]);
@@ -1017,88 +1016,6 @@ export function MultiTransactionTable() {
 
   const filledRows = useMemo(() => rows.filter(isRowFilled), [rows]);
 
-  const handleAICategorize = useCallback(async () => {
-    const eligibleRows = filledRows.filter(
-      (r) => r.name && r.amount && r.account_id,
-    );
-    if (eligibleRows.length === 0) {
-      toast.error(
-        "Rows need a name, amount, and account before AI categorization.",
-      );
-      return;
-    }
-
-    const requestRevision = draftRevisionRef.current;
-    const conversationId = crypto.randomUUID();
-    setLastRunId(conversationId);
-
-    try {
-      const result = await categorize.mutateAsync({
-        conversationId,
-        transactions: eligibleRows.map((row) => ({
-          name: row.name,
-          account_id: row.account_id,
-          account_name:
-            accounts.find((account) => account.id === row.account_id)?.name ??
-            "Unknown",
-          amount: displayAmountToNumber(
-            normalizeRowAmountDisplay(row, accounts),
-          ),
-          account_type: getAccountType(row.account_id, accounts),
-          date: row.date ? toApiDate(row.date) : undefined,
-        })),
-      });
-      if (draftRevisionRef.current !== requestRevision) return;
-      const data = result.data ?? [];
-      const byId = new Map(
-        eligibleRows.map((row, index) => [row.id, data[index]]),
-      );
-      const nextRows = rows.map((row) => {
-        const cat = byId.get(row.id);
-        if (!cat) return row;
-        return {
-          ...row,
-          kind: cat.kind,
-          subcategory_id: subcategoryMatchesKind(
-            cat.subcategory_id ?? row.subcategory_id,
-            cat.kind,
-            categories,
-            subcategories,
-          )
-            ? (cat.subcategory_id ?? row.subcategory_id)
-            : "",
-          categorizationSource: cat.source,
-          aiSuggestedSubcategoryId:
-            cat.source === "ai" ? cat.subcategory_id : null,
-        };
-      });
-      markDraftEdited();
-      const before = captureSnapshot();
-      const after = captureSnapshot({ rows: nextRows });
-      await executeSnapshotAction(
-        "Categorize transactions",
-        before,
-        after,
-        () => successToast(`Categorized ${data.length} row(s).`),
-      );
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "AI categorization failed.",
-      );
-    }
-  }, [
-    accounts,
-    captureSnapshot,
-    categorize,
-    categories,
-    executeSnapshotAction,
-    filledRows,
-    markDraftEdited,
-    rows,
-    subcategories,
-    successToast,
-  ]);
-
   const handleParseStatement = useCallback(async () => {
     if (!statementText.trim() || !statementAccountId) {
       toast.error("Choose an account and paste statement text first.");
@@ -1324,13 +1241,6 @@ export function MultiTransactionTable() {
   );
 
   useShortcut("transactionInput.addRow", addRow);
-  useShortcut(
-    "transactionInput.aiCategorize",
-    () => {
-      void handleAICategorize();
-    },
-    { enabled: !categorize.isPending },
-  );
   useShortcut("transactionInput.clearAll", clearAll);
   useShortcut(
     "transactionInput.saveAll",
@@ -1430,10 +1340,8 @@ export function MultiTransactionTable() {
     <div className="space-y-3">
       <TransactionDraftActions
         filledRowCount={filledRows.length}
-        categorizing={categorize.isPending}
         saving={saving}
         onAddRow={addRow}
-        onCategorize={() => void handleAICategorize()}
         onClear={clearAll}
         onSave={() => void handleSave()}
       />
@@ -1443,7 +1351,7 @@ export function MultiTransactionTable() {
         accountId={statementAccountId}
         text={statementText}
         parseSummary={parseSummary}
-        lastRunId={lastRunId}
+        lastRunId={null}
         parsing={parseStatement.isPending}
         accountRef={statementAccountRef}
         textRef={statementTextRef}

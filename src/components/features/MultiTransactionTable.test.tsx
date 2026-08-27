@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   bulkCreate: vi.fn(),
   checkDuplicates: vi.fn(),
   checkTransferMatch: vi.fn(),
-  categorize: vi.fn(),
   parseStatement: vi.fn(),
 }));
 
@@ -76,9 +75,8 @@ vi.mock("@/hooks/useTransactions", () => ({
     checkTransferMatch: { mutateAsync: mocks.checkTransferMatch },
   }),
 }));
-vi.mock("@/hooks/useAI", () => ({
-  useAI: () => ({
-    categorize: { mutateAsync: mocks.categorize, isPending: false },
+vi.mock("@/hooks/useParser", () => ({
+  useParser: () => ({
     parseStatement: { mutateAsync: mocks.parseStatement, isPending: false },
   }),
 }));
@@ -97,7 +95,6 @@ beforeEach(() => {
     success: true,
     data: null,
   });
-  mocks.categorize.mockReset().mockResolvedValue({ success: true, data: [] });
   mocks.parseStatement.mockReset().mockResolvedValue({
     success: true,
     data: {
@@ -160,21 +157,8 @@ describe("MultiTransactionTable", () => {
     expect(screen.getByDisplayValue("food")).toBeVisible();
   });
 
-  test("categorizes drafts, imports statements, and preserves native input editing", async () => {
+  test("imports statements and preserves native input editing", async () => {
     const user = userEvent.setup();
-    mocks.categorize.mockResolvedValue({
-      success: true,
-      data: [
-        {
-          transaction_name: "Market",
-          kind: "expense",
-          subcategory_id: subcategory.id,
-          subcategory_name: subcategory.name,
-          category_name: category.name,
-          source: "ai",
-        },
-      ],
-    });
     mocks.parseStatement.mockResolvedValue({
       success: true,
       data: {
@@ -190,7 +174,7 @@ describe("MultiTransactionTable", () => {
             subcategory_id: subcategory.id,
             subcategory_name: subcategory.name,
             category_name: category.name,
-            categorizationSource: "ai",
+            categorizationSource: "none",
             isDuplicate: false,
           },
         ],
@@ -198,8 +182,8 @@ describe("MultiTransactionTable", () => {
           total: 1,
           duplicates: 0,
           fromLookup: 0,
-          fromAI: 1,
-          uncategorized: 0,
+          fromAI: 0,
+          uncategorized: 1,
           needsReview: 0,
         },
         format: "text",
@@ -218,9 +202,6 @@ describe("MultiTransactionTable", () => {
     nameInput.setSelectionRange(3, 3);
     fireEvent.keyDown(nameInput, { key: "ArrowLeft" });
     expect(nameInput.selectionStart).toBe(3);
-
-    await user.click(screen.getByRole("button", { name: /AI Categorize/ }));
-    await waitFor(() => expect(mocks.categorize).toHaveBeenCalled());
 
     await user.selectOptions(screen.getAllByRole("combobox")[0]!, account.id);
     await user.type(screen.getByPlaceholderText("Paste statement lines here"), "Imported Cafe 5");

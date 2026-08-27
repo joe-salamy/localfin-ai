@@ -1,9 +1,11 @@
 import type { AccountType,
 EnrichedTransaction,
 ParsedTransaction, } from "../../shared/contracts/index.js"
-import { normalizeTransactionAmount } from "../../shared/finance/transactionAmounts.js"
+import {
+  inferTransactionKindForAccount,
+  normalizeTransactionAmount,
+} from "../../shared/finance/transactionAmounts.js"
 import { getDb } from "../db/index.js";
-import { categorizeTransactions } from "./ai.js";
 
 // ---------- Format detection ----------
 
@@ -147,13 +149,10 @@ function checkDuplicatesInDb(
     return row.cnt > 0;
   });
 }
-
-// ---------- Main export ----------
-
 export async function parseStatement(
   text: string,
   accountId: string,
-  conversationId?: string,
+  _conversationId?: string,
 ): Promise<{
   transactions: EnrichedTransaction[];
   summary: {
@@ -168,6 +167,7 @@ export async function parseStatement(
   parseSuccessRate: number;
   errors: string[];
 }> {
+  void _conversationId;
   const errors: string[] = [];
   const lines = text
     .split(/\r?\n/)
@@ -303,33 +303,13 @@ export async function parseStatement(
     };
   }
 
-  const categorizations =
-    parsed.length > 0
-      ? await categorizeTransactions({
-          conversationId,
-          transactions: parsed.map((t) => ({
-            date: t.date,
-            name: t.name,
-            account_id: accountId,
-            account_name: account.name,
-            account_type: account.type,
-            amount: normalizeTransactionAmount(
-              t.amount,
-              account.type,
-              "expense",
-            ),
-          })),
-        })
-      : [];
-
-  const normalizedTransactions = parsed.map((t, i) => {
-    const categorization = categorizations[i];
-    const kind = categorization?.kind ?? "expense";
+  // Deterministic only — no LLM categorization. Infer kind from amount sign and account type, no subcategory inference.
+  const normalizedTransactions = parsed.map((t) => {
+    const kind = inferTransactionKindForAccount(t.amount, account.type);
     return {
       ...t,
       amount: normalizeTransactionAmount(t.amount, account.type, kind),
       kind,
-      categorization,
     };
   });
 
@@ -353,39 +333,18 @@ export async function parseStatement(
 
   const enriched: EnrichedTransaction[] = normalizedTransactions.map((t, i) => {
     const isDuplicate = duplicateFlags[i];
-    const { categorization, ...transaction } = t;
     if (isDuplicate) summary.duplicates++;
-
-    if (
-      categorization?.source === "lookup" ||
-      categorization?.source === "transfer"
-    ) {
-      summary.fromLookup++;
-    } else if (categorization?.source === "ai") {
-      summary.fromAI++;
-    }
-    if (
-      !categorization?.subcategory_id &&
-      categorization?.kind !== "transfer"
-    ) {
-      summary.uncategorized++;
-    }
-
+    summary.uncategorized++;
     if (t.needsReview) summary.needsReview++;
-
     return {
-      ...transaction,
-      subcategory_id: categorization?.subcategory_id ?? null,
-      subcategory_name: categorization?.subcategory_name ?? null,
-      category_name: categorization?.category_name ?? null,
-      categorizationSource:
-        categorization?.source === "transfer"
-          ? "lookup"
-          : (categorization?.source ?? "none"),
+      ...t,
+      subcategory_id: null,
+      subcategory_name: null,
+      category_name: null,
+      categorizationSource: "none" as const,
       isDuplicate,
     };
   });
-
   const totalLines = lines.length;
   const parseSuccessRate = totalLines > 0 ? parsed.length / totalLines : 0;
 

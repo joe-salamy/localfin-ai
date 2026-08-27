@@ -12,9 +12,7 @@ export type CommandScope =
   | "setupSubcategories"
   | "settings"
   | "settingsShortcuts"
-  | "assistant"
   | "modal";
-
 export type CommandCategory =
   | "Global"
   | "Dashboard"
@@ -31,12 +29,8 @@ export type CommandId =
   | "global.transactionHistory"
   | "global.settings"
   | "global.keyboardShortcuts"
-  | "global.toggleAssistant"
-  | "global.focusAssistant"
-  | "global.close"
   | "global.undo"
   | "global.redo"
-  | "assistant.send"
   | "dashboard.applyDateRange"
   | "dashboard.focusStartDate"
   | "dashboard.focusEndDate"
@@ -47,7 +41,6 @@ export type CommandId =
   | "dashboard.preset5"
   | "dashboard.preset6"
   | "transactionInput.addRow"
-  | "transactionInput.aiCategorize"
   | "transactionInput.clearAll"
   | "transactionInput.saveAll"
   | "transactionInput.parseStatement"
@@ -216,31 +209,6 @@ export const DEFAULT_COMMANDS = [
     "Ctrl+Alt+K",
   ),
   command(
-    "global.toggleAssistant",
-    "Toggle AI Assistant",
-    "Open or close the AI assistant side panel.",
-    "Global",
-    "global",
-    "Ctrl+Alt+I",
-    { inputSafe: true },
-  ),
-  command(
-    "global.focusAssistant",
-    "Focus AI Assistant Input",
-    "Move focus to the assistant message box.",
-    "Global",
-    "global",
-    "Ctrl+Alt+.",
-  ),
-  command(
-    "global.close",
-    "Close AI Assistant",
-    "Close the AI assistant side panel.",
-    "Global",
-    "assistant",
-    "Escape",
-  ),
-  command(
     "global.undo",
     "Undo",
     "Undo the last app action.",
@@ -255,15 +223,6 @@ export const DEFAULT_COMMANDS = [
     "Global",
     "global",
     ["Ctrl+Shift+Z", "Ctrl+Y", "Shift+Meta+Z"],
-  ),
-  command(
-    "assistant.send",
-    "Send Assistant Message",
-    "Send the current assistant message.",
-    "Global",
-    "assistant",
-    "Ctrl+Enter",
-    { inputSafe: true },
   ),
 
   command(
@@ -347,14 +306,6 @@ export const DEFAULT_COMMANDS = [
     "Add Transactions",
     "transactionInput",
     "Ctrl+Alt+N",
-  ),
-  command(
-    "transactionInput.aiCategorize",
-    "AI Categorize Rows",
-    "Categorize eligible rows with AI.",
-    "Add Transactions",
-    "transactionInput",
-    "Ctrl+Alt+G",
   ),
   command(
     "transactionInput.clearAll",

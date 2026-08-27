@@ -1,23 +1,19 @@
-import { Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { Plus, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ShortcutHint } from "@/features/shortcuts/ShortcutHint";
 
 interface TransactionDraftActionsProps {
   filledRowCount: number;
-  categorizing: boolean;
   saving: boolean;
   onAddRow(): void;
-  onCategorize(): void;
   onClear(): void;
   onSave(): void;
 }
 
 export function TransactionDraftActions({
   filledRowCount,
-  categorizing,
   saving,
   onAddRow,
-  onCategorize,
   onClear,
   onSave,
 }: TransactionDraftActionsProps) {
@@ -27,16 +23,6 @@ export function TransactionDraftActions({
         <Plus className="mr-1 h-3.5 w-3.5" />
         Add Row
         <ShortcutHint commandId="transactionInput.addRow" />
-      </Button>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={onCategorize}
-        loading={categorizing}
-      >
-        <Sparkles className="mr-1 h-3.5 w-3.5" />
-        AI Categorize
-        <ShortcutHint commandId="transactionInput.aiCategorize" />
       </Button>
       <Button size="sm" variant="ghost" onClick={onClear}>
         <Trash2 className="mr-1 h-3.5 w-3.5" />

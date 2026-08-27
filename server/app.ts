@@ -7,9 +7,10 @@ import { tagRouter } from "./routes/tags.js";
 import { transactionRouter } from "./routes/transactions.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { goalRouter } from "./routes/goals.js";
-import { aiRouter } from "./routes/ai.js";
 import { parserRouter } from "./routes/parser.js";
 import { accountLinkingRouter } from "./routes/account-linking.js";
+import { openApiRouter } from "./routes/openapi.js";
+import { auditLog } from "./middleware/audit-log.js";
 import { API_ROUTES, ENV_KEYS, SERVER_CONFIG } from "./config/app.js";
 import { ForbiddenError, OperationalError } from "./errors.js";
 
@@ -73,10 +74,13 @@ export function createApp(): express.Express {
     }),
   );
   app.use(express.json({ limit: SERVER_CONFIG.jsonLimit }));
+  app.use(auditLog);
 
   app.get(API_ROUTES.health, (_req, res) => {
     res.json({ ok: true, timestamp: new Date().toISOString() });
   });
+  app.use(API_ROUTES.openapi, openApiRouter);
+  app.use(API_ROUTES.openapiJson, openApiRouter);
 
   app.use(API_ROUTES.accounts, accountRouter);
   app.use(API_ROUTES.categories, categoryRouter);
@@ -85,10 +89,8 @@ export function createApp(): express.Express {
   app.use(API_ROUTES.transactions, transactionRouter);
   app.use(API_ROUTES.dashboard, dashboardRouter);
   app.use(API_ROUTES.goals, goalRouter);
-  app.use(API_ROUTES.ai, aiRouter);
   app.use(API_ROUTES.parser, parserRouter);
   app.use(API_ROUTES.accountLinking, accountLinkingRouter);
-
   app.use((_req, res) => {
     res.status(404).json({ success: false, error: "Route not found" });
   });

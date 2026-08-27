@@ -14,7 +14,6 @@ const ROOTS = [
   queryKeys.transactions.all,
   queryKeys.accountLinking.all,
   queryKeys.dashboard.all,
-  queryKeys.ai.conversations(),
 ] as const;
 
 async function invalidatedRoots(scope: FinanceInvalidationScope): Promise<string[]> {
@@ -55,8 +54,7 @@ test.each([
 ] as const)("%s invalidates exactly its finance roots", async (scope, roots) => {
   expect(await invalidatedRoots(scope)).toEqual(roots);
 });
-
-test("AI conversation roots remain fresh for every finance scope", async () => {
+test("no extra roots invalidated beyond finance scopes", async () => {
   for (const scope of [
     "accounts",
     "categories",
@@ -65,6 +63,7 @@ test("AI conversation roots remain fresh for every finance scope", async () => {
     "providers",
     "all",
   ] as const) {
-    expect(await invalidatedRoots(scope)).not.toContain("ai");
+    const roots = await invalidatedRoots(scope);
+    expect(roots.every((root) => ["accounts","categories","subcategories","tags","transactions","account-linking","dashboard"].includes(root))).toBe(true);
   }
 });

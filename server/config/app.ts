@@ -15,9 +15,10 @@ export const API_ROUTES = {
   transactions: "/api/transactions",
   dashboard: "/api/dashboard",
   goals: "/api/goals",
-  ai: "/api/ai",
   parser: "/api/parser",
   accountLinking: "/api/account-linking",
+  openapi: "/api/openapi",
+  openapiJson: "/api/openapi.json",
 } as const;
 
 export const HTTP_HEADERS = {
@@ -37,7 +38,6 @@ export const DATE_CONFIG = {
 
 export const ENV_KEYS = {
   corsOrigin: "CORS_ORIGIN",
-  openRouterApiKey: "OPENROUTER_API_KEY",
   localfinDataDirectory: "LOCALFIN_DATA_DIR",
   localfinDatabasePath: "LOCALFIN_DB_PATH",
   localfinProviderSecret: "LOCALFIN_PROVIDER_SECRET",
@@ -80,32 +80,3 @@ export const PROVIDER_CONFIG = {
   akoyaScope: "openid offline_access profile",
 } as const;
 
-export const AI_CONFIG = {
-  batchSize: 25,
-  contextSize: 100,
-  maxConcurrentLLMRequests: 5,
-} as const;
-
-export const AI_MODELS = {
-  transactionCategorization: "deepseek/deepseek-v4-flash",
-  assistantChat: "deepseek/deepseek-v4-flash",
-} as const;
-
-export const OPENROUTER_CONFIG = {
-  apiKeyPlaceholder: "your_openrouter_api_key_here",
-  logDirectory: path.resolve(process.cwd(), "logs", "jsonl"),
-  logFileTimeZone: "America/Los_Angeles",
-  maxLogIdLength: 120,
-} as const;
-
-export function getOpenRouterApiKey(): string {
-  const apiKey = process.env[ENV_KEYS.openRouterApiKey];
-  if (!apiKey || apiKey === OPENROUTER_CONFIG.apiKeyPlaceholder) {
-    throw new Error(
-      `${ENV_KEYS.openRouterApiKey} not configured. Set it in .env file.`,
-    );
-  }
-  return apiKey;
-}
-
-export type AIModel = (typeof AI_MODELS)[keyof typeof AI_MODELS];

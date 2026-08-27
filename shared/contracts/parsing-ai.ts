@@ -19,27 +19,6 @@ export interface EnrichedTransaction extends ParsedTransaction {
   isDuplicate: boolean;
 }
 
-export interface TransactionForCategorization {
-  name: string;
-  account_name: string;
-  amount: number;
-}
-
-export interface CategorizationResult {
-  subcategory_id: string;
-  subcategory_name: string;
-  category_name: string;
-}
-
-export interface CategorizeResult {
-  transaction_name: string;
-  kind: TransactionKind;
-  subcategory_id: string | null;
-  subcategory_name: string | null;
-  category_name: string | null;
-  source: "lookup" | "transfer" | "ai" | "none";
-}
-
 export interface ParseStatementResult {
   transactions: EnrichedTransaction[];
   summary: {
@@ -54,90 +33,6 @@ export interface ParseStatementResult {
   parseSuccessRate: number;
   errors: string[];
 }
-
-export interface ChatRequest {
-  conversationId: string;
-  message: string;
-  currentPage?: string;
-  maxAssistantTurns?: number;
-  /** Client-generated idempotency key; retries with the same key are replayed instead of re-executed. */
-  requestId?: string;
-}
-
-export interface ChatActionResult {
-  type: string;
-  input: Record<string, unknown>;
-  status: "success" | "error";
-  result?: unknown;
-  error?: string;
-}
-
-export interface ChatResult {
-  conversationId: string;
-  requestId: string;
-  message: string;
-  actions: ChatActionResult[];
-  logFile: string;
-  status: "success" | "partial" | "awaiting_confirmation";
-}
-
-export interface ChatConfirmResult {
-  conversationId: string;
-  requestId: string;
-  message: string;
-  actions: ChatActionResult[];
-  status: "success" | "partial";
-}
-
-export interface PendingChatApproval {
-  requestId: string;
-  actions: PlannedChatAction[];
-}
-
-export interface AgentConversation {
-  id: string;
-  title: string;
-  current_page: string | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
-}
-
-export interface AgentMessage {
-  id: string;
-  conversation_id: string;
-  role: "user" | "assistant";
-  content: string;
-  request_id: string | null;
-  actions: ChatActionResult[] | null;
-  log_file: string | null;
-  status: "success" | "partial" | "error";
-  created_at: string;
-}
-
-export type PlannedChatAction = Omit<
-  ChatActionResult,
-  "status" | "result" | "error"
->;
-
-export type ChatStreamEvent =
-  | { type: "started"; conversationId: string; requestId: string }
-  | { type: "thinking"; message: string }
-  | { type: "actions_planned"; actions: PlannedChatAction[] }
-  | {
-      type: "confirmation_requested";
-      requestId: string;
-      actions: PlannedChatAction[];
-    }
-  | { type: "action_started"; index: number; action: PlannedChatAction }
-  | { type: "action_finished"; index: number; action: ChatActionResult }
-  | { type: "final"; data: ChatResult }
-  | { type: "error"; message: string };
-
-export type ChatStreamEmitter = (
-  event: ChatStreamEvent,
-) => void | Promise<void>;
-
 
 const parsedTransactionSchema = z.object({
   date: z.string(),
@@ -158,15 +53,6 @@ export const enrichedTransactionSchema: z.ZodType<EnrichedTransaction> =
     isDuplicate: z.boolean(),
   });
 
-export const categorizeResultSchema: z.ZodType<CategorizeResult> = z.object({
-  transaction_name: z.string(),
-  kind: transactionKindSchema,
-  subcategory_id: z.string().nullable(),
-  subcategory_name: z.string().nullable(),
-  category_name: z.string().nullable(),
-  source: z.enum(["lookup", "transfer", "ai", "none"]),
-});
-
 export const parseStatementResultSchema: z.ZodType<ParseStatementResult> =
   z.object({
     transactions: z.array(enrichedTransactionSchema),
@@ -182,87 +68,3 @@ export const parseStatementResultSchema: z.ZodType<ParseStatementResult> =
     parseSuccessRate: z.number(),
     errors: z.array(z.string()),
   });
-
-export const chatActionResultSchema: z.ZodType<ChatActionResult> = z.object({
-  type: z.string(),
-  input: z.record(z.string(), z.unknown()),
-  status: z.enum(["success", "error"]),
-  result: z.unknown().optional(),
-  error: z.string().optional(),
-});
-
-export const plannedChatActionSchema: z.ZodType<PlannedChatAction> = z.object({
-  type: z.string(),
-  input: z.record(z.string(), z.unknown()),
-});
-
-export const chatResultSchema: z.ZodType<ChatResult> = z.object({
-  conversationId: z.string(),
-  requestId: z.string(),
-  message: z.string(),
-  actions: z.array(chatActionResultSchema),
-  logFile: z.string(),
-  status: z.enum(["success", "partial", "awaiting_confirmation"]),
-});
-
-export const chatConfirmResultSchema: z.ZodType<ChatConfirmResult> = z.object({
-  conversationId: z.string(),
-  requestId: z.string(),
-  message: z.string(),
-  actions: z.array(chatActionResultSchema),
-  status: z.enum(["success", "partial"]),
-});
-export const pendingChatApprovalSchema: z.ZodType<PendingChatApproval> =
-  z.object({
-    requestId: z.string(),
-    actions: z.array(plannedChatActionSchema),
-  });
-
-export const agentConversationSchema: z.ZodType<AgentConversation> = z.object({
-  id: z.string(),
-  title: z.string(),
-  current_page: z.string().nullable(),
-  created_at: z.string(),
-  updated_at: z.string(),
-  deleted_at: z.string().nullable(),
-});
-
-export const agentMessageSchema: z.ZodType<AgentMessage> = z.object({
-  id: z.string(),
-  conversation_id: z.string(),
-  role: z.enum(["user", "assistant"]),
-  content: z.string(),
-  request_id: z.string().nullable(),
-  actions: z.array(chatActionResultSchema).nullable(),
-  log_file: z.string().nullable(),
-  status: z.enum(["success", "partial", "error"]),
-  created_at: z.string(),
-});
-
-export const chatStreamEventSchema: z.ZodType<ChatStreamEvent> =
-  z.discriminatedUnion("type", [
-    z.object({
-      type: z.literal("started"),
-      conversationId: z.string(),
-      requestId: z.string(),
-    }),
-    z.object({ type: z.literal("thinking"), message: z.string() }),
-    z.object({ type: z.literal("actions_planned"), actions: z.array(plannedChatActionSchema) }),
-    z.object({
-      type: z.literal("confirmation_requested"),
-      requestId: z.string(),
-      actions: z.array(plannedChatActionSchema),
-    }),
-    z.object({
-      type: z.literal("action_started"),
-      index: z.number(),
-      action: plannedChatActionSchema,
-    }),
-    z.object({
-      type: z.literal("action_finished"),
-      index: z.number(),
-      action: chatActionResultSchema,
-    }),
-    z.object({ type: z.literal("final"), data: chatResultSchema }),
-    z.object({ type: z.literal("error"), message: z.string() }),
-  ]);
