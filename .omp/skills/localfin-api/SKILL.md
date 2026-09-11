@@ -10,7 +10,7 @@ Plug-and-play finance endpoints for external agents (OMP, Claude, Codex). No emb
 ## Base
 
 - Server: `http://127.0.0.1:3001` (loopback-only bind in `server/index.ts:16`; unauthenticated API deliberately binds to 127.0.0.1 only)
-- CORS: `server/config/app.ts:5 SERVER_CONFIG.defaultCorsOrigins = "http://localhost:5173,http://127.0.0.1:5173"` — split by comma, origin allowed if missing or in set
+- CORS: `server/config/app.ts:5 SERVER_CONFIG.defaultCorsOrigins = "http://localhost:3001,http://127.0.0.1:3001"` — split by comma, origin allowed if missing or in set
 - Spec: `GET /api/openapi.json` (pure JSON, no auth; also mounted at `/api/openapi` via `openApiRouter`). Full shape in `server/routes/openapi.ts`; do not duplicate here — fetch the live spec.
 
 ## Routes (`server/config/app.ts:9 API_ROUTES`)

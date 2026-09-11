@@ -5,7 +5,7 @@ import {
   categoryDifferenceScaleValue,
   scaleValueColorClass,
   transactionAmountScaleValue,
-} from "../src/lib/financialColorScale.js";
+} from "../shared/finance/financialColorScale.js";
 
 void test("account change scale treats liability decreases as positive", () => {
   assert.equal(accountChangeScaleValue(50, "asset"), 50);

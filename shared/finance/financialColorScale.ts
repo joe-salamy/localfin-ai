@@ -2,7 +2,7 @@ import type {
   AccountType,
   CategoryType,
   TransactionKind,
-} from "../../shared/contracts/index.js";
+} from "../contracts/index.js";
 
 export function accountChangeScaleValue(
   amount: number,

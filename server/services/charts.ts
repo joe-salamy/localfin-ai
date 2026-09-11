@@ -10,7 +10,7 @@ import {
 import { getDb } from "../db/index.js";
 import { DATE_CONFIG } from "../config/app.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
-import { resolveEntityColor } from "../../src/lib/colors.js";
+import { resolveEntityColor } from "../../shared/finance/colors.js";
 import type { NetWorthDataPoint,
 SankeyData,
 SankeyLink,

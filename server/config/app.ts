@@ -2,7 +2,7 @@ import path from "node:path";
 
 export const SERVER_CONFIG = {
   port: 3001,
-  defaultCorsOrigins: "http://localhost:5173,http://127.0.0.1:5173",
+  defaultCorsOrigins: "http://localhost:3001,http://127.0.0.1:3001",
   jsonLimit: "1mb",
 } as const;
 
@@ -63,7 +63,7 @@ export const DATABASE_CONFIG = {
 } as const;
 
 export const PROVIDER_CONFIG = {
-  frontendBaseUrl: "http://localhost:5173",
+  frontendBaseUrl: "http://localhost:3001",
   plaidEnv: "sandbox",
   plaidAllowedEnvs: ["sandbox", "development", "production"],
   plaidClientName: "LocalFin AI",

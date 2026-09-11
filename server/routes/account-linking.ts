@@ -1,8 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { ENV_KEYS, PROVIDER_CONFIG } from "../config/app.js";
-import { publicErrorMessage } from "../errors.js";
 import { accountLinkingService } from "../services/account-linking.js";
 import { idParamSchema, nonEmptyString, parseRequest } from "./validation.js";
 
@@ -35,12 +33,6 @@ const syncSchema = z.object({
   connectionId: nonEmptyString.optional(),
 });
 
-function frontendBaseUrl() {
-  return (
-    process.env[ENV_KEYS.frontendBaseUrl] ?? PROVIDER_CONFIG.frontendBaseUrl
-  );
-}
-
 router.get("/connections", (_req: Request, res: Response) => {
   res.json({ success: true, data: accountLinkingService.listProviderConnections() });
 });
@@ -64,27 +56,22 @@ router.post("/akoya/authorize", (req: Request, res: Response) => {
 });
 
 router.get("/akoya/callback", async (req: Request, res: Response) => {
-  try {
-    const query = parseRequest(akoyaCallbackSchema, req.query);
-    if (query.error) {
-      res.redirect(
-        `${frontendBaseUrl()}/setup?provider=akoya&status=error&message=${encodeURIComponent(query.error)}`,
-      );
-      return;
-    }
-    if (!query.code || !query.state) {
-      res.redirect(
-        `${frontendBaseUrl()}/setup?provider=akoya&status=error&message=${encodeURIComponent("Missing Akoya callback code or state")}`,
-      );
-      return;
-    }
-    await accountLinkingService.handleAkoyaCallback({ code: query.code, state: query.state });
-    res.redirect(`${frontendBaseUrl()}/setup?provider=akoya&status=connected`);
-  } catch (error) {
-    res.redirect(
-      `${frontendBaseUrl()}/setup?provider=akoya&status=error&message=${encodeURIComponent(publicErrorMessage(error))}`,
-    );
+  const query = parseRequest(akoyaCallbackSchema, req.query);
+  if (query.error) {
+    res.status(400).json({ success: false, error: query.error });
+    return;
   }
+  if (!query.code || !query.state) {
+    res
+      .status(400)
+      .json({ success: false, error: "Missing Akoya callback code or state" });
+    return;
+  }
+  const data = await accountLinkingService.handleAkoyaCallback({
+    code: query.code,
+    state: query.state,
+  });
+  res.json({ success: true, data });
 });
 
 router.post("/sync", async (req: Request, res: Response) => {
