@@ -269,9 +269,9 @@ export async function parseStatement(
     errors.push(`... and ${failedLines - 5} more unparseable lines`);
   }
 
-  // Fail fast before duplicate queries and LLM categorization: an unbounded
-  // record count would let one request fan out into unbounded DB and
-  // OpenRouter work (the route caps input chars, not parsed records).
+  // Fail fast before duplicate queries: an unbounded
+  // record count would let one request fan out into unbounded DB work
+  // (the route caps input chars, not parsed records).
   const MAX_PARSED_RECORDS = 200;
   if (parsed.length > MAX_PARSED_RECORDS) {
     errors.push(

@@ -3,45 +3,58 @@ name: localfin-categorization
 description: Use when categorizing transactions from statements or pasting
 ---
 
-# LocalFin Categorization
+# LocalFin categorization (OMP session model only)
 
-Replaces `server/services/ai.ts:91 categorizeTransactions`, `server/services/parser.ts:6 categorizeTransactions`, and `server/ai/model.ts` OpenRouter flow. Use this heuristic + LLM skill in external agents; server `POST /api/parser/parse-statement` is now deterministic only (format detection, `parseDate`, `parseAmount`, `cleanName`, `checkDuplicatesInDb`; `enrichedTransactions` have `subcategory_id: null` unless exact lookup matched; `ai_suggested: false`).
+Server and scripts stay keyless and deterministic. `POST /api/parser/parse-statement` always returns `subcategory_id:null`, `categorizationSource:"none"`, `summary:{fromLookup:0, fromAI:0}`. The only model path is this skill, run in the OMP session.
 
-## Transfer detection (no subcategory)
+## Trigger
 
-From `server/services/ai.ts:69 PAYMENTISH_NAME_PATTERN` and `isLikelyTransfer` (`ai.ts:469`):
+Run only when the user invokes `/skill:localfin-categorization` or explicitly asks to categorize pasted, parsed, or uncategorized transactions. Never run silently on parse or ingest.
 
-- `PAYMENTISH_NAME_PATTERN = /\b(?:transfer|online transfer|credit card payment|payment thank you|autopay|ach payment|card payment|payment received|payment posted)\b/i`
-- `isLikelyTransfer(tx, batchTransactions)` also checks paired opposite amounts within batch and `amount` sign vs account type. **Transfers must have `subcategory_id: null` and `kind: "transfer"`**; never assign a category to them.
-- If a name matches the pattern and no subcategory fits, classify as transfer. If unsure, prefer `expense`/`income` via amount sign (see below) over transfer.
+## Preconditions
 
-## Kind via amount sign
+Start from `POST /api/parser/parse-statement` (or `localfin_parse_statement`) output plus `GET /api/accounts` for `account.type`. Preserve each parsed row's `date/name/amount/kind`; do not recompute kind except for the transfer rule below.
 
-`amount` sign decides `income` vs `expense` via `inferTransactionKindForAccount` (`shared/finance/transactionAmounts.ts:27` → `server/services/ai.ts:462 getTransactionCategoryType`):
+## Lookup first
 
-- Determine `account.type` (`asset`|`liability`) from `GET /api/accounts`.
-- `inferTransactionKindForAccount(amount, accountType)` → `income`|`expense` (transfers already handled). Use `normalizeTransactionAmount(amount, accountType, kind)` to store the signed delta.
+For each unknown, call `GET /api/transactions?searchQuery=` scoped by exact name and account (or `localfin_search_transactions`), applying `getRecentTransactionByNameAndAccount` semantics:
 
-## Available choices
+`WHERE name = ? AND account_id = ? AND deleted_at IS NULL AND (kind = 'transfer' OR subcategory_id IS NOT NULL) ORDER BY date DESC, created_at DESC LIMIT 1`.
 
-1. `GET /api/subcategories` (or `localfin_list_subcategories`) → each row is `buildAvailableSubcategoryChoices` shape (`server/services/ai.ts:405` returns `SubcategoryRow` copy): `{id, category_id, name, category_name, category_type, monthly_goal, color}`.
-2. Format for LLM prompt via `formatAvailableSubcategories(choices)` (`ai.ts:411`) — list as `category > subcategory` with id; present choices verbatim to the external LLM so it picks an id, not a name.
-3. Past examples: `GET /api/transactions?limit=50` (or `localfin_search_transactions` with `limit:50`) to fetch few-shot examples. Prefer recent transactions sharing the same account or merchant substring; include `{name, subcategory_name, category_name}` pairs.
+No fuzzy match, no cross-account match. On a hit with a live subcategory id, reuse it and treat as `source:"lookup"` (`categorizationSource:"lookup"`), `ai_suggested:false`. Copy the existing `cleanName` behavior (strip leading `POS|ACH|CHECK|DEBIT|CREDIT|PURCHASE` and trailing `NNNNNN+` refs) before comparing; this is matching hygiene only.
 
-## External LLM flow (bring your own key)
+## Transfer guard
 
-- Server no longer calls OpenRouter. External agent supplies its own LLM key (`OPENROUTER_API_KEY` no longer used by server; see `.env.example`).
-- Build prompt from `buildCategorizationMessages(batch, availableChoices, pastExamples)` (`ai.ts:422`): system = instructions + available subcategories + past examples; user = batch of `TransactionForCategorization[]`.
-- Batch size guidance: 25 per LLM call (`AI_CONFIG.batchSize:25`, `AI_CONFIG.maxConcurrentLLMRequests:5` — now advisory for external agent, not server). Process unknowns in batches; on LLM failure mark those as `source:"none"` and continue other batches.
-- Validate LLM output with `categorizationSchema` (`ai.ts:87` strict object `{results: z.array({kind:z.enum(["income","expense","transfer"]), subcategory_id:z.string().nullable()}).max(25)}`): one result per input in order; reject numeric-choice hallucinations; filter `subcategory_id` to ids in `availableChoices`; unmatched ids become `Unassigned`.
+Apply before any model call.
 
-## Fallbacks
+`PAYMENTISH_NAME_PATTERN = /\b(?:transfer|online transfer|credit card payment|payment thank you|autopay|ach payment|card payment|payment received|payment posted)\b/i`
 
-- Exact-name lookup: `checkDuplicatesInDb` plus name-subcategory history (`server/services/ai.ts` lookup path) — if transaction name exactly matches a prior categorized transaction on same account, reuse its subcategory.
-- `POS`/`ACH`/`CHECK` prefix stripping and trailing ref removal (`cleanName` `PREFIX_PATTERN`, `TRAILING_REF_PATTERN`) before matching.
-- If still unknown after LLM/lookup, leave `subcategory_id: null` (`needsCategory=true` later) rather than guessing. Client can show `Unassigned` and let user pick via `GET /api/transactions?needsCategory=true`.
+A name matching the pattern with no fitting subcategory becomes `{kind:"transfer", subcategory_id:null}`. When unsure between transfer and income/expense, keep the parser kind from `inferTransactionKindForAccount(amount, accountType)` (`shared/finance/transactionAmounts.ts:27`; `amount===0` yields expense; liability inverts asset sign) rather than forcing transfer. Transfers and adjustments MUST have `subcategory_id:null` per `localfin-finance-invariants`.
+
+## Choices and few-shot
+
+Fetch `GET /api/subcategories` (or `localfin_list_subcategories`) as `{id, category_id, name, category_name, category_type}` and present verbatim as `category > subcategory (id)` lines. Fetch `GET /api/transactions?limit=50` (or `localfin_search_transactions` with `limit:50`), preferring same-account or merchant-substring rows, as `{name, subcategory_name, category_name}` pairs. Never invent ids.
+
+## OMP execution
+
+No external key; uses the session model from `~/.omp/agent/models.yml` provider routing. Shard size 25 is a context-window convenience, not a server limit.
+
+If unknown count after lookup is 0, stop.
+
+If 1–25 unknowns, one `eval` `completion(prompt, {system, schema})` call (JS) or `completion(prompt, system=..., schema=...)` (Python) with the JSON schema `{"type":"object","properties":{"results":{"type":"array","maxItems":25,"items":{"type":"object","properties":{"kind":{"enum":["income","expense","transfer"]},"subcategory_id":{"type":["string","null"]}},"required":["kind","subcategory_id"],"additionalProperties":false}}},"required":["results"],"additionalProperties":false}`. System content MUST embed the transfer rule, the verbatim choices, the few-shot pairs, and the order rule (one result per input, input order).
+
+If 26+ unknowns, shard into items of exactly 25 (last shard 1–25) and run `eval` `workpool(agent=None, name="categorize", context=<same system content>, tools=None)` with `eval.workpool.freshAgents=true`, `.push(*items)` where each item is `{transactions:[{id,name,amount,date,account_id,kind}], choices, examples}`; each worker returns `yield({key, data:{results:[...]}})` or `yield({key, error})` per the `omp://tools/eval.md` contract. No custom tool in `.omp/tools` and no new server endpoint; MCP/REST already covers reads and writes.
+
+If the session model rejects 25 items, halve to 12 and retry once, then leave failures as `categorizationSource:"none"` and surface them via `needsCategory` / ODS export. If model auth is unavailable mid-run, skip the model step, keep lookup results, and export leftovers instead of failing the ingest.
+
+## Validation
+
+Require `results.length === inputs.length` per batch; reject non-object entries and numeric-choice hallucinations; filter every `subcategory_id` against the live choices fetched above (unknown id becomes `null`); force `subcategory_id:null` when `kind` is `transfer`; preserve parser `kind` for non-transfer rows unless the model returns transfer under the guard above. On `completion` `.wait()` failure or a worker `error`, mark exactly those inputs `categorizationSource:"none"`, `subcategory_id:null`, and continue remaining batches. Leave still-unknown income/expense rows `subcategory_id:null` for `needsCategory` rather than guessing. Tags stay explicit-only (set only on the words `tag` / `tagged` or `tag it as X` per `localfin-finance-invariants`).
+
+## Write
+
+For not-yet-created rows call `POST /api/transactions/bulk` (or `localfin_bulk_create_transactions`, max 500 per call) with `{account_id, date, name, amount, kind, subcategory_id, tag_ids:[], comment?, ai_suggested}` where `ai_suggested:true` only for model-chosen rows and `false` for lookup rows (`ai_suggested` lives on `Transaction` writes only). For already-created rows call `PUT /api/transactions/bulk` (or `localfin_bulk_update_transactions`) with `{ids, updates:{subcategory_id, ai_suggested:true}}` for model-chosen rows only. Handle 409 duplicate-name partial failures per `localfin-workflows` (valid rows persist; report invalid rows with their error; do not retry successes).
 
 ## Verify
 
-- After categorization, call `POST /api/transactions/bulk` or `localfin_bulk_create_transactions` with resolved `kind`/`subcategory_id`; tags remain explicit-only (see `localfin-finance-invariants`).
-- Audit of past categorization: query `GET /api/transactions?limit=100` and inspect `subcategory_name`/`category_name`; rerun this skill on `needsCategory` results.
+Re-query `GET /api/transactions?needsCategory=true` (or search) and show remaining `Unassigned` rows; the ODS human loop (`categorize:export` / `categorize:apply`) stays the review surface for leftovers.
