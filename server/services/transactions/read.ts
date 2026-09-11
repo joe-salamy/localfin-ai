@@ -81,25 +81,56 @@ export function getTransactionById(id: string): TransactionWithDetails | null {
   return rowToTransactionWithDetails(row, tagMap.get(id) ?? []);
 }
 
+const LOOKUP_WINDOW = 20;
+const LOOKUP_MIN_SAMPLES = 3;
+const LOOKUP_CONFIDENCE = 0.6;
+
 export function getRecentTransactionByNameAndAccount(
   name: string,
   accountId: string,
 ): Transaction | null {
   const db = getDb();
 
-  const row = db
+  const rows = db
     .prepare(
       `
     SELECT * FROM transactions
     WHERE name = ? AND account_id = ? AND deleted_at IS NULL
       AND (kind = 'transfer' OR subcategory_id IS NOT NULL)
     ORDER BY date DESC, created_at DESC
-    LIMIT 1
+    LIMIT ${LOOKUP_WINDOW}
   `,
     )
-    .get(name, accountId) as TransactionRow | undefined;
+    .all(name, accountId) as TransactionRow[];
 
-  return row ? rowToTransaction(row) : null;
+  if (rows.length === 0) return null;
+  if (rows.length < LOOKUP_MIN_SAMPLES) return rowToTransaction(rows[0]);
+
+  const counts = new Map<string, { count: number; index: number }>();
+  rows.forEach((row, index) => {
+    const key = `${row.kind}::${row.subcategory_id ?? ""}`;
+    const entry = counts.get(key);
+    if (entry) {
+      entry.count += 1;
+    } else {
+      counts.set(key, { count: 1, index });
+    }
+  });
+
+  let winner: { count: number; index: number } | null = null;
+  for (const entry of counts.values()) {
+    if (
+      winner === null ||
+      entry.count > winner.count ||
+      (entry.count === winner.count && entry.index < winner.index)
+    ) {
+      winner = entry;
+    }
+  }
+  if (winner === null || winner.count / rows.length < LOOKUP_CONFIDENCE) {
+    return null;
+  }
+  return rowToTransaction(rows[winner.index]);
 }
 
 const recentActivityByAccountSql = `

@@ -19,7 +19,7 @@ Start from `POST /api/parser/parse-statement` (or `localfin_parse_statement`) ou
 
 For each unknown, call `GET /api/transactions?searchQuery=` scoped by exact name and account (or `localfin_search_transactions`), applying `getRecentTransactionByNameAndAccount` semantics:
 
-`WHERE name = ? AND account_id = ? AND deleted_at IS NULL AND (kind = 'transfer' OR subcategory_id IS NOT NULL) ORDER BY date DESC, created_at DESC LIMIT 1`.
+`WHERE name = ? AND account_id = ? AND deleted_at IS NULL AND (kind = 'transfer' OR subcategory_id IS NOT NULL) ORDER BY date DESC, created_at DESC LIMIT 20`: group the window by `(kind, subcategory_id)`; fewer than 3 rows falls back to the most recent row; otherwise reuse the most recent row of the majority key only when its share is >= 0.6, else treat as no hit.
 
 No fuzzy match, no cross-account match. On a hit with a live subcategory id, reuse it and treat as `source:"lookup"` (`categorizationSource:"lookup"`), `ai_suggested:false`. Copy the existing `cleanName` behavior (strip leading `POS|ACH|CHECK|DEBIT|CREDIT|PURCHASE` and trailing `NNNNNN+` refs) before comparing; this is matching hygiene only.
 
