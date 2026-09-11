@@ -1,5 +1,4 @@
-import { z } from "zod";
-import { transactionKindSchema, type TransactionKind } from "./transactions.js";
+import type { TransactionKind } from "./transactions.js";
 
 export interface ParsedTransaction {
   date: string;
@@ -33,38 +32,3 @@ export interface ParseStatementResult {
   parseSuccessRate: number;
   errors: string[];
 }
-
-const parsedTransactionSchema = z.object({
-  date: z.string(),
-  name: z.string(),
-  amount: z.number(),
-  needsReview: z.boolean(),
-  confidence: z.number(),
-  originalLine: z.string(),
-});
-
-export const enrichedTransactionSchema: z.ZodType<EnrichedTransaction> =
-  parsedTransactionSchema.extend({
-    kind: transactionKindSchema,
-    subcategory_id: z.string().nullable(),
-    subcategory_name: z.string().nullable(),
-    category_name: z.string().nullable(),
-    categorizationSource: z.enum(["lookup", "ai", "none"]),
-    isDuplicate: z.boolean(),
-  });
-
-export const parseStatementResultSchema: z.ZodType<ParseStatementResult> =
-  z.object({
-    transactions: z.array(enrichedTransactionSchema),
-    summary: z.object({
-      total: z.number(),
-      duplicates: z.number(),
-      fromLookup: z.number(),
-      fromAI: z.number(),
-      uncategorized: z.number(),
-      needsReview: z.number(),
-    }),
-    format: z.string().nullable(),
-    parseSuccessRate: z.number(),
-    errors: z.array(z.string()),
-  });

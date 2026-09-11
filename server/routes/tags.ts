@@ -2,7 +2,6 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { tagTypeSchema } from "../../shared/contracts/tags.js";
-import { hexColorSchema } from "../../shared/validation.js";
 import {
   createTag,
   deleteTag,
@@ -10,26 +9,19 @@ import {
   restoreTag,
   updateTag,
 } from "../services/tags.js";
-import { idParamSchema, nonEmptyString, parseRequest } from "./validation.js";
+import { colorSchemaOptional, idParamSchema, nonEmptyString, nonEmptyUpdate, parseRequest } from "./validation.js";
 
 export const tagRouter = Router();
-const colorSchema = hexColorSchema.nullable();
-
 const createTagSchema = z.object({
   name: nonEmptyString,
   type: tagTypeSchema.optional(),
-  color: colorSchema.optional(),
+  color: colorSchemaOptional,
 });
-const updateTagSchema = z
-  .object({
+const updateTagSchema = nonEmptyUpdate({
     name: nonEmptyString.optional(),
     type: tagTypeSchema.optional(),
-    color: colorSchema.optional(),
-  })
-  .refine(
-    (value) => Object.keys(value).length > 0,
-    "At least one update field is required",
-  );
+    color: colorSchemaOptional,
+});
 
 tagRouter.get("/", (_req: Request, res: Response) => {
   const data = getTags();

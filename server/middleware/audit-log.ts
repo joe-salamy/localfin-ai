@@ -33,27 +33,21 @@ function bodyRedacted(body: unknown): unknown {
   }
 }
 
+function appendAudit(entry: { timestamp: string } & Record<string, unknown>): void {
+  const line = `${JSON.stringify(entry)}\n`;
+  const datePart = entry.timestamp.slice(0, 10);
+  const baseDir = process.env.LOCALFIN_DATA_DIR?.trim() ? path.resolve(process.env.LOCALFIN_DATA_DIR) : process.cwd();
+  const filePath = path.resolve(baseDir, "logs", "jsonl", `audit-${datePart}.jsonl`);
+  fs.promises
+    .mkdir(path.dirname(filePath), { recursive: true })
+    .then(() => fs.promises.appendFile(filePath, line, "utf8"))
+    .catch((error) => {
+      console.error("auditLog append failed", error);
+    });
+}
+
 export function auditLog(req: Request, res: Response, next: NextFunction): void {
   const method = req.method.toUpperCase();
-  if (
-    method === "GET" ||
-    req.path === "/api/health" ||
-    req.path === "/api/openapi.json" ||
-    req.path === "/api/openapi" ||
-    req.path.startsWith("/api/openapi/")
-  ) {
-    next();
-    return;
-  }
-  if (!req.path.startsWith("/api/")) {
-    next();
-    return;
-  }
-  if (!["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
-    next();
-    return;
-  }
-
   const start = Date.now();
   const requestId =
     (req.headers["x-request-id"] as string | undefined) ??
@@ -62,28 +56,15 @@ export function auditLog(req: Request, res: Response, next: NextFunction): void 
   const capturedBody = (req as unknown as { body?: unknown }).body;
 
   res.on("finish", () => {
-    const durationMs = Date.now() - start;
-    const timestamp = new Date().toISOString();
-    const entry = {
-      timestamp,
+    appendAudit({
+      timestamp: new Date().toISOString(),
       method,
       path: req.originalUrl || req.path,
       statusCode: res.statusCode,
-      durationMs,
+      durationMs: Date.now() - start,
       requestId,
       bodyRedacted: bodyRedacted(capturedBody),
-    };
-    const line = `${JSON.stringify(entry)}\n`;
-    const datePart = timestamp.slice(0, 10);
-    const fileName = `audit-${datePart}.jsonl`;
-    const filePath = path.resolve(process.cwd(), "logs", "jsonl", fileName);
-    // Avoid blocking request; log async and swallow errors.
-    fs.promises
-      .mkdir(path.dirname(filePath), { recursive: true })
-      .then(() => fs.promises.appendFile(filePath, line, "utf8"))
-      .catch((error) => {
-        console.error("auditLog append failed", error);
-      });
+    });
   });
 
   next();

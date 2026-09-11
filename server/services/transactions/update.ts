@@ -1,15 +1,14 @@
 import type { AccountType, TransactionKind, TransactionWithDetails, UpdateTransactionData } from "../../../shared/contracts/index.js";
-import { normalizeTransactionAmount } from "../../../shared/finance/transactionAmounts.js";
 import { fromBool, getDb } from "../../db/index.js";
 import { NotFoundError } from "../../errors.js";
 import { assertActiveTags, replaceTransactionTags } from "../tags.js";
 import { getTransactionById } from "./read.js";
-import { assertActiveSubcategory, assertKindSubcategoryCompatible } from "./validation.js";
+import { resolveNextState } from "./validation.js";
 
 export function updateTransaction(
   id: string,
   updates: UpdateTransactionData,
-): TransactionWithDetails | null {
+): TransactionWithDetails {
   const db = getDb();
 
   const existing = db
@@ -35,24 +34,7 @@ export function updateTransaction(
     throw new NotFoundError(`Transaction with id "${id}" not found`)
   }
 
-  const nextKind = updates.kind ?? existing.kind;
-  const nextSubcategoryId =
-    updates.subcategory_id !== undefined
-      ? updates.subcategory_id
-      : existing.subcategory_id;
-  assertKindSubcategoryCompatible(nextKind, nextSubcategoryId);
-  if (updates.subcategory_id !== undefined && nextSubcategoryId) {
-    assertActiveSubcategory(nextSubcategoryId);
-  }
-
-  const nextAmount =
-    updates.amount !== undefined || updates.kind !== undefined
-      ? normalizeTransactionAmount(
-          updates.amount ?? existing.amount,
-          existing.account_type,
-          nextKind,
-        )
-      : undefined;
+  const { nextSubcategoryId, nextAmount } = resolveNextState(existing, updates);
   const nextTagIds =
     updates.tag_ids !== undefined
       ? assertActiveTags(updates.tag_ids)
@@ -105,5 +87,9 @@ export function updateTransaction(
   });
 
   updateTransactionAndTags();
-  return getTransactionById(id);
+  const transaction = getTransactionById(id);
+  if (!transaction) {
+    throw new NotFoundError(`Transaction with id "${id}" not found`)
+  }
+  return transaction;
 }

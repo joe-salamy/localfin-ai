@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { AccountType } from "../../shared/contracts/index.js"
-import { inferTransactionKindForAccount } from "../../shared/finance/transactionAmounts.js"
+import { isIsoDate } from "../../shared/validation.js";
+import { inferTransactionKindForAccount, roundCurrencyAmount } from "../../shared/finance/transactionAmounts.js"
 
 export interface PlaidTransaction {
   transaction_id?: string | null;
@@ -47,8 +48,9 @@ export interface ProviderTransactionDraft {
   comment: string | null;
 }
 
-function roundCurrency(amount: number): number {
-  return Math.round(amount * 100) / 100;
+function toIsoDate(value: unknown): string {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value) && isIsoDate(value.slice(0, 10))) return value.slice(0, 10);
+  return new Date().toISOString().slice(0, 10);
 }
 
 function firstNonEmpty(...values: Array<unknown>): string | null {
@@ -58,13 +60,6 @@ function firstNonEmpty(...values: Array<unknown>): string | null {
     if (trimmed) return trimmed;
   }
   return null;
-}
-
-function toIsoDate(value: unknown): string {
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-    return value.slice(0, 10);
-  }
-  return new Date().toISOString().slice(0, 10);
 }
 
 function toFiniteNumber(value: unknown): number {
@@ -133,7 +128,7 @@ export function mapPlaidTransactionToLocal(input: {
       input.transaction.original_description,
     ) ?? "Provider transaction";
   const plaidAmount = toFiniteNumber(input.transaction.amount);
-  const amount = roundCurrency(
+  const amount = roundCurrencyAmount(
     input.accountType === "asset" ? -plaidAmount : plaidAmount,
   );
   const transactionId =
@@ -201,7 +196,7 @@ export function mapAkoyaTransactionToLocal(input: {
   } else {
     amount = input.accountType === "asset" ? -signedAmount : signedAmount;
   }
-  amount = roundCurrency(amount);
+  amount = roundCurrencyAmount(amount);
 
   const transactionId =
     firstNonEmpty(

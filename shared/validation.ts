@@ -10,7 +10,8 @@ export function isIsoDate(value: string): boolean {
   );
 }
 
+export const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 export const hexColorSchema = z
   .string()
-  .regex(/^#[0-9a-fA-F]{6}$/)
+  .regex(HEX_COLOR_PATTERN)
   .describe("A six-digit hexadecimal color such as #1a2b3c.");

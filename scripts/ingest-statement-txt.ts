@@ -14,9 +14,44 @@ import {
   getTransactionById,
 } from "../server/services/transactions/read.js";
 import { ConflictError, OperationalError } from "../server/errors.js";
-import type { CreateTransactionData } from "../shared/contracts/index.js";
+import type { CreateTransactionData, EnrichedTransaction } from "../shared/contracts/index.js";
 import { isIsoDate } from "../shared/validation.js";
 import { exportCategorizeOds } from "./export-categorize-ods.js";
+
+export function buildTransactionPayloads(
+  transactions: EnrichedTransaction[],
+  accountId: string,
+): { payloads: CreateTransactionData[]; skipped: number } {
+  const activeSubcategoryIds = new Set(getSubcategories().map((s) => s.id));
+  const payloads: CreateTransactionData[] = [];
+  let skipped = 0;
+  for (const t of transactions) {
+    if (!isIsoDate(t.date)) {
+      console.error(`Skipping unparseable date: "${t.originalLine}"`);
+      skipped += 1;
+      continue;
+    }
+    let subcategoryId: string | null = null;
+    const recent = getRecentTransactionByNameAndAccount(t.name, accountId);
+    if (
+      recent?.subcategory_id != null &&
+      activeSubcategoryIds.has(recent.subcategory_id)
+    ) {
+      subcategoryId = recent.subcategory_id;
+    }
+    payloads.push({
+      account_id: accountId,
+      date: t.date,
+      name: t.name,
+      amount: t.amount,
+      kind: t.kind,
+      subcategory_id: subcategoryId,
+      tag_ids: [],
+      ai_suggested: false,
+    });
+  }
+  return { payloads, skipped };
+}
 
 export function ingestUsage(): string {
   return "Usage: ingest:statement <statement.txt> --account <name> [--out review.fods]";
@@ -78,37 +113,10 @@ export async function ingestStatementTxt(
   const parsed = await parseStatement(text, account.id);
   for (const message of parsed.errors) console.error(message);
 
-  const activeSubcategoryIds = new Set(getSubcategories().map((s) => s.id));
   const duplicates = parsed.transactions.filter((t) => t.isDuplicate);
   const candidates = parsed.transactions.filter((t) => !t.isDuplicate);
 
-  const payloads: CreateTransactionData[] = [];
-  let skipped = 0;
-  for (const t of candidates) {
-    if (!isIsoDate(t.date)) {
-      console.error(`Skipping unparseable date: "${t.originalLine}"`);
-      skipped += 1;
-      continue;
-    }
-    let subcategoryId: string | null = null;
-    const recent = getRecentTransactionByNameAndAccount(t.name, account.id);
-    if (
-      recent?.subcategory_id != null &&
-      activeSubcategoryIds.has(recent.subcategory_id)
-    ) {
-      subcategoryId = recent.subcategory_id;
-    }
-    payloads.push({
-      account_id: account.id,
-      date: t.date,
-      name: t.name,
-      amount: t.amount,
-      kind: t.kind,
-      subcategory_id: subcategoryId,
-      tag_ids: [],
-      ai_suggested: false,
-    });
-  }
+  const { payloads, skipped } = buildTransactionPayloads(candidates, account.id);
 
   let createdIds: string[] = [];
   try {

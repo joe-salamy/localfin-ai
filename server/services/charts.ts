@@ -10,6 +10,7 @@ import {
 import { getDb } from "../db/index.js";
 import { DATE_CONFIG } from "../config/app.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
+import { buildTagExistsClause } from "./transaction-filters.js";
 import { resolveEntityColor } from "../../shared/finance/colors.js";
 import type { NetWorthDataPoint,
 SankeyData,
@@ -38,28 +39,45 @@ interface CategoryFlowRow {
 
 function buildSankeyTagFilter(tagIds?: string[]): {
   clause: string;
-  params: string[];
+  params: unknown[];
 } {
-  if (!tagIds || tagIds.length === 0) {
-    return { clause: "", params: [] };
-  }
-
+  const filter = buildTagExistsClause(tagIds);
   return {
-    clause: `
-      AND EXISTS (
-        SELECT 1
-        FROM transaction_tags filter_tt
-        JOIN tags filter_tag
-          ON filter_tag.id = filter_tt.tag_id
-          AND filter_tag.deleted_at IS NULL
-        WHERE filter_tt.transaction_id = t.id
-          AND filter_tt.tag_id IN (${tagIds.map(() => "?").join(", ")})
-      )
-    `,
-    params: tagIds,
+    clause: filter.clause ? `AND ${filter.clause}` : "",
+    params: filter.params,
   };
 }
-// === Chart Functions ===
+
+type DateGranularity = "day" | "week" | "month";
+
+export function bucketDates(startDate: string, endDate: string, granularity: DateGranularity): string[] {
+  const start = parseISO(startDate);
+  const end = parseISO(endDate);
+  const advanceFn = granularity === "day" ? addDays : granularity === "week" ? addWeeks : addMonths;
+  const dates: string[] = [];
+  let current = start;
+  while (
+    isBefore(current, end) ||
+    format(current, DATE_CONFIG.isoDateFormat) ===
+      format(end, DATE_CONFIG.isoDateFormat)
+  ) {
+    dates.push(format(current, DATE_CONFIG.isoDateFormat));
+    const next = advanceFn(current, 1);
+    if (!isBefore(next, current)) {
+      current = next;
+    } else {
+      break;
+    }
+    if (
+      isBefore(end, current) &&
+      format(current, DATE_CONFIG.isoDateFormat) !==
+        format(end, DATE_CONFIG.isoDateFormat)
+    ) {
+      break;
+    }
+  }
+  return dates;
+}
 
 export function prepareNetWorthData(
   startDate: string,
@@ -70,24 +88,11 @@ export function prepareNetWorthData(
     startDate,
     endDate,
   );
-  const start = parseISO(effectiveStartDate);
-  const end = parseISO(endDate);
-  const totalDays = differenceInDays(end, start);
+  const totalDays = differenceInDays(parseISO(endDate), parseISO(effectiveStartDate));
 
   // Determine granularity
-  let advanceFn: (date: Date, amount: number) => Date;
-  let dateFormat: string;
-
-  if (totalDays < 28) {
-    advanceFn = addDays;
-    dateFormat = DATE_CONFIG.shortMonthDayFormat;
-  } else if (totalDays < 180) {
-    advanceFn = addWeeks;
-    dateFormat = DATE_CONFIG.shortMonthDayFormat;
-  } else {
-    advanceFn = addMonths;
-    dateFormat = DATE_CONFIG.monthYearFormat;
-  }
+  const granularity: DateGranularity = totalDays < 28 ? "day" : totalDays < 180 ? "week" : "month";
+  const dateFormat = granularity === "month" ? DATE_CONFIG.monthYearFormat : DATE_CONFIG.shortMonthDayFormat;
 
   // Get all non-deleted accounts
   const accounts = db
@@ -105,15 +110,8 @@ export function prepareNetWorthData(
 
   // Generate data points
   const dataPoints: NetWorthDataPoint[] = [];
-  let current = start;
-
-  while (
-    isBefore(current, end) ||
-    format(current, DATE_CONFIG.isoDateFormat) ===
-      format(end, DATE_CONFIG.isoDateFormat)
-  ) {
-    const dateStr = format(current, DATE_CONFIG.isoDateFormat);
-    const formattedDate = format(current, dateFormat);
+  for (const dateStr of bucketDates(effectiveStartDate, endDate, granularity)) {
+    const formattedDate = format(parseISO(dateStr), dateFormat);
 
     const point: NetWorthDataPoint = {
       date: dateStr,
@@ -143,22 +141,6 @@ export function prepareNetWorthData(
 
     point.netWorth = netWorth;
     dataPoints.push(point);
-
-    const next = advanceFn(current, 1);
-    if (!isBefore(next, current)) {
-      current = next;
-    } else {
-      break;
-    }
-
-    // Ensure we don't go past the end date
-    if (
-      isBefore(end, current) &&
-      format(current, DATE_CONFIG.isoDateFormat) !==
-        format(end, DATE_CONFIG.isoDateFormat)
-    ) {
-      break;
-    }
   }
 
   return dataPoints;
@@ -222,21 +204,10 @@ export function prepareSankeyData(
   const links: SankeyLink[] = [];
   const nodeSet = new Set<string>();
 
-  function addNode(id: string, color: string): void {
+  function ensureNode(id: string, color: string, displayName?: string): void {
     if (!nodeSet.has(id)) {
       nodeSet.add(id);
-      nodes.push({ id, nodeColor: color });
-    }
-  }
-
-  function addLabeledNode(
-    id: string,
-    displayName: string,
-    color: string,
-  ): void {
-    if (!nodeSet.has(id)) {
-      nodeSet.add(id);
-      nodes.push({ id, displayName, nodeColor: color });
+      nodes.push(displayName === undefined ? { id, nodeColor: color } : { id, displayName, nodeColor: color });
     }
   }
 
@@ -273,22 +244,22 @@ export function prepareSankeyData(
   }
 
   // Add center nodes
-  addNode("Total Income", "#676767");
-  addNode("Total Expenses", "#676767");
+  ensureNode("Total Income", "#676767");
+  ensureNode("Total Expenses", "#676767");
 
   // Income subcategories -> Income categories -> Total Income
   for (const row of incomeRows) {
     const subId = `${row.subcategory_name} (income)`;
     const categoryId = `income-category:${row.category_id}`;
-    addLabeledNode(
+    ensureNode(
       subId,
-      row.subcategory_name,
       resolveEntityColor(row.subcategory_id, row.subcategory_color),
+      row.subcategory_name,
     );
-    addLabeledNode(
+    ensureNode(
       categoryId,
-      row.category_name,
       resolveEntityColor(row.category_id, row.category_color),
+      row.category_name,
     );
     links.push({ source: subId, target: categoryId, value: row.total });
   }
@@ -314,24 +285,23 @@ export function prepareSankeyData(
   // Savings node if income > expenses
   if (totalIncome > totalExpenses) {
     const savings = totalIncome - totalExpenses;
-    addNode("Savings", "#090088");
+    ensureNode("Savings", "#090088");
     links.push({ source: "Total Income", target: "Savings", value: savings });
   }
 
   // Total Expenses -> Expense categories -> Expense subcategories
+  const expenseRowByCategory = new Map(expenseRows.map((row) => [`expense-category:${row.category_id}`, row]));
   for (const [categoryId, category] of expenseCategoryTotals) {
-    const categoryRow = expenseRows.find(
-      (row) => `expense-category:${row.category_id}` === categoryId,
-    );
-    addLabeledNode(
+    const categoryRow = expenseRowByCategory.get(categoryId);
+    ensureNode(
       categoryId,
-      category.name,
       categoryRow
         ? resolveEntityColor(
             categoryRow.category_id,
             categoryRow.category_color,
           )
         : "#6b3434",
+      category.name,
     );
     links.push({
       source: "Total Expenses",
@@ -343,10 +313,10 @@ export function prepareSankeyData(
   for (const row of expenseRows) {
     const subId = `${row.subcategory_name} (expense)`;
     const categoryId = `expense-category:${row.category_id}`;
-    addLabeledNode(
+    ensureNode(
       subId,
-      row.subcategory_name,
       resolveEntityColor(row.subcategory_id, row.subcategory_color),
+      row.subcategory_name,
     );
     links.push({ source: categoryId, target: subId, value: row.total });
   }

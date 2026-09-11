@@ -1,7 +1,9 @@
+import crypto from "node:crypto";
 import type { AccountType, CreateTransactionData, TransactionKind } from "../../../shared/contracts/index.js";
 import { inferTransactionKindForAccount, normalizeTransactionAmount } from "../../../shared/finance/transactionAmounts.js";
 import { getDb } from "../../db/index.js";
 import { BadRequestError, NotFoundError } from "../../errors.js";
+import { assertActiveTags } from "../tags.js";
 
 export function getActiveAccountType(accountId: string): AccountType {
   const db = getDb();
@@ -93,4 +95,23 @@ export function normalizeTransactionFields(
         ? null
         : (data.subcategory_id ?? null),
   };
+}
+
+export const TRANSACTION_INSERT_SQL = "INSERT INTO transactions (id, account_id, date, name, amount, kind, subcategory_id, comment, is_initial_balance, ai_suggested, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)";
+export function prepareTransactionInsert(data: CreateTransactionData) {
+  const accountType = getActiveAccountType(data.account_id);
+  const normalized = normalizeTransactionFields(data, accountType);
+  assertKindSubcategoryCompatible(normalized.kind, data.subcategory_id);
+  const tagIds = assertActiveTags(data.tag_ids ?? []);
+  if (normalized.subcategory_id) assertActiveSubcategory(normalized.subcategory_id);
+  return { id: crypto.randomUUID(), normalized, tagIds };
+}
+
+export function resolveNextState(row: { kind: TransactionKind; subcategory_id: string | null; amount: number; account_type: AccountType }, updates: { kind?: TransactionKind; subcategory_id?: string | null; amount?: number }) {
+  const nextKind = updates.kind ?? row.kind;
+  const nextSubcategoryId = updates.subcategory_id !== undefined ? updates.subcategory_id : row.subcategory_id;
+  assertKindSubcategoryCompatible(nextKind, nextSubcategoryId);
+  if (updates.subcategory_id !== undefined && nextSubcategoryId) assertActiveSubcategory(nextSubcategoryId);
+  const nextAmount = updates.amount !== undefined || updates.kind !== undefined ? normalizeTransactionAmount(updates.amount ?? row.amount, row.account_type, nextKind) : undefined;
+  return { nextKind, nextSubcategoryId, nextAmount };
 }

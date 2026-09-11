@@ -10,62 +10,14 @@ import {
 } from "../server/services/dashboard.js";
 import { prepareNetWorthData } from "../server/services/charts.js";
 import { getSpendingGoalsWithDetails } from "../server/services/goals.js";
-import { isIsoDate } from "../shared/validation.js";
-
-export const MAX_REPORT_SPAN_DAYS = 3660;
-export const REPORT_HTML_DIRECTORY = path.resolve(
-  process.cwd(),
-  "logs",
-  "html",
-);
-
-interface ReportArgs {
-  start: string;
-  end: string;
-  out: string | null;
-}
-
-export function parseReportArgs(argv: string[]): ReportArgs | null {
-  let start: string | null = null;
-  let end: string | null = null;
-  let out: string | null = null;
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--start") start = argv[i + 1] ?? null;
-    else if (arg === "--end") end = argv[i + 1] ?? null;
-    else if (arg === "--out") out = argv[i + 1] ?? null;
-    else if (arg === "--help" || arg === "-h") return null;
-    if (arg === "--start" || arg === "--end" || arg === "--out") i += 1;
-  }
-  if (!start || !end) return null;
-  if (!isIsoDate(start) || !isIsoDate(end)) return null;
-  if (start > end) return null;
-  const spanDays =
-    (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) /
-    86_400_000;
-  if (spanDays > MAX_REPORT_SPAN_DAYS) return null;
-  return { start, end, out };
-}
-
-export function reportUsage(): string {
-  return "Usage: report:dashboard --start YYYY-MM-DD --end YYYY-MM-DD [--out path]";
-}
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function formatMoney(value: number): string {
-  return value.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
+import {
+  INTERACTIVE_JS,
+  REPORT_HTML_DIRECTORY,
+  escapeHtml,
+  formatMoney,
+  parseReportArgs,
+  reportUsage,
+} from "./report-html-common.js";
 
 function netWorthSvg(
   points: Array<{ formattedDate: string; netWorth: number }>,
@@ -116,16 +68,6 @@ function barsSvg(rows: Array<{ label: string; value: number }>): string {
     .join("");
   return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Ending balances" style="width:100%;height:auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px">${bars}</svg>`;
 }
-
-const INTERACTIVE_JS = `<script>
-(function(){
-var search=document.getElementById("report-search");
-function rowsOf(table){return Array.prototype.slice.call(table.querySelectorAll("tbody tr"));}
-function applyFilter(){var q=(search.value||"").toLowerCase();document.querySelectorAll("table[data-filterable]").forEach(function(t){rowsOf(t).forEach(function(r){r.style.display=r.textContent.toLowerCase().indexOf(q)>=0?"":"none";});});}
-if(search){search.addEventListener("input",applyFilter);}
-document.querySelectorAll("table[data-sortable] th").forEach(function(th,idx){th.style.cursor="pointer";th.addEventListener("click",function(){var table=th.closest("table");var tbody=table.querySelector("tbody");var rows=rowsOf(table);var dir=th.getAttribute("data-dir")==="asc"?"desc":"asc";table.querySelectorAll("th").forEach(function(h){h.removeAttribute("data-dir");});th.setAttribute("data-dir",dir);var numeric=th.hasAttribute("data-numeric");rows.sort(function(a,b){var x=a.cells[idx].textContent.trim();var y=b.cells[idx].textContent.trim();if(numeric){var nx=parseFloat(x.replace(/[^0-9.-]/g,""))||0;var ny=parseFloat(y.replace(/[^0-9.-]/g,""))||0;return dir==="asc"?nx-ny:ny-nx;}if(x<y)return dir==="asc"?-1:1;if(x>y)return dir==="asc"?1:-1;return 0;});rows.forEach(function(r){tbody.appendChild(r);});});});
-})();
-</script>`;
 
 export function renderDashboardHtml(start: string, end: string): string {
   void getDb();
@@ -244,7 +186,7 @@ export async function renderDashboardHtmlFile(
 async function main(): Promise<void> {
   const args = parseReportArgs(process.argv.slice(2));
   if (!args) {
-    console.error(reportUsage());
+    console.error(reportUsage("report:dashboard"));
     process.exitCode = 2;
     return;
   }

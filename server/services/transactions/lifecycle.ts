@@ -70,16 +70,25 @@ export function deleteTransaction(id: string): void {
   }
 }
 
-export function bulkDeleteTransactions(ids: string[]): void {
-  if (ids.length === 0) return;
+/** Bulk ops silent-skip unknown ids; single ops throw 404. */
+export function bulkDeleteTransactions(ids: string[]): string[] {
+  if (ids.length === 0) return [];
 
   const db = getDb();
   const now = new Date().toISOString();
   const placeholders = ids.map(() => "?").join(", ");
 
+  const existing = db.prepare(
+    `SELECT id FROM transactions WHERE deleted_at IS NULL AND id IN (${placeholders})`,
+  ).all(...ids) as { id: string }[];
+  const found = new Set(existing.map((row) => row.id));
+  const matched = ids.filter((id) => found.has(id));
+  if (matched.length === 0) return [];
+  const matchedPlaceholders = matched.map(() => "?").join(", ");
   db.prepare(
-    `UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE deleted_at IS NULL AND id IN (${placeholders})`,
-  ).run(now, now, ...ids);
+    `UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE deleted_at IS NULL AND id IN (${matchedPlaceholders})`,
+  ).run(now, now, ...matched);
+  return matched;
 }
 
 export function restoreTransaction(id: string): TransactionWithDetails {
@@ -88,12 +97,22 @@ export function restoreTransaction(id: string): TransactionWithDetails {
   return restore();
 }
 
+/** Bulk ops silent-skip unknown ids; single ops throw 404. */
 export function bulkRestoreTransactions(
   ids: string[],
-): TransactionWithDetails[] {
+): string[] {
   if (ids.length === 0) return [];
 
+  const updated: string[] = [];
   const db = getDb();
-  const restoreAll = db.transaction(() => ids.map(restoreTransactionRecord));
-  return restoreAll();
+  const restoreAll = db.transaction(() => {
+    for (const id of ids) {
+      const existing = db.prepare("SELECT id, deleted_at FROM transactions WHERE id = ?").get(id) as { id: string; deleted_at: string | null } | undefined;
+      if (!existing || existing.deleted_at === null) continue;
+      restoreTransactionRecord(id);
+      updated.push(id);
+    }
+  });
+  restoreAll();
+  return updated;
 }

@@ -18,22 +18,15 @@ import {
   checkTransferMatch,
 } from "../services/transactions.js";
 import {
-  runSuspectTransactionScan,
-  getSuspectTransactionFindings,
-  updateSuspectTransactionFindingStatus,
-} from "../services/suspect-transactions.js";
-import {
   finiteNumber,
   idParamSchema,
   isoDateString,
   nonEmptyString,
+  nonEmptyUpdate,
   optionalQueryStringArray,
   parseRequest,
 } from "./validation.js";
 import {
-  suspectFindingStatusSchema as sharedSuspectFindingStatusSchema,
-  suspectReasonCodeSchema,
-  suspectSeveritySchema,
   transactionKindSchema,
 } from "../../shared/contracts/transactions.js";
 
@@ -45,7 +38,7 @@ const optionalQueryBoolean = z.preprocess((value) => {
 }, z.boolean().optional());
 
 const router = Router();
-const transactionFiltersSchema = z.object({
+export const transactionFiltersSchema = z.object({
   accountId: nonEmptyString.optional(),
   accountIds: optionalQueryStringArray,
   categoryIds: optionalQueryStringArray,
@@ -71,8 +64,7 @@ const createTransactionSchema = z.object({
   comment: z.string().nullable().optional(),
   ai_suggested: z.boolean().optional(),
 });
-const updateTransactionSchema = z
-  .object({
+const updateTransactionSchema = nonEmptyUpdate({
     date: isoDateString.optional(),
     name: nonEmptyString.optional(),
     amount: finiteNumber.optional(),
@@ -81,27 +73,18 @@ const updateTransactionSchema = z
     tag_ids: z.array(nonEmptyString).max(50).optional(),
     comment: z.string().nullable().optional(),
     ai_suggested: z.boolean().optional(),
-  })
-  .refine(
-    (value) => Object.keys(value).length > 0,
-    "At least one update field is required",
-  );
+});
 const bulkCreateSchema = z.object({
   transactions: z.array(createTransactionSchema).min(1).max(500),
 });
 const bulkUpdateSchema = z.object({
   ids: z.array(nonEmptyString).min(1).max(500),
-  updates: z
-    .object({
+  updates: nonEmptyUpdate({
       kind: transactionKindSchema.optional(),
       subcategory_id: nonEmptyString.nullable().optional(),
       add_tag_ids: z.array(nonEmptyString).max(50).optional(),
       remove_tag_ids: z.array(nonEmptyString).max(50).optional(),
-    })
-    .refine(
-      (value) => Object.keys(value).length > 0,
-      "At least one update field is required",
-    ),
+    }),
 });
 const bulkDeleteSchema = z.object({
   ids: z.array(nonEmptyString).min(1).max(500),
@@ -128,20 +111,6 @@ const transferCheckSchema = z
     date: isoDateString,
     account_id: nonEmptyString,
   });
-const suspectScanSchema = z.object({
-  filters: transactionFiltersSchema.optional(),
-  flaggedWords: z.array(nonEmptyString).max(100).optional(),
-});
-const suspectReasonSchema = suspectReasonCodeSchema;
-const suspectFindingFiltersSchema = z.object({
-  status: sharedSuspectFindingStatusSchema.optional(),
-  severity: suspectSeveritySchema.optional(),
-  reason: suspectReasonSchema.optional(),
-  runId: nonEmptyString.optional(),
-});
-const suspectFindingStatusSchema = z.object({
-  status: sharedSuspectFindingStatusSchema,
-});
 
 // Bounded server-side default so omitted `limit` never triggers a full-table
 // scan; `offset` without `limit` now paginates instead of being ignored.
@@ -173,15 +142,15 @@ router.post("/bulk", (req: Request, res: Response) => {
 router.put("/bulk", (req: Request, res: Response) => {
   const body = parseRequest(bulkUpdateSchema, req.body);
 
-  bulkUpdateTransactions(body.ids, body.updates);
-  res.json({ success: true });
+  const updatedIds = bulkUpdateTransactions(body.ids, body.updates);
+  res.json({ success: true, data: { updatedIds } });
 });
 
 router.delete("/bulk", (req: Request, res: Response) => {
   const body = parseRequest(bulkDeleteSchema, req.body);
 
-  bulkDeleteTransactions(body.ids);
-  res.json({ success: true });
+  const deletedIds = bulkDeleteTransactions(body.ids);
+  res.json({ success: true, data: { deletedIds } });
 });
 
 router.post("/bulk/restore", (req: Request, res: Response) => {
@@ -206,29 +175,6 @@ router.post("/check-transfer", (req: Request, res: Response) => {
     body.account_id,
     body.date,
   );
-  res.json({ success: true, data });
-});
-
-router.post("/suspect-scan", (req: Request, res: Response) => {
-  const body = parseRequest(suspectScanSchema, req.body);
-
-  const data = runSuspectTransactionScan(body);
-  res.status(201).json({ success: true, data });
-});
-
-router.get("/suspect-findings", (req: Request, res: Response) => {
-  const filters = parseRequest(suspectFindingFiltersSchema, req.query);
-
-  const data = getSuspectTransactionFindings(filters);
-  res.json({ success: true, data });
-});
-
-router.put("/suspect-findings/:id", (req: Request, res: Response) => {
-  const params = parseRequest(idParamSchema, req.params);
-  const body = parseRequest(suspectFindingStatusSchema, req.body);
-
-  const data = updateSuspectTransactionFindingStatus(params.id, body.status);
-  if (!data) throw new NotFoundError("Suspect finding not found");
   res.json({ success: true, data });
 });
 

@@ -16,6 +16,7 @@ import {
   idParamSchema,
   isoDateString,
   nonEmptyString,
+  nonEmptyUpdate,
   parseRequest,
 } from "./validation.js";
 
@@ -32,17 +33,12 @@ const createGoalSchema = z
     (value) => !value.end_date || value.start_date <= value.end_date,
     "start_date must be on or before end_date",
   );
-const updateGoalSchema = z
-  .object({
+const updateGoalSchema = nonEmptyUpdate({
     amount: finiteNumber.positive().optional(),
     period: goalPeriodSchema.optional(),
     start_date: isoDateString.optional(),
     end_date: isoDateString.nullable().optional(),
   })
-  .refine(
-    (value) => Object.keys(value).length > 0,
-    "At least one update field is required",
-  )
   .refine(
     (value) =>
       value.start_date === undefined ||

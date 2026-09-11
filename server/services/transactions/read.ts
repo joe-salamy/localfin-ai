@@ -3,36 +3,6 @@ import { getDb } from "../../db/index.js";
 import { getTagsForTransactions } from "../tags.js";
 import { buildWhereClause, type RecentActivityRow, type TransactionRow, type TransactionWithDetailsRow, rowToTransaction, rowToTransactionWithDetails } from "./internal.js";
 
-export function getTransactions(
-  filters: TransactionFilters = {},
-): Transaction[] {
-  const db = getDb();
-  const { clauses, params } = buildWhereClause(filters);
-
-  let sql = `
-    SELECT *
-    FROM transactions
-    WHERE ${clauses.join(" AND ")}
-      AND EXISTS (
-        SELECT 1 FROM accounts a
-        WHERE a.id = transactions.account_id AND a.deleted_at IS NULL
-      )
-    ORDER BY date DESC, created_at DESC
-  `;
-
-  if (filters.limit != null) {
-    sql += " LIMIT ?";
-    params.push(filters.limit);
-    if (filters.offset != null) {
-      sql += " OFFSET ?";
-      params.push(filters.offset);
-    }
-  }
-
-  const rows = db.prepare(sql).all(...params) as TransactionRow[];
-  return rows.map(rowToTransaction);
-}
-
 export function getTransactionsWithDetails(
   filters: TransactionFilters = {},
 ): TransactionWithDetails[] {
@@ -132,7 +102,7 @@ export function getRecentTransactionByNameAndAccount(
   return row ? rowToTransaction(row) : null;
 }
 
-export const recentActivityByAccountSql = `
+const recentActivityByAccountSql = `
     WITH ranked_transactions AS (
       SELECT
         t.id,

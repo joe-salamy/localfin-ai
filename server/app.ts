@@ -5,6 +5,7 @@ import { accountRouter } from "./routes/accounts.js";
 import { categoryRouter, subcategoryRouter } from "./routes/categories.js";
 import { tagRouter } from "./routes/tags.js";
 import { transactionRouter } from "./routes/transactions.js";
+import { suspectRouter } from "./routes/suspect.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { goalRouter } from "./routes/goals.js";
 import { parserRouter } from "./routes/parser.js";
@@ -86,6 +87,7 @@ export function createApp(): express.Express {
   app.use(API_ROUTES.categories, categoryRouter);
   app.use(API_ROUTES.subcategories, subcategoryRouter);
   app.use(API_ROUTES.tags, tagRouter);
+  app.use(API_ROUTES.transactions, suspectRouter);
   app.use(API_ROUTES.transactions, transactionRouter);
   app.use(API_ROUTES.dashboard, dashboardRouter);
   app.use(API_ROUTES.goals, goalRouter);

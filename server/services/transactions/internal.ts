@@ -1,6 +1,7 @@
 import type { Tag, Transaction, TransactionFilters, TransactionKind, TransactionWithDetails } from "../../../shared/contracts/index.js";
 import { toBool } from "../../db/index.js";
 import { compileTransactionSearch } from "../transaction-search.js";
+import { buildTagExistsClause, placeholders } from "../transaction-filters.js";
 
 // ---------- Raw DB row types ----------
 
@@ -97,7 +98,7 @@ export function buildWhereClause(
   const params: unknown[] = [];
   const addInClause = (column: string, values?: string[]) => {
     if (!values || values.length === 0) return;
-    clauses.push(`${column} IN (${values.map(() => "?").join(", ")})`);
+    clauses.push(`${column} IN (${placeholders(values)})`);
     params.push(...values);
   };
 
@@ -116,7 +117,7 @@ export function buildWhereClause(
           AND filter_c.deleted_at IS NULL
         WHERE filter_s.id = ${p}subcategory_id
           AND filter_s.deleted_at IS NULL
-          AND filter_c.id IN (${filters.categoryIds.map(() => "?").join(", ")})
+          AND filter_c.id IN (${placeholders(filters.categoryIds)})
       )
     `);
     params.push(...filters.categoryIds);
@@ -127,18 +128,9 @@ export function buildWhereClause(
   }
   addInClause(`${p}subcategory_id`, filters.subcategoryIds);
   if (filters.tagIds && filters.tagIds.length > 0) {
-    clauses.push(`
-      EXISTS (
-        SELECT 1
-        FROM transaction_tags filter_tt
-        JOIN tags filter_tag
-          ON filter_tag.id = filter_tt.tag_id
-          AND filter_tag.deleted_at IS NULL
-        WHERE filter_tt.transaction_id = ${transactionIdColumn}
-          AND filter_tt.tag_id IN (${filters.tagIds.map(() => "?").join(", ")})
-      )
-    `);
-    params.push(...filters.tagIds);
+    const tagFilter = buildTagExistsClause(filters.tagIds, transactionIdColumn);
+    clauses.push(tagFilter.clause);
+    params.push(...tagFilter.params);
   }
   if (filters.kind) {
     clauses.push(`${p}kind = ?`);

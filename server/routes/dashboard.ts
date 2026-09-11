@@ -42,59 +42,23 @@ const dateRangeQuerySchema = z
 const transactionReportQuerySchema = dateRangeQuerySchema.safeExtend({
   tagIds: optionalQueryStringArray,
 });
+function withDateRange(handler: (startDate: string, endDate: string, tagIds?: string[]) => unknown) {
+  return (req: Request, res: Response) => {
+    const query = parseRequest(transactionReportQuerySchema, req.query);
+    res.json({ success: true, data: handler(query.startDate, query.endDate, query.tagIds) });
+  };
+}
 
-router.get("/account-summary", (req: Request, res: Response) => {
-  const query = parseRequest(dateRangeQuerySchema, req.query);
+router.get("/account-summary", withDateRange((startDate, endDate) => getAccountSummary(startDate, endDate)));
 
-  const data = getAccountSummary(query.startDate, query.endDate);
-  res.json({ success: true, data });
-});
+router.get("/category-summary", withDateRange((startDate, endDate, tagIds) => getCategorySummary(startDate, endDate, tagIds)));
 
-router.get("/category-summary", (req: Request, res: Response) => {
-  const query = parseRequest(transactionReportQuerySchema, req.query);
+router.get("/metrics", withDateRange((startDate, endDate, tagIds) => getDashboardMetrics(startDate, endDate, tagIds)));
 
-  const data = getCategorySummary(
-    query.startDate,
-    query.endDate,
-    query.tagIds,
-  );
-  res.json({ success: true, data });
-});
+router.get("/charts/net-worth", withDateRange((startDate, endDate) => prepareNetWorthData(startDate, endDate)));
 
-router.get("/metrics", (req: Request, res: Response) => {
-  const query = parseRequest(transactionReportQuerySchema, req.query);
+router.get("/charts/sankey", withDateRange((startDate, endDate, tagIds) => prepareSankeyData(startDate, endDate, tagIds)));
 
-  const data = getDashboardMetrics(
-    query.startDate,
-    query.endDate,
-    query.tagIds,
-  );
-  res.json({ success: true, data });
-});
-
-router.get("/charts/net-worth", (req: Request, res: Response) => {
-  const query = parseRequest(dateRangeQuerySchema, req.query);
-
-  const data = prepareNetWorthData(query.startDate, query.endDate);
-  res.json({ success: true, data });
-});
-
-router.get("/charts/sankey", (req: Request, res: Response) => {
-  const query = parseRequest(transactionReportQuerySchema, req.query);
-
-  const data = prepareSankeyData(
-    query.startDate,
-    query.endDate,
-    query.tagIds,
-  );
-  res.json({ success: true, data });
-});
-
-router.get("/tag-summary", (req: Request, res: Response) => {
-  const query = parseRequest(transactionReportQuerySchema, req.query);
-
-  const data = getTagSummary(query.startDate, query.endDate, query.tagIds);
-  res.json({ success: true, data });
-});
+router.get("/tag-summary", withDateRange((startDate, endDate, tagIds) => getTagSummary(startDate, endDate, tagIds)));
 
 export const dashboardRouter = router;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { accountTypeSchema, type AccountType } from "./accounts.js";
+import type { AccountType } from "./accounts.js";
 export type AccountLinkProvider = "plaid" | "akoya";
 
 export type TargetInstitution = "us_bank" | "discover" | "fidelity";
@@ -74,53 +74,3 @@ export const providerConnectionStatusSchema = z.enum([
   "revoked",
 ]);
 
-export const providerAccountSummarySchema = z.object({
-  id: z.string(),
-  local_account_id: z.string(),
-  provider_account_id: z.string(),
-  name: z.string(),
-  mask: z.string().nullable(),
-  type: accountTypeSchema,
-  provider_type: z.string().nullable(),
-  provider_subtype: z.string().nullable(),
-  current_balance: z.number().nullable(),
-  available_balance: z.number().nullable(),
-  iso_currency_code: z.string().nullable(),
-  last_balance_at: z.string().nullable(),
-});
-
-export const providerConnectionSummarySchema = z.object({
-  id: z.string(),
-  provider: accountLinkProviderSchema,
-  target_institution: targetInstitutionSchema,
-  institution_id: z.string().nullable(),
-  institution_name: z.string(),
-  status: providerConnectionStatusSchema,
-  last_sync_at: z.string().nullable(),
-  last_error: z.string().nullable(),
-  accounts: z.array(providerAccountSummarySchema),
-  created_at: z.string(),
-  updated_at: z.string(),
-});
-
-export const plaidLinkTokenResultSchema = z.object({
-  link_token: z.string(),
-  expiration: z.string().nullable(),
-});
-
-export const akoyaAuthorizationResultSchema = z.object({
-  authorizationUrl: z.string(),
-  state: z.string(),
-});
-
-export const providerSyncResultSchema = z.object({
-  connectionId: z.string(),
-  provider: accountLinkProviderSchema,
-  accountsUpserted: z.number(),
-  transactionsAdded: z.number(),
-  transactionsUpdated: z.number(),
-  transactionsRemoved: z.number(),
-  balanceAdjustmentsCreated: z.number(),
-  warnings: z.array(z.string()),
-  syncedAt: z.string(),
-});

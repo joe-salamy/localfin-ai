@@ -26,8 +26,3 @@ export interface Tag {
   deleted_at: string | null;
 }
 
-export interface CreateTagData {
-  name: string;
-  type?: TagType;
-  color?: string | null;
-}

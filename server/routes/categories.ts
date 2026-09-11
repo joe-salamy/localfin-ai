@@ -2,7 +2,6 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { categoryTypeSchema } from "../../shared/contracts/categories.js";
-import { hexColorSchema } from "../../shared/validation.js";
 import {
   createCategory,
   getCategories,
@@ -17,47 +16,38 @@ import {
   restoreSubcategory,
 } from "../services/categories.js";
 import {
+  colorSchemaOptional,
   finiteNumber,
   idParamSchema,
   nonEmptyString,
+  nonEmptyUpdate,
   parseRequest,
 } from "./validation.js";
 
 export const categoryRouter = Router();
 export const subcategoryRouter = Router();
-const colorSchema = hexColorSchema.nullable();
 const createCategorySchema = z.object({
   name: nonEmptyString,
   type: categoryTypeSchema,
-  color: colorSchema.optional(),
+  color: colorSchemaOptional,
 });
-const updateCategorySchema = z
-  .object({
+const updateCategorySchema = nonEmptyUpdate({
     name: nonEmptyString.optional(),
     type: categoryTypeSchema.optional(),
-    color: colorSchema.optional(),
-  })
-  .refine(
-    (value) => Object.keys(value).length > 0,
-    "At least one update field is required",
-  );
+    color: colorSchemaOptional,
+});
 const createSubcategorySchema = z.object({
   name: nonEmptyString,
   category_id: nonEmptyString,
   monthly_goal: finiteNumber.nonnegative().nullable().optional(),
-  color: colorSchema.optional(),
+  color: colorSchemaOptional,
 });
-const updateSubcategorySchema = z
-  .object({
+const updateSubcategorySchema = nonEmptyUpdate({
     name: nonEmptyString.optional(),
     category_id: nonEmptyString.optional(),
     monthly_goal: finiteNumber.nonnegative().nullable().optional(),
-    color: colorSchema.optional(),
-  })
-  .refine(
-    (value) => Object.keys(value).length > 0,
-    "At least one update field is required",
-  );
+    color: colorSchemaOptional,
+});
 const categoryIdParamSchema = z.object({ categoryId: nonEmptyString });
 
 // --- Category routes ---

@@ -919,7 +919,7 @@ void test("transaction restore preserves ids, tag associations, and bulk request
   const restoredBulk = bulkRestoreTransactions(requestedOrder);
 
   assert.deepEqual(
-    restoredBulk.map((transaction) => transaction.id),
+    restoredBulk,
     requestedOrder,
   );
   assert.deepEqual(

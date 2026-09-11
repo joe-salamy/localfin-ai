@@ -1,30 +1,18 @@
-import crypto from "node:crypto";
 import type { CreateTransactionData, TransactionWithDetails } from "../../../shared/contracts/index.js";
 import { fromBool, getDb } from "../../db/index.js";
 import { NotFoundError } from "../../errors.js";
-import { assertActiveTags, replaceTransactionTags } from "../tags.js";
+import { replaceTransactionTags } from "../tags.js";
 import { getTransactionById } from "./read.js";
-import { assertActiveSubcategory, assertKindSubcategoryCompatible, getActiveAccountType, normalizeTransactionFields } from "./validation.js";
+import { TRANSACTION_INSERT_SQL, prepareTransactionInsert } from "./validation.js";
 
 export function createTransaction(
   data: CreateTransactionData,
 ): TransactionWithDetails {
   const db = getDb();
-  const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const accountType = getActiveAccountType(data.account_id);
-  const normalized = normalizeTransactionFields(data, accountType);
-  assertKindSubcategoryCompatible(normalized.kind, data.subcategory_id);
-  const tagIds = assertActiveTags(data.tag_ids ?? []);
+  const { id, normalized, tagIds } = prepareTransactionInsert(data);
 
-  if (normalized.subcategory_id) {
-    assertActiveSubcategory(normalized.subcategory_id);
-  }
-
-  const stmt = db.prepare(`
-    INSERT INTO transactions (id, account_id, date, name, amount, kind, subcategory_id, comment, is_initial_balance, ai_suggested, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
-  `);
+  const stmt = db.prepare(TRANSACTION_INSERT_SQL);
 
   const createTransactionWithTags = db.transaction(() => {
     stmt.run(
@@ -60,24 +48,13 @@ export function bulkCreateTransactions(
   const db = getDb();
   const now = new Date().toISOString();
 
-  const stmt = db.prepare(`
-    INSERT INTO transactions (id, account_id, date, name, amount, kind, subcategory_id, comment, is_initial_balance, ai_suggested, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
-  `);
+  const stmt = db.prepare(TRANSACTION_INSERT_SQL);
 
   const ids: string[] = [];
 
   const insertAll = db.transaction(() => {
     for (const data of transactions) {
-      const accountType = getActiveAccountType(data.account_id);
-      const normalized = normalizeTransactionFields(data, accountType);
-      assertKindSubcategoryCompatible(normalized.kind, data.subcategory_id);
-      const tagIds = assertActiveTags(data.tag_ids ?? []);
-      if (normalized.subcategory_id) {
-        assertActiveSubcategory(normalized.subcategory_id);
-      }
-
-      const id = crypto.randomUUID();
+      const { id, normalized, tagIds } = prepareTransactionInsert(data);
       ids.push(id);
       stmt.run(
         id,

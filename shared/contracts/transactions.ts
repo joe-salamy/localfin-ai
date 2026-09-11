@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { tagTypeSchema, type Tag } from "./tags.js";
+import type { Tag } from "./tags.js";
 import type { AccountType } from "./accounts.js";
 
 export type TransactionKind = "income" | "expense" | "transfer" | "adjustment";
@@ -168,46 +168,3 @@ export const transactionKindSchema = z.enum([
   "transfer",
   "adjustment",
 ]);
-
-export const transactionSchema = z.object({
-  id: z.string(),
-  account_id: z.string(),
-  date: z.string(),
-  name: z.string(),
-  amount: z.number(),
-  kind: transactionKindSchema,
-  subcategory_id: z.string().nullable(),
-  comment: z.string().nullable(),
-  is_initial_balance: z.boolean(),
-  ai_suggested: z.boolean(),
-  created_at: z.string(),
-  updated_at: z.string(),
-  deleted_at: z.string().nullable(),
-}) satisfies z.ZodType<Transaction>;
-
-const transactionTagSchema: z.ZodType<Tag> = z.object({
-  id: z.string(),
-  name: z.string(),
-  type: tagTypeSchema,
-  color: z.string().nullable(),
-  created_at: z.string(),
-  updated_at: z.string().nullable(),
-  deleted_at: z.string().nullable(),
-});
-
-export const transactionWithDetailsSchema: z.ZodType<TransactionWithDetails> =
-  transactionSchema.extend({
-    account_name: z.string().optional(),
-    account_type: z.string().optional(),
-    account_color: z.string().nullable().optional(),
-    subcategory_name: z.string().optional(),
-    subcategory_color: z.string().nullable().optional(),
-    category_id: z.string().optional(),
-    category_name: z.string().optional(),
-    category_type: z.string().optional(),
-    category_color: z.string().nullable().optional(),
-    running_balance: z.number().optional(),
-    tags: z.array(transactionTagSchema),
-  });
-
-export const duplicateCheckResultSchema = z.array(z.boolean());

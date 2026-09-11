@@ -13,6 +13,7 @@ import { getTransactionById } from "../server/services/transactions/read.js";
 import { checkTransferMatch } from "../server/services/transactions/checks.js";
 import { bulkUpdateTransactions } from "../server/services/transactions/bulk.js";
 import { isIsoDate } from "../shared/validation.js";
+import { REVIEW_HEADER } from "./export-categorize-ods.js";
 
 const amountSchema = z.number().finite();
 
@@ -76,10 +77,25 @@ export function assertFodsCellBalance(xml: string): void {
   }
 }
 
-export function applyCategorizeOds(
-  inputPath: string,
-  dryRun: boolean,
-): { updated: number; stillNeeding: string[] } {
+interface CategorizeColumns {
+  id: number;
+  date: number;
+  amount: number;
+  subcategory: number;
+  subcategoryId: number;
+}
+
+export interface ParsedCategorizeWorkbook {
+  grid: unknown[][];
+  header: string[];
+  cols: CategorizeColumns;
+  fileLabelToId: Map<string, string>;
+  reviewName: string;
+}
+
+const REQUIRED_REVIEW_COLUMNS = ["__id", "date", "amount", "subcategory", "__subcategory_id"] as const;
+
+export function parseCategorizeWorkbook(inputPath: string): ParsedCategorizeWorkbook {
   const resolved = path.resolve(inputPath);
   if (resolved.toLowerCase().endsWith(".fods")) {
     assertFodsCellBalance(readFileSync(resolved, "utf8"));
@@ -147,7 +163,39 @@ export function applyCategorizeOds(
       if (label && id && !fileLabelToId.has(label)) fileLabelToId.set(label, id);
     }
   }
+  for (const name of REQUIRED_REVIEW_COLUMNS) {
+    if (!(REVIEW_HEADER as readonly string[]).includes(name)) {
+      throw new Error(`Canonical REVIEW_HEADER is missing required column "${name}"`);
+    }
+  }
 
+  return {
+    grid,
+    header,
+    cols: {
+      id: idCol,
+      date: dateCol,
+      amount: amountCol,
+      subcategory: subcategoryCol,
+      subcategoryId: subcategoryIdCol,
+    },
+    fileLabelToId,
+    reviewName,
+  };
+}
+
+export function validateCategorizeRows(parsed: ParsedCategorizeWorkbook): PendingUpdate[] {
+  const {
+    grid,
+    fileLabelToId,
+    cols: {
+      id: idCol,
+      date: dateCol,
+      amount: amountCol,
+      subcategory: subcategoryCol,
+      subcategoryId: subcategoryIdCol,
+    },
+  } = parsed;
   void getDb();
   const categories = new Map(getCategories().map((c) => [c.id, c] as const));
   const activeSubcategories = new Map(
@@ -253,6 +301,13 @@ export function applyCategorizeOds(
     throw new Error("Invalid categorize rows; applied zero rows");
   }
 
+  return pending;
+}
+
+export function applyCategorizeUpdates(
+  pending: PendingUpdate[],
+  dryRun: boolean,
+): { updated: number; stillNeeding: string[] } {
   if (dryRun) {
     for (const update of pending) {
       console.log(
@@ -295,6 +350,15 @@ export function applyCategorizeOds(
     console.log(`needsCategory: ${stillNeeding.join(", ")}`);
   }
   return { updated: pending.length, stillNeeding };
+}
+
+export function applyCategorizeOds(
+  inputPath: string,
+  dryRun: boolean,
+): { updated: number; stillNeeding: string[] } {
+  const parsed = parseCategorizeWorkbook(inputPath);
+  const pending = validateCategorizeRows(parsed);
+  return applyCategorizeUpdates(pending, dryRun);
 }
 
 async function main(): Promise<void> {

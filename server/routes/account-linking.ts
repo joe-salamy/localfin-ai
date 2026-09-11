@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { accountLinkingService } from "../services/account-linking.js";
+import { BadRequestError } from "../errors.js";
 import { idParamSchema, nonEmptyString, parseRequest } from "./validation.js";
 
 const router = Router();
@@ -58,14 +59,10 @@ router.post("/akoya/authorize", (req: Request, res: Response) => {
 router.get("/akoya/callback", async (req: Request, res: Response) => {
   const query = parseRequest(akoyaCallbackSchema, req.query);
   if (query.error) {
-    res.status(400).json({ success: false, error: query.error });
-    return;
+    throw new BadRequestError("Provider authorization failed");
   }
   if (!query.code || !query.state) {
-    res
-      .status(400)
-      .json({ success: false, error: "Missing Akoya callback code or state" });
-    return;
+    throw new BadRequestError("Provider authorization failed");
   }
   const data = await accountLinkingService.handleAkoyaCallback({
     code: query.code,

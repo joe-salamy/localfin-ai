@@ -1,6 +1,7 @@
 import { addMonths, differenceInDays, endOfMonth, parseISO, startOfMonth } from "date-fns";
 import { getDb } from "../db/index.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
+import { buildTagExistsClause } from "./transaction-filters.js";
 import type { AccountSummary,
 AccountTransaction,
 AccountType,
@@ -79,24 +80,11 @@ interface TagCategorySummaryRow extends TagSummaryRow {
 function buildTagFilterClause(
   transactionAlias: string,
   tagIds?: string[],
-): { clause: string; params: string[] } {
-  if (!tagIds || tagIds.length === 0) {
-    return { clause: "", params: [] };
-  }
-
+): { clause: string; params: unknown[] } {
+  const filter = buildTagExistsClause(tagIds, `${transactionAlias}.id`);
   return {
-    clause: `
-      AND EXISTS (
-        SELECT 1
-        FROM transaction_tags filter_tt
-        JOIN tags filter_tag
-          ON filter_tag.id = filter_tt.tag_id
-          AND filter_tag.deleted_at IS NULL
-        WHERE filter_tt.transaction_id = ${transactionAlias}.id
-          AND filter_tt.tag_id IN (${tagIds.map(() => "?").join(", ")})
-      )
-    `,
-    params: tagIds,
+    clause: filter.clause ? `AND ${filter.clause}` : "",
+    params: filter.params,
   };
 }
 
@@ -146,6 +134,8 @@ export function getAccountSummary(
     .all() as AccountRow[];
 
   const summaries: AccountSummary[] = accounts.map((account) => {
+    // N+1 per-account balance reads share the cumulative-balance shape used by
+    // charts' balance statement; kept per-account here to preserve running-balance order.
     // Starting balance: sum of all transactions before startDate
     const balanceRow = db
       .prepare(

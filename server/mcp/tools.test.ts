@@ -39,21 +39,25 @@ import {
   getDashboardMetrics,
 } from "../services/dashboard.js";
 import { parseStatement } from "../services/parser.js";
-import { accountTypeSchema } from "../../shared/contracts/accounts.js";
-import { categoryTypeSchema } from "../../shared/contracts/categories.js";
-import { tagTypeSchema } from "../../shared/contracts/tags.js";
 import {
-  transactionKindSchema,
-} from "../../shared/contracts/transactions.js";
-import { goalPeriodSchema } from "../../shared/contracts/goals.js";
-import { hexColorSchema, isIsoDate } from "../../shared/validation.js";
+  localfinBulkCreateTransactionsInputSchema,
+  localfinBulkUpdateTransactionsInputSchema,
+  localfinCreateAccountInputSchema,
+  localfinCreateCategoryInputSchema,
+  localfinCreateGoalInputSchema,
+  localfinCreateSubcategoryInputSchema,
+  localfinCreateTagInputSchema,
+  localfinCreateTransactionInputSchema,
+  localfinDashboardInputSchema,
+  localfinDeleteTransactionInputSchema,
+  localfinParseStatementInputSchema,
+  localfinSearchTransactionsInputSchema,
+  localfinUpdateAccountInputSchema,
+  localfinUpdateCategoryInputSchema,
+  localfinUpdateTransactionInputSchema,
+} from "./index.js";
 
 const originalDbPath = process.env.LOCALFIN_DB_PATH;
-const isoDate = z.string().refine(isIsoDate, "Expected date in YYYY-MM-DD format");
-const nonEmptyString = z.string().trim().min(1);
-const finiteNumber = z.number().finite();
-const colorSchema = hexColorSchema.nullable().optional();
-
 async function useTempDatabase(
   t: { after: (fn: () => void | Promise<void>) => void },
 ): Promise<void> {
@@ -87,14 +91,7 @@ void test("mcp: localfin_list_accounts success", async (t) => {
 
 void test("mcp: localfin_create_account success and validation error", async (t) => {
   await useTempDatabase(t);
-  const schema = z
-    .object({
-      name: nonEmptyString,
-      type: accountTypeSchema,
-      initial_balance: finiteNumber.optional(),
-      color: colorSchema,
-    })
-    .strict();
+  const schema = localfinCreateAccountInputSchema;
   const parsed = schema.parse({ name: "Savings", type: "asset" });
   const account = createAccount(parsed);
   assert.equal(account.name, "Savings");
@@ -105,14 +102,7 @@ void test("mcp: localfin_create_account success and validation error", async (t)
 void test("mcp: localfin_update_account success and validation error", async (t) => {
   await useTempDatabase(t);
   const account = createAccount({ name: "Checking", type: "asset" });
-  const schema = z
-    .object({
-      id: nonEmptyString,
-      name: nonEmptyString.optional(),
-      type: accountTypeSchema.optional(),
-      color: hexColorSchema.nullable().optional(),
-    })
-    .strict();
+  const schema = localfinUpdateAccountInputSchema;
   const parsed = schema.parse({ id: account.id, name: "Renamed" });
   const { id, ...updates } = parsed;
   const updated = updateAccount(id, updates);
@@ -132,9 +122,7 @@ void test("mcp: localfin_list_categories and list_subcategories", async (t) => {
 
 void test("mcp: localfin_create_category success and validation error", async (t) => {
   await useTempDatabase(t);
-  const schema = z
-    .object({ name: nonEmptyString, type: categoryTypeSchema, color: colorSchema })
-    .strict();
+  const schema = localfinCreateCategoryInputSchema;
   const parsed = schema.parse({ name: "Bills", type: "expense" });
   const category = createCategory(parsed);
   assert.equal(category.name, "Bills");
@@ -146,28 +134,14 @@ void test("mcp: localfin_update_category", async (t) => {
   const category = createCategory({ name: "Food", type: "expense" });
   const updated = updateCategory(category.id, { name: "Food Updated" });
   assert.equal(updated.name, "Food Updated");
-  const schema = z
-    .object({
-      id: nonEmptyString,
-      name: nonEmptyString.optional(),
-      type: categoryTypeSchema.optional(),
-      color: hexColorSchema.nullable().optional(),
-    })
-    .strict();
+  const schema = localfinUpdateCategoryInputSchema;
   expectZodError(() => schema.parse({ id: "" }));
 });
 
 void test("mcp: localfin_create_subcategory success and validation error", async (t) => {
   await useTempDatabase(t);
   const category = createCategory({ name: "Food", type: "expense" });
-  const schema = z
-    .object({
-      name: nonEmptyString,
-      category_id: nonEmptyString,
-      monthly_goal: finiteNumber.nullable().optional(),
-      color: colorSchema,
-    })
-    .strict();
+  const schema = localfinCreateSubcategoryInputSchema;
   const parsed = schema.parse({ name: "Restaurants", category_id: category.id });
   const sub = createSubcategory(parsed);
   assert.equal(sub.name, "Restaurants");
@@ -185,9 +159,7 @@ void test("mcp: localfin_update_subcategory", async (t) => {
 
 void test("mcp: localfin_list_tags and create/update", async (t) => {
   await useTempDatabase(t);
-  const schemaCreate = z
-    .object({ name: nonEmptyString, type: tagTypeSchema.optional(), color: colorSchema })
-    .strict();
+  const schemaCreate = localfinCreateTagInputSchema;
   const parsed = schemaCreate.parse({ name: "Trip", type: "trip" });
   const tag = createTag(parsed);
   assert.equal(tag.name, "Trip");
@@ -214,14 +186,7 @@ void test("mcp: localfin_search_transactions success and validation error", asyn
     amount: -21.5,
     kind: "expense",
   });
-  const schema = z
-    .object({
-      searchQuery: z.string().optional(),
-      limit: z.number().int().min(1).max(500).optional(),
-      offset: z.number().int().min(0).optional(),
-      accountId: nonEmptyString.optional(),
-    })
-    .strict();
+  const schema = localfinSearchTransactionsInputSchema;
   // success: search with field syntax, quoted phrase, amount comparison
   const parsed = schema.parse({ searchQuery: 'name:"Whole Foods" amount>-50', limit: 10 });
   const results = getTransactionsWithDetails({
@@ -246,18 +211,7 @@ void test("mcp: localfin_search_transactions success and validation error", asyn
 void test("mcp: localfin_create_transaction success and validation error", async (t) => {
   await useTempDatabase(t);
   const account = createAccount({ name: "Checking", type: "asset" });
-  const schema = z
-    .object({
-      account_id: nonEmptyString,
-      date: isoDate,
-      name: nonEmptyString,
-      amount: finiteNumber,
-      kind: transactionKindSchema.optional(),
-      subcategory_id: nonEmptyString.nullable().optional(),
-      tag_ids: z.array(nonEmptyString).max(50).optional(),
-      comment: z.string().nullable().optional(),
-    })
-    .strict();
+  const schema = localfinCreateTransactionInputSchema;
   const parsed = schema.parse({
     account_id: account.id,
     date: "2026-01-20",
@@ -278,21 +232,7 @@ void test("mcp: localfin_bulk_create_transactions", async (t) => {
     { account_id: account.id, date: "2026-01-21", name: "Bulk 2", amount: -15 },
   ]);
   assert.equal(result.length, 2);
-  const schema = z
-    .object({
-      transactions: z
-        .array(
-          z.object({
-            account_id: nonEmptyString,
-            date: isoDate,
-            name: nonEmptyString,
-            amount: finiteNumber,
-          }),
-        )
-        .min(1)
-        .max(500),
-    })
-    .strict();
+  const schema = localfinBulkCreateTransactionsInputSchema;
   expectZodError(() => schema.parse({ transactions: [] }));
 });
 
@@ -307,13 +247,7 @@ void test("mcp: localfin_update_transaction", async (t) => {
   });
   const updated = updateTransaction(tx.id, { name: "Updated" });
   assert.equal(updated?.name, "Updated");
-  const schema = z
-    .object({
-      id: nonEmptyString,
-      name: nonEmptyString.optional(),
-      amount: finiteNumber.optional(),
-    })
-    .strict();
+  const schema = localfinUpdateTransactionInputSchema;
   expectZodError(() => schema.parse({ id: "" }));
 });
 
@@ -323,19 +257,7 @@ void test("mcp: localfin_bulk_update_transactions", async (t) => {
   const tx1 = createTransaction({ account_id: account.id, date: "2026-01-20", name: "A", amount: -10 });
   const tx2 = createTransaction({ account_id: account.id, date: "2026-01-20", name: "B", amount: -20 });
   bulkUpdateTransactions([tx1.id, tx2.id], { kind: "expense" });
-  const schema = z
-    .object({
-      ids: z.array(nonEmptyString).min(1).max(500),
-      updates: z
-        .object({
-          kind: transactionKindSchema.optional(),
-          subcategory_id: nonEmptyString.nullable().optional(),
-          add_tag_ids: z.array(nonEmptyString).max(50).optional(),
-          remove_tag_ids: z.array(nonEmptyString).max(50).optional(),
-        })
-        .refine((value) => Object.keys(value).length > 0, "At least one update field is required"),
-    })
-    .strict();
+  const schema = localfinBulkUpdateTransactionsInputSchema;
   expectZodError(() => schema.parse({ ids: [], updates: { kind: "expense" } }));
   expectZodError(() => schema.parse({ ids: [tx1.id], updates: {} }));
 });
@@ -349,7 +271,7 @@ void test("mcp: localfin_delete and restore transaction", async (t) => {
   assert.equal(afterDelete.length, 0);
   const restored = restoreTransaction(tx.id);
   assert.equal(restored.name, "ToDelete");
-  const schema = z.object({ id: nonEmptyString }).strict();
+  const schema = localfinDeleteTransactionInputSchema;
   expectZodError(() => schema.parse({ id: "" }));
 });
 
@@ -357,15 +279,7 @@ void test("mcp: localfin_list_goals, create and update", async (t) => {
   await useTempDatabase(t);
   const category = createCategory({ name: "Food", type: "expense" });
   const sub = createSubcategory({ name: "Groceries", category_id: category.id });
-  const schemaCreate = z
-    .object({
-      subcategory_id: nonEmptyString,
-      amount: finiteNumber.positive(),
-      period: goalPeriodSchema,
-      start_date: isoDate,
-      end_date: isoDate.nullable().optional(),
-    })
-    .strict();
+  const schemaCreate = localfinCreateGoalInputSchema;
   const parsed = schemaCreate.parse({
     subcategory_id: sub.id,
     amount: 500,
@@ -385,13 +299,7 @@ void test("mcp: localfin_dashboard success and validation error", async (t) => {
   await useTempDatabase(t);
   const account = createAccount({ name: "Checking", type: "asset" });
   createTransaction({ account_id: account.id, date: "2026-01-10", name: "Income", amount: 1000, kind: "income" });
-  const schema = z
-    .object({
-      startDate: isoDate,
-      endDate: isoDate,
-      tagIds: z.array(nonEmptyString).optional(),
-    })
-    .strict();
+  const schema = localfinDashboardInputSchema;
   const parsed = schema.parse({ startDate: "2026-01-01", endDate: "2026-01-31" });
   const metrics = getDashboardMetrics(parsed.startDate, parsed.endDate);
   const accountSummary = getAccountSummary(parsed.startDate, parsed.endDate);
@@ -406,9 +314,7 @@ void test("mcp: localfin_dashboard success and validation error", async (t) => {
 void test("mcp: localfin_parse_statement success and validation error", async (t) => {
   await useTempDatabase(t);
   const account = createAccount({ name: "Checking", type: "asset" });
-  const schema = z
-    .object({ text: nonEmptyString, accountId: nonEmptyString })
-    .strict();
+  const schema = localfinParseStatementInputSchema;
   const parsed = schema.parse({
     text: "01/15/2026 Whole Foods -48.23\n01/16/2026 Uber -21.50",
     accountId: account.id,

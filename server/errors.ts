@@ -39,12 +39,6 @@ export class ConflictError extends OperationalError {
   }
 }
 
-export class PayloadTooLargeError extends OperationalError {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, 413, options);
-  }
-}
-
 export class UpstreamServiceError extends OperationalError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, 502, options);

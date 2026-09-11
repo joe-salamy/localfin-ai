@@ -13,6 +13,7 @@ import type {
 } from "plaid";
 import { ENV_KEYS, PROVIDER_CONFIG } from "../../config/app.js";
 import { UpstreamServiceError } from "../../errors.js";
+import type { PlaidLinkTokenResult } from "../../../shared/contracts/providers.js";
 import { redactSecrets } from "./redact.js";
 
 /** Hard per-request network deadline for Plaid calls. */
@@ -21,11 +22,6 @@ const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
 export type PlaidAccount = AccountBase;
 export type PlaidTransaction = Transaction;
 export type PlaidRemovedTransaction = RemovedTransaction;
-
-export interface PlaidLinkTokenResult {
-  link_token: string;
-  expiration: string | null;
-}
 
 export interface PlaidPublicTokenExchangeResult {
   accessToken: string;

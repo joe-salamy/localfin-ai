@@ -87,26 +87,32 @@ function prepareTestDatabase(candidate: ArchiveCandidate): void {
   console.log(`Disposable database: ${TEST_DATABASE_PATH}`);
 }
 
-const argumentsWithoutFlags = process.argv
-  .slice(2)
-  .filter((argument) => argument !== "--prepare-only");
-if (argumentsWithoutFlags.length > 1) {
-  throw new Error("Usage: npm run dev:archive -- [archive-path] [--prepare-only]");
+function runArchiveDev(): void {
+  const argumentsWithoutFlags = process.argv
+    .slice(2)
+    .filter((argument) => argument !== "--prepare-only");
+  if (argumentsWithoutFlags.length > 1) {
+    throw new Error("Usage: npm run dev:archive -- [archive-path] [--prepare-only]");
+  }
+
+  const candidate = resolveArchivePath(argumentsWithoutFlags[0]);
+  prepareTestDatabase(candidate);
+
+  if (!process.argv.includes("--prepare-only")) {
+    const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+    const result = spawnSync(npmCommand, ["run", "dev"], {
+      env: {
+        ...process.env,
+        LOCALFIN_DB_PATH: TEST_DATABASE_PATH,
+      },
+      stdio: "inherit",
+    });
+
+    if (result.error) throw result.error;
+    process.exitCode = result.status ?? 1;
+  }
 }
 
-const candidate = resolveArchivePath(argumentsWithoutFlags[0]);
-prepareTestDatabase(candidate);
-
-if (!process.argv.includes("--prepare-only")) {
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(npmCommand, ["run", "dev"], {
-    env: {
-      ...process.env,
-      LOCALFIN_DB_PATH: TEST_DATABASE_PATH,
-    },
-    stdio: "inherit",
-  });
-
-  if (result.error) throw result.error;
-  process.exitCode = result.status ?? 1;
+if (import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, "/")}`) {
+  runArchiveDev();
 }

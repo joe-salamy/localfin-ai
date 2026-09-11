@@ -26,15 +26,3 @@ export interface Subcategory {
   deleted_at: string | null;
 }
 
-export interface CreateCategoryData {
-  name: string;
-  type: CategoryType;
-  color?: string | null;
-}
-
-export interface CreateSubcategoryData {
-  name: string;
-  category_id: string;
-  monthly_goal?: number | null;
-  color?: string | null;
-}

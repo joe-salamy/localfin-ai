@@ -131,7 +131,7 @@ function floatCell(value: number): string {
   return `<table:table-cell office:value-type="float" office:value="${value}"><text:p>${escapeXml(String(value))}</text:p></table:table-cell>`;
 }
 
-const REVIEW_HEADER = [
+export const REVIEW_HEADER = [
   "__id",
   "date",
   "name",
@@ -210,7 +210,7 @@ export async function exportCategorizeOds(
 }
 
 export function exportUsage(): string {
-  return "Usage: categorize:export <out.fods> [--needs-category-only] [--limit N]";
+  return "Usage: categorize:export [out.fods] [--needs-category-only] [--limit N] (default out: ./categorize-review.fods)";
 }
 
 export function parseExportArgs(argv: string[]): {

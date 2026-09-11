@@ -19,19 +19,6 @@ export interface AccountWithBalance extends Account {
   current_balance: number;
 }
 
-export interface CreateAccountData {
-  name: string;
-  type: AccountType;
-  initial_balance?: number;
-  color?: string | null;
-}
-
-export interface ReconcileAccountData {
-  date: string;
-  target_balance: number;
-  name?: string;
-}
-
 export interface ReconcileAccountResult {
   transaction: Transaction | null;
   previous_balance: number;

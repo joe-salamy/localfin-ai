@@ -2,7 +2,6 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { accountTypeSchema } from "../../shared/contracts/accounts.js";
-import { hexColorSchema } from "../../shared/validation.js";
 import { NotFoundError } from "../errors.js";
 import {
   createAccount,
@@ -15,32 +14,28 @@ import {
   getAccountTransactionCount,
 } from "../services/accounts.js";
 import {
+  colorSchemaOptional,
   finiteNumber,
   idParamSchema,
   isoDateString,
   nonEmptyString,
+  nonEmptyUpdate,
   parseRequest,
 } from "./validation.js";
 
 const router = Router();
-const colorSchema = hexColorSchema.nullable();
 const createAccountSchema = z.object({
   name: nonEmptyString,
   type: accountTypeSchema,
   initial_balance: finiteNumber.optional(),
-  color: colorSchema.optional(),
+  color: colorSchemaOptional,
 });
-const updateAccountSchema = z
-  .object({
+const updateAccountSchema = nonEmptyUpdate({
     name: nonEmptyString.optional(),
     type: accountTypeSchema.optional(),
     initial_balance: finiteNumber.optional(),
-    color: colorSchema.optional(),
-  })
-  .refine(
-    (value) => Object.keys(value).length > 0,
-    "At least one update field is required",
-  );
+    color: colorSchemaOptional,
+});
 const reconcileAccountSchema = z.object({
   date: isoDateString,
   target_balance: finiteNumber,

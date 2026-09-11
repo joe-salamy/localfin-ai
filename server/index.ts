@@ -6,7 +6,12 @@ import { SERVER_CONFIG } from "./config/app.js";
 dotenv.config();
 
 // Initialize database at startup
-getDb();
+try {
+  getDb();
+} catch (error) {
+  console.error(`Database initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
 
 const PORT = SERVER_CONFIG.port;
 

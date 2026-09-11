@@ -21,15 +21,6 @@ export const API_ROUTES = {
   openapiJson: "/api/openapi.json",
 } as const;
 
-export const HTTP_HEADERS = {
-  contentType: "Content-Type",
-  cacheControl: "Cache-Control",
-  connection: "Connection",
-  sseContentType: "text/event-stream",
-  sseCacheControl: "no-cache, no-transform",
-  sseConnection: "keep-alive",
-} as const;
-
 export const DATE_CONFIG = {
   isoDateFormat: "yyyy-MM-dd",
   shortMonthDayFormat: "MMM d",
@@ -53,7 +44,6 @@ export const ENV_KEYS = {
   akoyaConnector: "AKOYA_CONNECTOR",
   akoyaProviderId: "AKOYA_PROVIDER_ID",
   akoyaApiVersion: "AKOYA_API_VERSION",
-  frontendBaseUrl: "FRONTEND_BASE_URL",
 } as const;
 
 export const DATABASE_CONFIG = {
@@ -63,7 +53,6 @@ export const DATABASE_CONFIG = {
 } as const;
 
 export const PROVIDER_CONFIG = {
-  frontendBaseUrl: "http://localhost:3001",
   plaidEnv: "sandbox",
   plaidAllowedEnvs: ["sandbox", "development", "production"],
   plaidClientName: "LocalFin AI",
