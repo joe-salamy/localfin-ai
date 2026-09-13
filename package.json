@@ -15,6 +15,8 @@
     "report:history": "tsx scripts/render-history-html.ts",
     "categorize:export": "tsx scripts/export-categorize-ods.ts",
     "categorize:apply": "tsx scripts/apply-categorize-ods.ts",
+    "taxonomy:export": "tsx scripts/export-taxonomy-ods.ts",
+    "taxonomy:apply": "tsx scripts/apply-taxonomy-ods.ts",
     "ingest:statement": "tsx scripts/ingest-statement-txt.ts",
     "typecheck": "tsc -b --pretty false",
     "build": "tsc -b",

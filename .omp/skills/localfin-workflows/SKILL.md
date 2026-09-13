@@ -21,6 +21,18 @@ Steps:
 
 Example order: checking/savings accounts → Food/Bills categories → Groceries/Restaurants under Food → monthly grocery target 400 starting 2026-01-01.
 
+### Taxonomy ODS loop
+
+Default inbox `./taxonomy-review.fods` (gitignored); archive `data/archive/`.
+Commands: `npm run taxonomy:export [-- out.fods]` and `npm run taxonomy:apply -- <file.fods> [--dry-run]`.
+Sheets: `_meta(key,value)`; `Categories(__id,name,type,color,__delete)`; `Subcategories(__id,name,category,__category_id,monthly_goal,color,__delete)`; `Goals(__id,subcategory,__subcategory_id,amount,period,start_date,end_date,__delete)`.
+Semantics: empty `__id` = create, `__delete=x` = delete; hidden `__` columns authoritative over display labels (`category`, `subcategory`).
+`type` in `income|expense`; `period` in `weekly|monthly|quarterly|annual`; colors `#rrggbb` or empty; `amount>0`; ISO dates with `start_date <= end_date`; one goal per subcategory; goals never repoint.
+Stale fingerprint aborts: re-run `taxonomy:export` before editing again.
+Always `--dry-run` first, then apply; success appends `logs/jsonl/ods-<date>.jsonl` and moves inbox to `data/archive/<date>-taxonomy-<hash8>.fods`.
+`monthly_goal` and `spending_goals.amount` stay independent (no sync).
+System `Unassigned` rows: color-only edits, no rename/retype/delete.
+
 ## 2. Messy transaction capture
 
 **Goal:** Turn `Add Whole Foods 48.23 and Uber 21.50 yesterday from checking.` into correct rows.

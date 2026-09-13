@@ -50,3 +50,5 @@ docs/
 .claude/
 .codex/
 .vscode/
+*.fods
+*.ods
