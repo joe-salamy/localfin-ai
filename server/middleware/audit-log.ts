@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { NextFunction, Request, Response } from "express";
 
-const REDACT_PATTERN = /(secret|key|token|plaid|akoya)/i;
+const REDACT_PATTERN = /(secret|key|token)/i;
 
 function redactValue(value: unknown): unknown {
   if (Array.isArray(value)) {

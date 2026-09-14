@@ -10,7 +10,6 @@ Plug-and-play finance endpoints for external agents (OMP, Claude, Codex). No emb
 ## Base
 
 - Server: `http://127.0.0.1:3001` (loopback-only bind in `server/index.ts:16`; unauthenticated API deliberately binds to 127.0.0.1 only)
-- CORS: `server/config/app.ts:5 SERVER_CONFIG.defaultCorsOrigins = "http://localhost:3001,http://127.0.0.1:3001"` — split by comma, origin allowed if missing or in set
 - Spec: `GET /api/openapi.json` (pure JSON, no auth; also mounted at `/api/openapi` via `openApiRouter`). Full shape in `server/routes/openapi.ts`; do not duplicate here — fetch the live spec.
 
 ## Routes (`server/config/app.ts:9 API_ROUTES`)
@@ -26,7 +25,6 @@ Plug-and-play finance endpoints for external agents (OMP, Claude, Codex). No emb
 | `/api/dashboard` | GET/account-summary, GET/category-summary, GET/metrics, GET/charts/net-worth, GET/charts/sankey, GET/tag-summary |
 | `/api/goals` | GET, POST, GET/:id, PUT/:id, DELETE/:id, GET/:id/progress |
 | `/api/parser` | POST/parse-statement `{text, accountId}` → `ParseStatementResult` |
-| `/api/account-linking` | GET/connections, POST/plaid/link-token, POST/plaid/exchange, POST/akoya/authorize, GET/akoya/callback, POST/sync, DELETE/connections/:id |
 | `/api/openapi` + `/api/openapi.json` | GET spec `{openapi:"3.0.3", info, paths}` |
 
 ## Envelope
@@ -46,4 +44,4 @@ Stdio transport (primary). Run `npm run mcp` (`node --import tsx server/mcp/inde
 
 ## Audit log
 
-Mutating `POST|PUT|DELETE|PATCH` on `/api/*` (excluding `GET`, `/api/health`, `/api/openapi.json`) appends one JSON line to `logs/jsonl/audit-YYYY-MM-DD.jsonl` via `server/middleware/audit-log.ts` (`auditLog` before route mounts; file write failures log to `console.error` and never block). Fields matching `*secret*|*key*|*token*|PLAID*|AKOYA*` are redacted to `[REDACTED]`. Use `GET /api/openapi.json` and REST or MCP for all finance work.
+Mutating `POST|PUT|DELETE|PATCH` on `/api/*` (excluding `GET`, `/api/health`, `/api/openapi.json`) appends one JSON line to `logs/jsonl/audit-YYYY-MM-DD.jsonl` via `server/middleware/audit-log.ts` (`auditLog` before route mounts; file write failures log to `console.error` and never block). Fields matching `*secret*|*key*|*token*` are redacted to `[REDACTED]`. Use `GET /api/openapi.json` and REST or MCP for all finance work.

@@ -644,25 +644,6 @@ void test("database migration allows adjustment kind and absorbs legacy initial 
       updated_at TEXT NOT NULL,
       deleted_at TEXT
     );
-    CREATE TABLE agent_conversations (
-      id TEXT PRIMARY KEY,
-      title TEXT,
-      current_page TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      deleted_at TEXT
-    );
-    CREATE TABLE agent_messages (
-      id TEXT PRIMARY KEY,
-      conversation_id TEXT NOT NULL,
-      role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      status TEXT,
-      actions_json TEXT,
-      metadata_json TEXT,
-      created_at TEXT NOT NULL,
-      deleted_at TEXT
-    );
 
     INSERT INTO accounts (id, name, type, created_at, updated_at)
     VALUES ('legacy-account', 'Legacy Checking', 'asset', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');

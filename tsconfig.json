@@ -1,8 +1,20 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./tsconfig.server.json" },
-    { "path": "./tsconfig.scripts.json" },
-    { "path": "./tsconfig.shared.json" }
-  ]
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "esnext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node"]
+  },
+  "include": ["server", "shared", "scripts"]
 }

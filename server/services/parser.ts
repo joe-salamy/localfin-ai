@@ -152,7 +152,6 @@ function checkDuplicatesInDb(
 export async function parseStatement(
   text: string,
   accountId: string,
-  _conversationId?: string,
 ): Promise<{
   transactions: EnrichedTransaction[];
   summary: {
@@ -167,7 +166,6 @@ export async function parseStatement(
   parseSuccessRate: number;
   errors: string[];
 }> {
-  void _conversationId;
   const errors: string[] = [];
   const lines = text
     .split(/\r?\n/)

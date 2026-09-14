@@ -8,18 +8,11 @@ const router = Router();
 const parseStatementSchema = z.object({
   text: nonEmptyString.max(500_000),
   accountId: nonEmptyString,
-  conversationId: nonEmptyString.optional(),
 });
 
 router.post("/parse-statement", async (req: Request, res: Response) => {
   const body = parseRequest(parseStatementSchema, req.body);
-
-
-  const data = await parseStatement(
-    body.text,
-    body.accountId,
-    body.conversationId,
-  );
+  const data = await parseStatement(body.text, body.accountId);
   res.json({ success: true, data });
 });
 

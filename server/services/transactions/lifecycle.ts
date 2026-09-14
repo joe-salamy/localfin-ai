@@ -1,13 +1,13 @@
 import type { TransactionWithDetails } from "../../../shared/contracts/index.js";
 import { getDb } from "../../db/index.js";
-import { ConflictError, NotFoundError } from "../../errors.js";
+import { NotFoundError } from "../../errors.js";
 import { getTransactionById } from "./read.js";
-import type { TransactionRow } from "./internal.js";
 import { assertActiveSubcategory, getActiveAccountType } from "./validation.js";
 
-interface RestoreTransactionRow extends TransactionRow {
-  provider: string | null;
-  provider_transaction_id: string | null;
+interface RestoreTransactionRow {
+  deleted_at: string | null;
+  account_id: string;
+  subcategory_id: string | null;
 }
 
 function restoreTransactionRecord(id: string): TransactionWithDetails {
@@ -24,23 +24,6 @@ function restoreTransactionRecord(id: string): TransactionWithDetails {
 
   if (existing.subcategory_id) {
     assertActiveSubcategory(existing.subcategory_id);
-  }
-
-  if (existing.provider && existing.provider_transaction_id) {
-    const conflict = db
-      .prepare(
-        `SELECT 1
-         FROM transactions
-         WHERE provider = ?
-           AND provider_transaction_id = ?
-           AND deleted_at IS NULL
-           AND id != ?`,
-      )
-      .get(existing.provider, existing.provider_transaction_id, id);
-
-    if (conflict) {
-      throw new ConflictError("An active transaction already exists for this provider transaction")
-    }
   }
 
   const now = new Date().toISOString();

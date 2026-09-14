@@ -1,18 +1,6 @@
 import crypto from "node:crypto";
-import {
-  endOfMonth,
-  endOfQuarter,
-  endOfWeek,
-  endOfYear,
-  format,
-  parseISO,
-  startOfMonth,
-  startOfQuarter,
-  startOfWeek,
-  startOfYear,
-} from "date-fns";
+import { parseIsoDate, toIsoDate } from "./dates.js";
 import { getDb } from "../db/index.js";
-import { DATE_CONFIG } from "../config/app.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../errors.js";
 import type { CreateSpendingGoalData,
 GoalPeriod,
@@ -76,27 +64,31 @@ function getPeriodBoundaries(
   let end: Date;
 
   switch (period) {
-    case "weekly":
-      start = startOfWeek(referenceDate, { weekStartsOn: 0 });
-      end = endOfWeek(referenceDate, { weekStartsOn: 0 });
+    case "weekly": {
+      const midnight = Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate());
+      start = new Date(midnight - new Date(midnight).getUTCDay() * 86_400_000);
+      end = new Date(start.getTime() + 6 * 86_400_000);
       break;
+    }
     case "monthly":
-      start = startOfMonth(referenceDate);
-      end = endOfMonth(referenceDate);
+      start = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1));
+      end = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 0));
       break;
-    case "quarterly":
-      start = startOfQuarter(referenceDate);
-      end = endOfQuarter(referenceDate);
+    case "quarterly": {
+      const quarter = Math.floor(referenceDate.getUTCMonth() / 3);
+      start = new Date(Date.UTC(referenceDate.getUTCFullYear(), quarter * 3, 1));
+      end = new Date(Date.UTC(referenceDate.getUTCFullYear(), quarter * 3 + 3, 0));
       break;
+    }
     case "annual":
-      start = startOfYear(referenceDate);
-      end = endOfYear(referenceDate);
+      start = new Date(Date.UTC(referenceDate.getUTCFullYear(), 0, 1));
+      end = new Date(Date.UTC(referenceDate.getUTCFullYear(), 11, 31));
       break;
   }
 
   return {
-    periodStart: format(start, DATE_CONFIG.isoDateFormat),
-    periodEnd: format(end, DATE_CONFIG.isoDateFormat),
+    periodStart: toIsoDate(start),
+    periodEnd: toIsoDate(end),
   };
 }
 
@@ -291,7 +283,7 @@ export function getSpendingProgress(
     throw new NotFoundError(`Spending goal with id "${goalId}" not found`)
   }
 
-  const refDate = referenceDate ? parseISO(referenceDate) : new Date();
+  const refDate = referenceDate ? parseIsoDate(referenceDate) : new Date();
   const { periodStart, periodEnd } = getPeriodBoundaries(
     goal.period as GoalPeriod,
     refDate,

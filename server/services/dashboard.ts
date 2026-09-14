@@ -1,4 +1,8 @@
-import { addMonths, differenceInDays, endOfMonth, parseISO, startOfMonth } from "date-fns";
+import {
+  addMonthsUtc,
+  differenceInCalendarDaysUtc,
+  parseIsoDate,
+} from "./dates.js";
 import { getDb } from "../db/index.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
 import { buildTagExistsClause } from "./transaction-filters.js";
@@ -93,23 +97,23 @@ function prorateMonthlyGoal(
   startDate: string,
   endDate: string,
 ): number {
-  const rangeStart = parseISO(startDate);
-  const rangeEnd = parseISO(endDate);
-  let monthStart = startOfMonth(rangeStart);
+  const rangeStart = parseIsoDate(startDate);
+  const rangeEnd = parseIsoDate(endDate);
+  let monthStart = new Date(Date.UTC(rangeStart.getUTCFullYear(), rangeStart.getUTCMonth(), 1));
   let total = 0;
 
   while (monthStart <= rangeEnd) {
-    const monthEnd = endOfMonth(monthStart);
+    const monthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0));
     const overlapStart = rangeStart > monthStart ? rangeStart : monthStart;
     const overlapEnd = rangeEnd < monthEnd ? rangeEnd : monthEnd;
 
     if (overlapStart <= overlapEnd) {
-      const elapsedDays = differenceInDays(overlapEnd, overlapStart) + 1;
-      const daysInMonth = differenceInDays(monthEnd, monthStart) + 1;
+      const elapsedDays = differenceInCalendarDaysUtc(overlapEnd, overlapStart) + 1;
+      const daysInMonth = differenceInCalendarDaysUtc(monthEnd, monthStart) + 1;
       total += (monthlyGoal * elapsedDays) / daysInMonth;
     }
 
-    monthStart = addMonths(monthStart, 1);
+    monthStart = addMonthsUtc(monthStart, 1);
   }
 
   return total;

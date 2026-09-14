@@ -177,31 +177,10 @@ const spec = {
     },
     "/api/parser/parse-statement": {
       post: {
-        summary: "Parse statement text into transactions (optional conversationId for follow-ups)",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { text: { type: "string" }, accountId: { type: "string" }, conversationId: { type: "string" } } } } } },
+        summary: "Parse statement text into transactions",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { text: { type: "string" }, accountId: { type: "string" } } } } } },
         responses: { "200": { description: "ParseStatementResult" } },
       },
-    },
-    "/api/account-linking/connections": {
-      get: { summary: "List provider connections", responses: { "200": { description: "Connections" } } },
-    },
-    "/api/account-linking/plaid/link-token": {
-      post: { summary: "Create Plaid link token", responses: { "200": { description: "Link token" } } },
-    },
-    "/api/account-linking/plaid/exchange": {
-      post: { summary: "Exchange Plaid public token", responses: { "201": { description: "Exchanged" } } },
-    },
-    "/api/account-linking/akoya/authorize": {
-      post: { summary: "Create Akoya authorization URL", responses: { "201": { description: "Authorization URL" } } },
-    },
-    "/api/account-linking/akoya/callback": {
-      get: { summary: "Handle Akoya OAuth callback", parameters: [{ name: "code", in: "query", required: false, schema: { type: "string" } }], responses: { "200": { description: "Callback result" } } },
-    },
-    "/api/account-linking/sync": {
-      post: { summary: "Sync provider connections", responses: { "201": { description: "Sync result" } } },
-    },
-    "/api/account-linking/connections/{id}": {
-      delete: { summary: "Delete provider connection", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Deleted" } } },
     },
     "/api/openapi.json": {
       get: { summary: "OpenAPI spec", responses: { "200": { description: "OpenAPI JSON" } } },

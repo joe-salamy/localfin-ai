@@ -1,6 +1,5 @@
 import express from "express";
 import type { ErrorRequestHandler } from "express";
-import cors from "cors";
 import { accountRouter } from "./routes/accounts.js";
 import { categoryRouter, subcategoryRouter } from "./routes/categories.js";
 import { tagRouter } from "./routes/tags.js";
@@ -9,11 +8,10 @@ import { suspectRouter } from "./routes/suspect.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { goalRouter } from "./routes/goals.js";
 import { parserRouter } from "./routes/parser.js";
-import { accountLinkingRouter } from "./routes/account-linking.js";
 import { openApiRouter } from "./routes/openapi.js";
 import { auditLog } from "./middleware/audit-log.js";
-import { API_ROUTES, ENV_KEYS, SERVER_CONFIG } from "./config/app.js";
-import { ForbiddenError, OperationalError } from "./errors.js";
+import { API_ROUTES, SERVER_CONFIG } from "./config/app.js";
+import { OperationalError } from "./errors.js";
 
 function hasExpressBodyErrorType(
   error: unknown,
@@ -56,24 +54,6 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, next) => {
 
 export function createApp(): express.Express {
   const app = express();
-  const allowedOrigins = new Set(
-    (process.env[ENV_KEYS.corsOrigin] ?? SERVER_CONFIG.defaultCorsOrigins)
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean),
-  );
-
-  app.use(
-    cors({
-      origin(origin, callback) {
-        if (!origin || allowedOrigins.has(origin)) {
-          callback(null, true);
-          return;
-        }
-        callback(new ForbiddenError("Origin not allowed by CORS"));
-      },
-    }),
-  );
   app.use(express.json({ limit: SERVER_CONFIG.jsonLimit }));
   app.use(auditLog);
 
@@ -92,7 +72,6 @@ export function createApp(): express.Express {
   app.use(API_ROUTES.dashboard, dashboardRouter);
   app.use(API_ROUTES.goals, goalRouter);
   app.use(API_ROUTES.parser, parserRouter);
-  app.use(API_ROUTES.accountLinking, accountLinkingRouter);
   app.use((_req, res) => {
     res.status(404).json({ success: false, error: "Route not found" });
   });

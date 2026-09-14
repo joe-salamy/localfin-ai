@@ -23,8 +23,7 @@ export default defineConfig([
       ],
     },
   },
-  // shared/ stays pure (no process.env): only server/scripts get node globals,
-  // matching tsconfig.shared.json lacking types:node.
+  // shared/ stays pure (no process.env): only server/scripts get node globals.
   {
     files: ["server/**/*.ts", "scripts/**/*.ts"],
     languageOptions: {

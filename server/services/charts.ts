@@ -1,14 +1,10 @@
 import {
-  addDays,
-  addMonths,
-  addWeeks,
-  differenceInDays,
-  format,
-  isBefore,
-  parseISO,
-} from "date-fns";
+  addMonthsUtc,
+  differenceInCalendarDaysUtc,
+  parseIsoDate,
+  toIsoDate,
+} from "./dates.js";
 import { getDb } from "../db/index.js";
-import { DATE_CONFIG } from "../config/app.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
 import { buildTagExistsClause } from "./transaction-filters.js";
 import { resolveEntityColor } from "../../shared/finance/colors.js";
@@ -50,31 +46,35 @@ function buildSankeyTagFilter(tagIds?: string[]): {
 
 type DateGranularity = "day" | "week" | "month";
 
+const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
 export function bucketDates(startDate: string, endDate: string, granularity: DateGranularity): string[] {
-  const start = parseISO(startDate);
-  const end = parseISO(endDate);
-  const advanceFn = granularity === "day" ? addDays : granularity === "week" ? addWeeks : addMonths;
+  const endIso = toIsoDate(parseIsoDate(endDate));
   const dates: string[] = [];
-  let current = start;
-  while (
-    isBefore(current, end) ||
-    format(current, DATE_CONFIG.isoDateFormat) ===
-      format(end, DATE_CONFIG.isoDateFormat)
-  ) {
-    dates.push(format(current, DATE_CONFIG.isoDateFormat));
-    const next = advanceFn(current, 1);
-    if (!isBefore(next, current)) {
-      current = next;
-    } else {
-      break;
-    }
-    if (
-      isBefore(end, current) &&
-      format(current, DATE_CONFIG.isoDateFormat) !==
-        format(end, DATE_CONFIG.isoDateFormat)
-    ) {
-      break;
-    }
+  let current = parseIsoDate(startDate);
+  while (toIsoDate(current) <= endIso) {
+    dates.push(toIsoDate(current));
+    const next =
+      granularity === "day"
+        ? new Date(current.getTime() + 86_400_000)
+        : granularity === "week"
+          ? new Date(current.getTime() + 7 * 86_400_000)
+          : addMonthsUtc(current, 1);
+    if (next.getTime() <= current.getTime()) break;
+    current = next;
   }
   return dates;
 }
@@ -88,11 +88,10 @@ export function prepareNetWorthData(
     startDate,
     endDate,
   );
-  const totalDays = differenceInDays(parseISO(endDate), parseISO(effectiveStartDate));
+  const totalDays = differenceInCalendarDaysUtc(parseIsoDate(endDate), parseIsoDate(effectiveStartDate));
 
   // Determine granularity
   const granularity: DateGranularity = totalDays < 28 ? "day" : totalDays < 180 ? "week" : "month";
-  const dateFormat = granularity === "month" ? DATE_CONFIG.monthYearFormat : DATE_CONFIG.shortMonthDayFormat;
 
   // Get all non-deleted accounts
   const accounts = db
@@ -111,7 +110,11 @@ export function prepareNetWorthData(
   // Generate data points
   const dataPoints: NetWorthDataPoint[] = [];
   for (const dateStr of bucketDates(effectiveStartDate, endDate, granularity)) {
-    const formattedDate = format(parseISO(dateStr), dateFormat);
+    const bucketDate = parseIsoDate(dateStr);
+    const formattedDate =
+      granularity === "month"
+        ? `${MONTH_LABELS[bucketDate.getUTCMonth()]} ${bucketDate.getUTCFullYear()}`
+        : `${MONTH_LABELS[bucketDate.getUTCMonth()]} ${bucketDate.getUTCDate()}`;
 
     const point: NetWorthDataPoint = {
       date: dateStr,

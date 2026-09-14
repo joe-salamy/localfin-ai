@@ -3,7 +3,6 @@ export * from "./categories.js";
 export * from "./tags.js";
 export * from "./transactions.js";
 export * from "./goals.js";
-export * from "./providers.js";
 export * from "./dashboard.js";
 export * from "./parsing-ai.js";
 export * from "./api.js";

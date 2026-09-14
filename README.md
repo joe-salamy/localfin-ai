@@ -4,14 +4,13 @@ Local-first personal finance tracker with deterministic statement parsing, SQLit
 
 ## Bring your own agent
 
-Run `npm run dev` (Express on `127.0.0.1:3001`), read `.omp/skills/localfin-api/SKILL.md`, then call `GET /api/openapi.json` or `npm run mcp` (stdio MCP with `localfin_*` tools). No embedded chat — any OMP/Claude/Codex agent can consume the same REST envelope `{success, data, error}` or MCP tools. One-time reports: `npm run report:dashboard -- --start YYYY-MM-DD --end YYYY-MM-DD`, `npm run report:history -- ...`, `npm run log:view -- <logfile>`. Categorization loop: `npm run categorize:export -- <out.fods>`, `npm run categorize:apply -- <edited.fods>`. Statement input: `npm run ingest:statement -- <statement.txt> --account <name>`.
+Run `npm run dev` (Express on `127.0.0.1:3001`), read `.omp/skills/localfin-api/SKILL.md`, then call `GET /api/openapi.json` or `npm run mcp` (stdio MCP with `localfin_*` tools). No embedded chat — any OMP/Claude/Codex agent can consume the same REST envelope `{success, data, error}` or MCP tools. One-time reports: `npm run report:dashboard -- --start YYYY-MM-DD --end YYYY-MM-DD`, `npm run report:history -- ...`. Categorization loop: `npm run categorize:export -- <out.fods>`, `npm run categorize:apply -- <edited.fods>`. Statement input: `npm run ingest:statement -- <statement.txt> --account <name>`.
 
 ## Prerequisites
 
 - Node.js and npm compatible with the checked-in `package-lock.json`.
 - A local `.env` copied from `.env.example`.
-- Provider credentials only when using Plaid or Akoya account linking.
-- External LLM key only if your agent uses `.omp/skills/localfin-categorization` — server no longer calls OpenRouter (`OPENROUTER_API_KEY` optional, see `.env.example`).
+- External LLM key only if your agent uses `.omp/skills/localfin-categorization`.
 
 ## Setup
 
@@ -35,7 +34,6 @@ npm run report:history -- --start YYYY-MM-DD --end YYYY-MM-DD [--out path]
 npm run categorize:export -- <out.fods> [--needs-category-only] [--limit N]
 npm run categorize:apply -- <edited.fods> [--dry-run]
 npm run ingest:statement -- <statement.txt> --account <name> [--out review.fods]
-npm run log:view -- <path-to-log.json-or-jsonl>
 ```
 
 The default database path is `data/budget.db`; override with `LOCALFIN_DB_PATH` or `LOCALFIN_DATA_DIR`. Audit log: `logs/jsonl/audit-YYYY-MM-DD.jsonl`.
@@ -55,33 +53,17 @@ No format script is defined in `package.json`.
 
 Names only; keep values in `.env`.
 
-- `OPENROUTER_API_KEY` (optional — external agents only; server no longer uses it)
-- `CORS_ORIGIN`
-- `FRONTEND_BASE_URL`
 - `LOCALFIN_DATA_DIR`
 - `LOCALFIN_DB_PATH`
-- `LOCALFIN_PROVIDER_SECRET`
-- `PLAID_CLIENT_ID`
-- `PLAID_SECRET`
-- `PLAID_ENV`
-- `PLAID_REDIRECT_URI`
-- `AKOYA_CLIENT_ID`
-- `AKOYA_CLIENT_SECRET`
-- `AKOYA_AUTH_BASE_URL`
-- `AKOYA_API_BASE_URL`
-- `AKOYA_REDIRECT_URI`
-- `AKOYA_CONNECTOR`
-- `AKOYA_PROVIDER_ID`
-- `AKOYA_API_VERSION`
 
 ## Project map
 
-- `server/` — Express app, route handlers, services, SQLite schema/connection, provider integrations, `server/mcp` stdio server, `server/middleware/audit-log.ts`.
+- `server/` — Express app, route handlers, services, SQLite schema/connection, `server/mcp` stdio server, `server/middleware/audit-log.ts`.
 - `server/routes/openapi.ts` — `GET /api/openapi.json` (and `/api/openapi`).
 - `shared/` — Zod contracts, validation, finance invariants.
-- `scripts/` — local operational scripts: `render-log-html` viewer, `render-dashboard-html` / `render-history-html` one-time reports, `export-categorize-ods` / `apply-categorize-ods` ODS round-trip, `ingest-statement-txt` statement intake.
+- `scripts/` — local operational scripts: `render-dashboard-html` / `render-history-html` one-time reports, `export-categorize-ods` / `apply-categorize-ods` ODS round-trip, `ingest-statement-txt` statement intake.
 - `.omp/skills/` — OMP skills. Read the relevant `skill://<name>` before following a repo-specific workflow:
-  - `localfin-api` — REST/MCP endpoints, envelope, CORS, loopback bind
+  - `localfin-api` — REST/MCP endpoints, envelope, loopback bind
   - `localfin-finance-invariants` — amount/kind, reference, tag, bulk rules
   - `localfin-categorization` — transfer heuristic, available subcategories, exact-match prefill
   - `localfin-workflows` — budget setup, messy capture, search/correction
