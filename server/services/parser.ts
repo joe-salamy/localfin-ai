@@ -270,7 +270,7 @@ export async function parseStatement(
   // Fail fast before duplicate queries: an unbounded
   // record count would let one request fan out into unbounded DB work
   // (the route caps input chars, not parsed records).
-  const MAX_PARSED_RECORDS = 200;
+  const MAX_PARSED_RECORDS = 1_000;
   if (parsed.length > MAX_PARSED_RECORDS) {
     errors.push(
       `Input produced ${parsed.length} transactions; the maximum is ${MAX_PARSED_RECORDS}.`,

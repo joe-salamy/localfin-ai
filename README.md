@@ -33,7 +33,7 @@ npm run report:dashboard -- --start YYYY-MM-DD --end YYYY-MM-DD [--out path]
 npm run report:history -- --start YYYY-MM-DD --end YYYY-MM-DD [--out path]
 npm run categorize:export -- <out.fods> [--needs-category-only] [--limit N]
 npm run categorize:apply -- <edited.fods> [--dry-run]
-npm run ingest:statement -- <statement.txt> --account <name> [--out review.fods]
+npm run ingest:statement -- [inbox.txt] [--account <name>] [--out review.fods]
 ```
 
 The default database path is `data/budget.db`; override with `LOCALFIN_DB_PATH` or `LOCALFIN_DATA_DIR`. Audit log: `logs/jsonl/audit-YYYY-MM-DD.jsonl`.
