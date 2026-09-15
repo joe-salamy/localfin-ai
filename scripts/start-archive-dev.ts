@@ -1,9 +1,10 @@
 import Database from "better-sqlite3";
+import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-const ARCHIVE_DIRECTORY = path.resolve("data", "archive");
+const ARCHIVE_DIRECTORY = path.resolve("data", "archive", "databases");
 const TEST_DATABASE_PATH = path.resolve(
   "data",
   "testing",
@@ -113,6 +114,7 @@ function runArchiveDev(): void {
   }
 }
 
-if (import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, "/")}`) {
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (invokedPath === fileURLToPath(import.meta.url)) {
   runArchiveDev();
 }

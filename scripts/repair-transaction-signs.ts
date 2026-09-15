@@ -1,4 +1,4 @@
-import { copyFileSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { getDb, resolveDatabasePath } from "../server/db/index.js";
@@ -183,8 +183,10 @@ export function applySignRepair(staged: StagedRow[]): { backupPath: string; appl
   const backupPath = path.resolve(
     path.dirname(dbPath),
     "archive",
+    "databases",
     `budget.db.pre-sign-repair-${localTimestamp(new Date())}.bak`,
   );
+  mkdirSync(path.dirname(backupPath), { recursive: true });
   copyFileSync(dbPath, backupPath);
   const db = getDb();
   const stmt = db.prepare("UPDATE transactions SET kind = ?, amount = ?, updated_at = datetime('now') WHERE id = ?");
