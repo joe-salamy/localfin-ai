@@ -4,7 +4,7 @@ Local-first personal finance tracker with deterministic statement parsing, SQLit
 
 ## Bring your own agent
 
-Run `npm run dev` (Express on `127.0.0.1:3001`), read `.omp/skills/localfin-api/SKILL.md`, then call `GET /api/openapi.json` or `npm run mcp` (stdio MCP with `localfin_*` tools). No embedded chat — any OMP/Claude/Codex agent can consume the same REST envelope `{success, data, error}` or MCP tools. One-time reports: `npm run report:dashboard -- --start YYYY-MM-DD --end YYYY-MM-DD`, `npm run report:history -- ...`. Categorization loop: `npm run categorize:export -- <out.fods>`, `npm run categorize:apply -- <edited.fods>`. Statement input: `npm run ingest:statement -- <statement.txt> --account <name>`.
+Run `npm run dev` (Express on `127.0.0.1:3001`), read `.omp/skills/localfin-api/SKILL.md`, then call `GET /api/openapi.json` or `npm run mcp` (stdio MCP with `localfin_*` tools). No embedded chat — any OMP/Claude/Codex agent can consume the same REST envelope `{success, data, error}` or MCP tools. One-time reports: `npm run report:dashboard -- --start YYYY-MM-DD --end YYYY-MM-DD`, `npm run report:history -- ...`. Categorization loop: `npm run categorize:export -- <out.fods>`, `npm run categorize:apply -- <edited.fods>`. Statement input: `npm run ingest:csv -- --file <abs path> --account <name>`.
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ npm run report:dashboard -- --start YYYY-MM-DD --end YYYY-MM-DD [--out path]
 npm run report:history -- --start YYYY-MM-DD --end YYYY-MM-DD [--out path]
 npm run categorize:export -- <out.fods> [--needs-category-only] [--limit N]
 npm run categorize:apply -- <edited.fods> [--dry-run]
-npm run ingest:statement -- [inbox.txt] [--account <name>] [--out review.fods]
+npm run ingest:csv -- --file <abs path> --account <name> [--out review.fods] [--dry-run]
 ```
 
 The default database path is `data/budget.db`; override with `LOCALFIN_DB_PATH` or `LOCALFIN_DATA_DIR`. Audit log: `logs/jsonl/audit-YYYY-MM-DD.jsonl`.
@@ -61,7 +61,7 @@ Names only; keep values in `.env`.
 - `server/` — Express app, route handlers, services, SQLite schema/connection, `server/mcp` stdio server, `server/middleware/audit-log.ts`.
 - `server/routes/openapi.ts` — `GET /api/openapi.json` (and `/api/openapi`).
 - `shared/` — Zod contracts, validation, finance invariants.
-- `scripts/` — local operational scripts: `render-dashboard-html` / `render-history-html` one-time reports, `export-categorize-ods` / `apply-categorize-ods` ODS round-trip, `ingest-statement-txt` statement intake.
+- `scripts/` — local operational scripts: `render-dashboard-html` / `render-history-html` one-time reports, `export-categorize-ods` / `apply-categorize-ods` ODS round-trip, `ingest-statement-csv` CSV intake.
 - `.omp/skills/` — OMP skills. Read the relevant `skill://<name>` before following a repo-specific workflow:
   - `localfin-api` — REST/MCP endpoints, envelope, loopback bind
   - `localfin-finance-invariants` — amount/kind, reference, tag, bulk rules

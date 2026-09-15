@@ -11,16 +11,30 @@ export function checkDuplicates(transactions: DuplicateCheckItem[]): boolean[] {
 
   const db = getDb();
 
+  const counts = new Map<string, number>();
+  const distinct = new Map<string, DuplicateCheckItem>();
+  for (const t of transactions) {
+    const key = `${t.date}|${t.name}|${t.amount}|${t.account_id}`;
+    if (!distinct.has(key)) distinct.set(key, t);
+  }
+
   const stmt = db.prepare(`
     SELECT COUNT(*) AS cnt FROM transactions
     WHERE date = ? AND name = ? AND amount = ? AND account_id = ? AND deleted_at IS NULL
   `);
-
-  return transactions.map((t) => {
+  for (const [key, t] of distinct) {
     const row = stmt.get(t.date, t.name, t.amount, t.account_id) as {
       cnt: number;
     };
-    return row.cnt > 0;
+    counts.set(key, row.cnt);
+  }
+
+  const seen = new Map<string, number>();
+  return transactions.map((t) => {
+    const key = `${t.date}|${t.name}|${t.amount}|${t.account_id}`;
+    const occurrence = seen.get(key) ?? 0;
+    seen.set(key, occurrence + 1);
+    return occurrence < (counts.get(key) ?? 0);
   });
 }
 

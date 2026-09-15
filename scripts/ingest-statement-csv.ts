@@ -1,4 +1,5 @@
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, truncateSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -18,7 +19,6 @@ import type { Account, CreateTransactionData, EnrichedTransaction } from "../sha
 import { isIsoDate } from "../shared/validation.js";
 import { exportCategorizeOds } from "./export-categorize-ods.js";
 
-const DEFAULT_INBOX = path.resolve("data", "statements", "inbox.txt");
 const ARCHIVE_DIR = path.resolve("data", "archive", "statements");
 const JSONL_DIR = path.resolve("logs", "jsonl");
 
@@ -90,61 +90,6 @@ export function resolveAccountName(accountName: string, accounts: Account[]): Ac
   return matches[0] as Account;
 }
 
-export interface InboxChunk {
-  /** Raw header text after "## " with any legacy "account:" prefix removed. */
-  accountName: string;
-  /** Transaction lines belonging to this chunk, verbatim. */
-  body: string;
-}
-
-const ACCOUNT_HEADER_PATTERN = /^##\s*(.+?)\s*$/;
-const LEGACY_ACCOUNT_PREFIX = /^account\s*:\s*/i;
-
-/**
- * Split inbox text into per-account chunks at "## <account>" header lines.
- * The parser never sees the headers. Content before the first header, an
- * empty header name, or a chunk with no transaction lines aborts.
- */
-export function parseInboxChunks(text: string): InboxChunk[] {
-  const lines = text.split(/\r?\n/);
-  const chunks: InboxChunk[] = [];
-  let current: { accountName: string; lines: string[] } | null = null;
-  let sawHeader = false;
-
-  for (const line of lines) {
-    const headerMatch = line.trim().match(ACCOUNT_HEADER_PATTERN);
-    if (headerMatch) {
-      sawHeader = true;
-      if (current) chunks.push({ accountName: current.accountName, body: current.lines.join("\n") });
-      const accountName = headerMatch[1].replace(LEGACY_ACCOUNT_PREFIX, "").trim();
-      if (accountName === "") {
-        throw new Error('Empty "## " account header line');
-      }
-      current = { accountName, lines: [] };
-      continue;
-    }
-    if (!current) {
-      if (line.trim() === "") continue;
-      throw new Error(
-        `Content before the first "## " account header: "${line.trim().slice(0, 80)}"`,
-      );
-    }
-    current.lines.push(line);
-  }
-  if (current) chunks.push({ accountName: current.accountName, body: current.lines.join("\n") });
-
-  if (!sawHeader) {
-    throw new Error('No "## " account headers found in input');
-  }
-  const empty = chunks.filter((c) => c.body.trim() === "");
-  if (empty.length > 0) {
-    throw new Error(
-      `No transaction lines under header "${empty[0]?.accountName}"`,
-    );
-  }
-  return chunks;
-}
-
 function localDatePart(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -160,39 +105,50 @@ function localTimePart(date: Date): string {
 }
 
 export function ingestUsage(): string {
-  return "Usage: ingest:statement [inbox.txt] [--account <name>] [--out review.fods]\n" +
-    "Default input: data/statements/inbox.txt. Split accounts with '## <account name>' header lines.\n" +
-    "Without headers, pass --account (fuzzy: 'chase' matches 'Chase Sapphire Preferred').";
+  return "Usage: ingest:csv --file <abs path to bank CSV> --account <name> [--out review.fods] [--dry-run]";
 }
 
 export function parseIngestArgs(argv: string[]): {
-  input: string | null;
-  account: string | null;
+  file: string;
+  account: string;
   out: string | null;
+  dryRun: boolean;
 } | null {
-  let input: string | null = null;
+  let file: string | null = null;
   let account: string | null = null;
   let out: string | null = null;
+  let dryRun = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--account") {
+    if (arg === "--file") {
+      if (file != null) return null;
+      const value = argv[i + 1];
+      if (value == null || value.startsWith("--")) return null;
+      file = value;
+      i += 1;
+    } else if (arg === "--account") {
       if (account != null) return null;
-      account = argv[i + 1] ?? null;
+      const value = argv[i + 1];
+      if (value == null || value.startsWith("--")) return null;
+      account = value;
       i += 1;
     } else if (arg === "--out") {
-      out = argv[i + 1] ?? null;
+      if (out != null) return null;
+      const value = argv[i + 1];
+      if (value == null || value.startsWith("--")) return null;
+      out = value;
       i += 1;
+    } else if (arg === "--dry-run") {
+      if (dryRun) return null;
+      dryRun = true;
     } else if (arg === "--help" || arg === "-h") {
       return null;
-    } else if (arg.startsWith("--")) {
-      return null;
-    } else if (input == null) {
-      input = arg;
     } else {
       return null;
     }
   }
-  return { input, account, out };
+  if (file == null || account == null) return null;
+  return { file, account, out, dryRun };
 }
 
 interface ChunkStats {
@@ -201,6 +157,7 @@ interface ChunkStats {
   duplicates: number;
   skipped: number;
   needsCategory: string[];
+  profile: string | null;
 }
 
 async function processChunk(
@@ -209,6 +166,8 @@ async function processChunk(
 ): Promise<ChunkStats> {
   const parsed = await parseStatement(body, account.id);
   for (const message of parsed.errors) console.error(`[${account.name}] ${message}`);
+  const unknownFormat = parsed.errors.find((e) => e.startsWith("Unknown CSV format"));
+  if (unknownFormat !== undefined) throw new Error(unknownFormat);
 
   const duplicates = parsed.transactions.filter((t) => t.isDuplicate);
   const candidates = parsed.transactions.filter((t) => !t.isDuplicate);
@@ -267,86 +226,107 @@ async function processChunk(
     duplicates: duplicates.length,
     skipped,
     needsCategory,
+    profile: parsed.format,
   };
 }
 
-/** Archive the verbatim input, log to JSONL, then truncate the inbox. */
-function archiveInbox(rawText: string, accountNames: string[]): string {
+/** Move the ingested source CSV into the archive, log to JSONL. Runs only after a successful write. */
+function archiveCsvMove(
+  srcPath: string,
+  accountName: string,
+  profile: string | null,
+  stats: ChunkStats,
+): string {
+  const bytes = readFileSync(srcPath);
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
   const now = new Date();
   const timestamp = `${localDatePart(now)}T${localTimePart(now)}`;
-  const slugPart = accountNames
-    .map((name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""))
-    .map((slug) => (slug === "" ? "account" : slug))
-    .join("-");
-  let archivePath = path.resolve(ARCHIVE_DIR, `${timestamp}-${slugPart}.txt`);
+  const slugify = (s: string): string => {
+    const slug = s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return slug === "" ? "account" : slug;
+  };
+  const baseName = path.basename(srcPath, path.extname(srcPath));
+  const filePart = `${timestamp}-${slugify(accountName)}-${slugify(baseName)}-${sha256.slice(0, 8)}`;
+  mkdirSync(ARCHIVE_DIR, { recursive: true });
+  let archivePath = path.resolve(ARCHIVE_DIR, `${filePart}.csv`);
   let n = 1;
   while (existsSync(archivePath)) {
-    archivePath = path.resolve(ARCHIVE_DIR, `${timestamp}-${slugPart}-${n}.txt`);
+    archivePath = path.resolve(ARCHIVE_DIR, `${filePart}-${n}.csv`);
     n += 1;
   }
-  mkdirSync(ARCHIVE_DIR, { recursive: true });
-  copyFileSync(DEFAULT_INBOX, archivePath);
+  try {
+    renameSync(srcPath, archivePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+    copyFileSync(srcPath, archivePath);
+    const copied = readFileSync(archivePath);
+    if (!copied.equals(bytes)) {
+      throw new Error(`Archive copy byte mismatch for ${srcPath}`);
+    }
+    unlinkSync(srcPath);
+  }
 
   const logPath = path.resolve(JSONL_DIR, `ingest-${localDatePart(now)}.jsonl`);
   mkdirSync(JSONL_DIR, { recursive: true });
   appendFileSync(logPath, `${JSON.stringify({
     timestamp: now.toISOString(),
     operation: "statement.ingest",
-    accounts: accountNames,
+    account: accountName,
+    src_path: srcPath,
     archive_path: archivePath,
-    bytes: rawText.length,
+    bytes: bytes.length,
+    sha256,
+    profile,
+    created: stats.created,
+    duplicates: stats.duplicates,
+    skipped: stats.skipped,
   })}\n`, "utf8");
 
-  truncateSync(DEFAULT_INBOX, 0);
   return archivePath;
 }
 
-export async function ingestStatementTxt(
-  input: string,
+function readCsvFile(file: string): string {
+  const resolved = path.resolve(file);
+  try {
+    return readFileSync(resolved, "utf8").replace(/^\uFEFF/, "");
+  } catch {
+    throw new Error(`CSV file not found: ${resolved}`);
+  }
+}
+
+export async function ingestStatementCsv(
+  file: string,
   accountName: string,
   out: string | null,
+  dryRun: boolean,
 ): Promise<ChunkStats> {
-  const text = readInbox(input);
   const account = resolveAccountName(accountName, getAccounts());
+  const text = readCsvFile(file);
+  if (dryRun) {
+    const parsed = await parseStatement(text, account.id);
+    for (const message of parsed.errors) console.error(`[${account.name}] ${message}`);
+    const failedFormat = parsed.errors.find((e) => e.startsWith("Unknown CSV format"));
+    if (failedFormat !== undefined) throw new Error(failedFormat);
+    const duplicates = parsed.transactions.filter((t) => t.isDuplicate);
+    const candidates = parsed.transactions.filter((t) => !t.isDuplicate);
+    const payloadBuilt = buildTransactionPayloads(candidates, account.id);
+    console.log(
+      `[${account.name}] created 0 (dry-run), duplicates ${duplicates.length}, skipped ${payloadBuilt.skipped}, would-create ${payloadBuilt.payloads.length}`,
+    );
+    return {
+      accountName: account.name,
+      created: 0,
+      duplicates: duplicates.length,
+      skipped: payloadBuilt.skipped,
+      needsCategory: [],
+      profile: parsed.format,
+    };
+  }
   const stats = await processChunk(account, text);
-  const archivePath = archiveInbox(text, [account.name]);
-  console.log(`Archived input to ${archivePath}; inbox truncated`);
+  const archivePath = archiveCsvMove(path.resolve(file), account.name, stats.profile, stats);
+  console.log(`Archived source CSV to ${archivePath}`);
   await maybeExportOds(out, [stats]);
   return stats;
-}
-
-export async function ingestHeaderedInbox(
-  input: string,
-  out: string | null,
-): Promise<ChunkStats[]> {
-  const text = readInbox(input);
-  const accounts = getAccounts();
-  const chunks = parseInboxChunks(text);
-  const resolved = chunks.map((c) => ({ chunk: c, account: resolveAccountName(c.accountName, accounts) }));
-  const seen = new Set<string>();
-  for (const { account } of resolved) {
-    if (seen.has(account.id)) {
-      throw new Error(`Duplicate header for "${account.name}" resolves to the same account twice`);
-    }
-    seen.add(account.id);
-  }
-  const stats: ChunkStats[] = [];
-  for (const { chunk, account } of resolved) {
-    stats.push(await processChunk(account, chunk.body));
-  }
-  const archivePath = archiveInbox(text, stats.map((s) => s.accountName));
-  console.log(`Archived input to ${archivePath}; inbox truncated`);
-  await maybeExportOds(out, stats);
-  return stats;
-}
-
-function readInbox(input: string): string {
-  const resolved = path.resolve(input);
-  try {
-    return readFileSync(resolved, "utf8");
-  } catch {
-    throw new Error(`Statement file not found: ${resolved}`);
-  }
 }
 
 async function maybeExportOds(out: string | null, stats: ChunkStats[]): Promise<void> {
@@ -371,13 +351,8 @@ async function main(): Promise<void> {
     process.exitCode = 2;
     return;
   }
-  const input = parsed.input ?? DEFAULT_INBOX;
   try {
-    if (parsed.account != null) {
-      await ingestStatementTxt(input, parsed.account, parsed.out);
-    } else {
-      await ingestHeaderedInbox(input, parsed.out);
-    }
+    await ingestStatementCsv(parsed.file, parsed.account, parsed.out, parsed.dryRun);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

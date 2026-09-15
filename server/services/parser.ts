@@ -1,43 +1,58 @@
 import type { AccountType,
 EnrichedTransaction,
-ParsedTransaction, } from "../../shared/contracts/index.js"
+ParsedTransaction, TransactionKind } from "../../shared/contracts/index.js"
 import {
-  inferTransactionKindForAccount,
   normalizeTransactionAmount,
+  roundCurrencyAmount,
 } from "../../shared/finance/transactionAmounts.js"
+export { inferTransactionKindForAccount } from "../../shared/finance/transactionAmounts.js"
 import { getDb } from "../db/index.js";
 
-// ---------- Format detection ----------
+export type BankProfileId = "chase" | "usbank" | "discover";
 
-interface FormatMatch {
-  name: string;
-  pattern: RegExp;
+export function detectBankProfile(headers: string[]): BankProfileId | null {
+  const normalized = headers.map((cell) => cell.trim().replace(/^["']|["']$/g, "").trim().toLowerCase());
+  const has = (target: string): boolean => normalized.includes(target);
+  if (has("type") && has("transaction date") && has("description")) {
+    return "chase";
+  }
+  if (has("transaction") && has("name") && has("memo")) {
+    return "usbank";
+  }
+  if (has("trans. date")) {
+    return "discover";
+  }
+  return null;
 }
 
-const FORMATS: FormatMatch[] = [
-  {
-    name: "credit-card",
-    pattern:
-      /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(.+?)\s+([-]?\$?[\d,]+\.?\d*)\s*$/,
-  },
-  {
-    name: "csv",
-    pattern:
-      /^"?(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)"?\s*,\s*"?([^",]+)"?\s*,\s*"?([-]?\$?[\d,]+\.?\d*)"?\s*$/,
-  },
-  {
-    name: "tab-separated",
-    pattern:
-      /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\t+(.+?)\t+([-]?\$?[\d,]+\.?\d*)/,
-  },
-  {
-    name: "iso-date",
-    pattern: /^(\d{4}-\d{2}-\d{2})\s+(.+?)\s+([-]?\$?[\d,]+\.?\d*)\s*$/,
-  },
-];
+export const TRANSFER_NAME_PATTERN =
+  /\b(?:transfer|online transfer|credit card payment|payment thank you|internet payment|mobile payment|web authorized pmt|mobile banking payment|autopay|ach payment|card payment|payment received|payment posted)\b/i;
 
-const LENIENT_PATTERN =
-  /^(\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{4}-\d{2}-\d{2})\s*[,\t]?\s*(.+?)\s+(\(?-?\$?[\d,]+\.?\d*\)?\s*(?:CR|DR)?)\s*$/i;
+export function parseCsvLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (ch === "," && !inQuotes) {
+      fields.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  fields.push(current);
+  return fields;
+}
 
 // ---------- Date parsing ----------
 
@@ -135,20 +150,71 @@ function checkDuplicatesInDb(
   transactions: Array<{ date: string; name: string; amount: number }>,
   accountId: string,
 ): boolean[] {
+  if (transactions.length === 0) return [];
   const db = getDb();
+
+  const counts = new Map<string, number>();
+
+  const distinct = new Map<string, { date: string; name: string; amount: number }>();
+  for (const t of transactions) {
+    const key = `${t.date}|${t.name}|${t.amount}`;
+    if (!distinct.has(key)) distinct.set(key, t);
+  }
 
   const stmt = db.prepare(`
     SELECT COUNT(*) AS cnt FROM transactions
     WHERE date = ? AND name = ? AND amount = ? AND account_id = ? AND deleted_at IS NULL
   `);
-
-  return transactions.map((t) => {
+  for (const [key, t] of distinct) {
     const row = stmt.get(t.date, t.name, t.amount, accountId) as {
       cnt: number;
     };
-    return row.cnt > 0;
+    counts.set(key, row.cnt);
+  }
+
+  const seen = new Map<string, number>();
+  return transactions.map((t) => {
+    const key = `${t.date}|${t.name}|${t.amount}`;
+    const occurrence = seen.get(key) ?? 0;
+    seen.set(key, occurrence + 1);
+    const dbCount = counts.get(key) ?? 0;
+    return occurrence < dbCount;
   });
 }
+
+const UNKNOWN_FORMAT_SUFFIX =
+  "Expected one of: Chase (Transaction Date,...,Type,...), US Bank (Date,Transaction,Name,Memo,Amount), Discover (Trans. Date,...,Category).";
+
+function unknownFormatResult(headerRaw: string): {
+  transactions: EnrichedTransaction[];
+  summary: {
+    total: number;
+    duplicates: number;
+    fromLookup: number;
+    fromAI: number;
+    uncategorized: number;
+    needsReview: number;
+  };
+  format: string | null;
+  parseSuccessRate: number;
+  errors: string[];
+} {
+  return {
+    transactions: [],
+    summary: {
+      total: 0,
+      duplicates: 0,
+      fromLookup: 0,
+      fromAI: 0,
+      uncategorized: 0,
+      needsReview: 0,
+    },
+    format: null,
+    parseSuccessRate: 0,
+    errors: [`Unknown CSV format. Headers seen: ${headerRaw}. ${UNKNOWN_FORMAT_SUFFIX}`],
+  };
+}
+
 export async function parseStatement(
   text: string,
   accountId: string,
@@ -167,12 +233,18 @@ export async function parseStatement(
   errors: string[];
 }> {
   const errors: string[] = [];
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+  const withoutBom = text.replace(/^\uFEFF/, "");
+  const rawLines = withoutBom.split(/\r?\n/);
 
-  if (lines.length === 0) {
+  let headerIndex = -1;
+  for (let i = 0; i < rawLines.length; i += 1) {
+    if ((rawLines[i] ?? "").trim() !== "") {
+      headerIndex = i;
+      break;
+    }
+  }
+
+  if (headerIndex === -1) {
     return {
       transactions: [],
       summary: {
@@ -189,94 +261,43 @@ export async function parseStatement(
     };
   }
 
-  // Detect format using first non-header line candidates
-  let detectedFormat: FormatMatch | null = null;
-  for (const line of lines.slice(0, 3)) {
-    for (const fmt of FORMATS) {
-      if (fmt.pattern.test(line)) {
-        detectedFormat = fmt;
-        break;
-      }
-    }
-    if (detectedFormat) break;
+  const headerLine = (rawLines[headerIndex] ?? "").trim();
+  const headerFields = parseCsvLine(headerLine);
+  const normalizedHeaders = headerFields.map((cell) => cell.trim().replace(/^["']|["']$/g, "").trim().toLowerCase());
+  const profile = detectBankProfile(headerFields);
+
+  const columnIndex = (target: string): number => normalizedHeaders.indexOf(target);
+
+  let dateIdx = -1;
+  let nameIdx = -1;
+  let amountIdx = -1;
+  let discriminatorIdx = -1;
+  if (profile === "chase") {
+    dateIdx = columnIndex("transaction date");
+    nameIdx = columnIndex("description");
+    amountIdx = columnIndex("amount");
+    discriminatorIdx = columnIndex("type");
+  } else if (profile === "usbank") {
+    dateIdx = columnIndex("date");
+    discriminatorIdx = columnIndex("transaction");
+    nameIdx = columnIndex("name");
+    amountIdx = columnIndex("amount");
+  } else if (profile === "discover") {
+    dateIdx = columnIndex("trans. date");
+    nameIdx = columnIndex("description");
+    amountIdx = columnIndex("amount");
+    discriminatorIdx = columnIndex("category");
   }
 
-  // Parse lines
-  const parsed: ParsedTransaction[] = [];
-  let failedLines = 0;
-  const MAX_LINE_LENGTH = 1_000;
-
-  for (const line of lines) {
-    if (line.length > MAX_LINE_LENGTH) {
-      failedLines++;
-      if (failedLines <= 5) {
-        errors.push(
-          `Line too long (${line.length} chars): "${line.slice(0, 80)}"`,
-        );
-      }
-      continue;
-    }
-
-    const pattern = detectedFormat?.pattern ?? null;
-    let match: RegExpMatchArray | null = null;
-
-    if (pattern) {
-      match = line.match(pattern);
-    }
-
-    // Fallback to lenient pattern
-    if (!match) {
-      match = line.match(LENIENT_PATTERN);
-    }
-
-    if (!match) {
-      failedLines++;
-      if (failedLines <= 5) {
-        errors.push(`Could not parse line: "${line.slice(0, 80)}"`);
-      }
-      continue;
-    }
-
-    const rawDate = match[1];
-    const rawName = match[2];
-    const rawAmount = match[3];
-
-    const date = parseDate(rawDate);
-    const amount = parseAmount(rawAmount);
-    const name = cleanName(rawName);
-
-    if (!name) {
-      failedLines++;
-      errors.push(`Empty name after cleaning: "${line.slice(0, 80)}"`);
-      continue;
-    }
-
-    const needsReview = amount === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date);
-
-    parsed.push({
-      date,
-      name,
-      amount,
-      needsReview,
-      confidence: needsReview ? 0.5 : 1.0,
-      originalLine: line,
-    });
+  const columnsMissing =
+    profile === null || dateIdx === -1 || nameIdx === -1 || amountIdx === -1 || discriminatorIdx === -1;
+  if (columnsMissing) {
+    return unknownFormatResult(headerLine);
   }
 
-  if (failedLines > 5) {
-    errors.push(`... and ${failedLines - 5} more unparseable lines`);
-  }
-
-  // Fail fast before duplicate queries: an unbounded
-  // record count would let one request fan out into unbounded DB work
-  // (the route caps input chars, not parsed records).
-  const MAX_PARSED_RECORDS = 1_000;
-  if (parsed.length > MAX_PARSED_RECORDS) {
-    errors.push(
-      `Input produced ${parsed.length} transactions; the maximum is ${MAX_PARSED_RECORDS}.`,
-    );
-    parsed.length = MAX_PARSED_RECORDS;
-  }
+  const resolvedProfile = profile as BankProfileId;
+  let statusIdx = columnIndex("status");
+  if (statusIdx === -1) statusIdx = columnIndex("state");
 
   const db = getDb();
   const account = db
@@ -295,24 +316,156 @@ export async function parseStatement(
         uncategorized: 0,
         needsReview: 0,
       },
-      format: detectedFormat?.name ?? null,
+      format: resolvedProfile,
       parseSuccessRate: 0,
       errors: [`Account with id "${accountId}" not found`],
     };
   }
 
-  // Deterministic only — no LLM categorization. Infer kind from amount sign and account type, no subcategory inference.
-  const normalizedTransactions = parsed.map((t) => {
-    const kind = inferTransactionKindForAccount(t.amount, account.type);
-    return {
-      ...t,
-      amount: normalizeTransactionAmount(t.amount, account.type, kind),
-      kind,
-    };
-  });
+  const parsed: Array<ParsedTransaction & { kind: TransactionKind }> = [];
+  let failedLines = 0;
+  let pendingSkipped = 0;
+  const MAX_LINE_LENGTH = 1_000;
+
+  const dataLines = rawLines.slice(headerIndex + 1);
+  let totalDataRows = 0;
+  for (const rawLine of dataLines) {
+    if (rawLine.trim() === "") continue;
+    totalDataRows += 1;
+    const line = rawLine.trim();
+    if (line.length > MAX_LINE_LENGTH) {
+      failedLines++;
+      if (failedLines <= 5) {
+        errors.push(
+          `Line too long (${line.length} chars): "${line.slice(0, 80)}"`,
+        );
+      }
+      continue;
+    }
+
+    const fields = parseCsvLine(rawLine.trim());
+    if (fields.length !== headerFields.length) {
+      failedLines++;
+      if (failedLines <= 5) {
+        errors.push(
+          `Column count mismatch (expected ${headerFields.length}, saw ${fields.length}): "${line.slice(0, 80)}"`,
+        );
+      }
+      continue;
+    }
+
+    if (statusIdx !== -1) {
+      const statusValue = (fields[statusIdx] ?? "").trim().toLowerCase();
+      if (statusValue.includes("pending")) {
+        pendingSkipped += 1;
+        continue;
+      }
+    }
+
+    const rawDate = fields[dateIdx] ?? "";
+    const rawName = fields[nameIdx] ?? "";
+    const rawAmountStr = fields[amountIdx] ?? "";
+    const discriminatorRaw = fields[discriminatorIdx] ?? "";
+
+    const date = parseDate(rawDate);
+    const name = cleanName(rawName);
+    const rawAmountValue = parseAmount(rawAmountStr);
+    const magnitude = Math.abs(rawAmountValue);
+
+    if (!name) {
+      failedLines++;
+      errors.push(`Empty name after cleaning: "${line.slice(0, 80)}"`);
+      continue;
+    }
+
+    let kind: TransactionKind | null = null;
+    if (resolvedProfile === "chase") {
+      if (TRANSFER_NAME_PATTERN.test(name)) {
+        kind = "transfer";
+      } else {
+        const typeLower = discriminatorRaw.trim().toLowerCase();
+        if (typeLower === "sale") kind = "expense";
+        else if (typeLower === "return") kind = "income";
+        else if (typeLower === "fee") kind = "expense";
+        else if (typeLower === "payment") kind = "transfer";
+        else if (typeLower === "adjustment") kind = rawAmountValue > 0 ? "income" : "expense";
+        else {
+          failedLines++;
+          if (failedLines <= 5) {
+            errors.push(
+              `Unknown Chase Type "${discriminatorRaw.trim().slice(0, 40)}": "${line.slice(0, 80)}"`,
+            );
+          }
+          continue;
+        }
+      }
+    } else if (resolvedProfile === "usbank") {
+      if (TRANSFER_NAME_PATTERN.test(name)) {
+        kind = "transfer";
+      } else {
+        const txnLower = discriminatorRaw.trim().toLowerCase();
+        if (txnLower === "debit") kind = "expense";
+        else if (txnLower === "credit") kind = "income";
+        else {
+          failedLines++;
+          if (failedLines <= 5) {
+            errors.push(
+              `Unknown US Bank Transaction "${discriminatorRaw.trim().slice(0, 40)}": "${line.slice(0, 80)}"`,
+            );
+          }
+          continue;
+        }
+      }
+    } else {
+      const categoryNorm = discriminatorRaw.trim().toLowerCase();
+      if (categoryNorm.includes("payments and credits")) {
+        kind = TRANSFER_NAME_PATTERN.test(name) ? "transfer" : "income";
+      } else if (categoryNorm.includes("awards")) {
+        kind = "income";
+      } else {
+        kind = "expense";
+      }
+    }
+
+    const resolvedKind = kind as TransactionKind;
+    const storedAmount =
+      resolvedKind === "transfer"
+        ? roundCurrencyAmount(-magnitude)
+        : normalizeTransactionAmount(magnitude, account.type, resolvedKind);
+
+    const needsReview = storedAmount === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date);
+
+    parsed.push({
+      date,
+      name,
+      amount: storedAmount,
+      needsReview,
+      confidence: needsReview ? 0.5 : 1.0,
+      originalLine: line,
+      kind: resolvedKind,
+    });
+  }
+
+  if (failedLines > 5) {
+    errors.push(`... and ${failedLines - 5} more unparseable lines`);
+  }
+  if (pendingSkipped > 0) {
+    errors.push(`Skipped ${pendingSkipped} pending rows`);
+  }
+
+  // Fail fast before duplicate queries: an unbounded
+  // record count would let one request fan out into unbounded DB work
+  // (the route caps input chars, not parsed records).
+  const MAX_PARSED_RECORDS = 1_000;
+  if (parsed.length > MAX_PARSED_RECORDS) {
+    errors.push(
+      `Input produced ${parsed.length} transactions; the maximum is ${MAX_PARSED_RECORDS}.`,
+    );
+    parsed.length = MAX_PARSED_RECORDS;
+  }
 
   const duplicateFlags = checkDuplicatesInDb(
-    normalizedTransactions.map((t) => ({
+    parsed.map((t) => ({
       date: t.date,
       name: t.name,
       amount: t.amount,
@@ -329,13 +482,19 @@ export async function parseStatement(
     needsReview: 0,
   };
 
-  const enriched: EnrichedTransaction[] = normalizedTransactions.map((t, i) => {
-    const isDuplicate = duplicateFlags[i];
+  const enriched: EnrichedTransaction[] = parsed.map((t, i) => {
+    const isDuplicate = duplicateFlags[i] ?? false;
     if (isDuplicate) summary.duplicates++;
     summary.uncategorized++;
     if (t.needsReview) summary.needsReview++;
     return {
-      ...t,
+      date: t.date,
+      name: t.name,
+      amount: t.amount,
+      needsReview: t.needsReview,
+      confidence: t.confidence,
+      originalLine: t.originalLine,
+      kind: t.kind,
       subcategory_id: null,
       subcategory_name: null,
       category_name: null,
@@ -343,14 +502,14 @@ export async function parseStatement(
       isDuplicate,
     };
   });
-  const totalLines = lines.length;
-  const parseSuccessRate = totalLines > 0 ? parsed.length / totalLines : 0;
+  const parseSuccessRate =
+    totalDataRows > 0 ? Math.round((parsed.length / totalDataRows) * 1000) / 1000 : 0;
 
   return {
     transactions: enriched,
     summary,
-    format: detectedFormat?.name ?? (parsed.length > 0 ? "lenient" : null),
-    parseSuccessRate: Math.round(parseSuccessRate * 1000) / 1000,
+    format: resolvedProfile,
+    parseSuccessRate,
     errors,
   };
 }

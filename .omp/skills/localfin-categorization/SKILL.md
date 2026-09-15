@@ -1,6 +1,6 @@
 ---
 name: localfin-categorization
-description: Use when categorizing transactions from statements or pasting
+description: Use when categorizing transactions from bank CSV statements
 ---
 
 # LocalFin categorization (OMP session model only)
@@ -9,11 +9,11 @@ Server and scripts stay keyless and deterministic. `POST /api/parser/parse-state
 
 ## Trigger
 
-Run only when the user invokes `/skill:localfin-categorization` or explicitly asks to categorize pasted, parsed, or uncategorized transactions. Never run silently on parse or ingest.
+Run only when the user invokes `/skill:localfin-categorization` or explicitly asks to categorize parsed CSV or uncategorized transactions. Never run silently on parse or ingest.
 
 ## Preconditions
 
-Start from `POST /api/parser/parse-statement` (or `localfin_parse_statement`) output plus `GET /api/accounts` for `account.type`. Preserve each parsed row's `date/name/amount/kind`; do not recompute kind except for the transfer rule below.
+Start from `POST /api/parser/parse-statement` (or `localfin_parse_statement`) output from a bank CSV ingest plus `GET /api/accounts` for `account.type`. Preserve each parsed row's `date/name/amount/kind`; do not recompute kind except for the transfer rule below.
 
 ## Lookup first
 

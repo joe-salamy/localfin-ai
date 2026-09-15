@@ -316,7 +316,7 @@ void test("mcp: localfin_parse_statement success and validation error", async (t
   const account = createAccount({ name: "Checking", type: "asset" });
   const schema = localfinParseStatementInputSchema;
   const parsed = schema.parse({
-    text: "01/15/2026 Whole Foods -48.23\n01/16/2026 Uber -21.50",
+    text: "Transaction Date,Post Date,Description,Category,Type,Amount,Memo\n09/12/2026,09/13/2026,TRADER JOES,Food,Sale,-48.23,",
     accountId: account.id,
   });
   const result = await parseStatement(parsed.text, parsed.accountId);

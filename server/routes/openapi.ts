@@ -177,7 +177,7 @@ const spec = {
     },
     "/api/parser/parse-statement": {
       post: {
-        summary: "Parse statement text into transactions",
+        summary: "Parse bank CSV text into transactions",
         requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { text: { type: "string" }, accountId: { type: "string" } } } } } },
         responses: { "200": { description: "ParseStatementResult" } },
       },

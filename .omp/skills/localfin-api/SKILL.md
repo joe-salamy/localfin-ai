@@ -24,7 +24,7 @@ Plug-and-play finance endpoints for external agents (OMP, Claude, Codex). No emb
 | `/api/transactions` | GET (filters + searchQuery), POST, GET/:id, PUT/:id, DELETE/:id, POST/:id/restore, POST/bulk, PUT/bulk, DELETE/bulk, POST/bulk/restore, POST/check-duplicates, POST/check-transfer, POST/suspect-scan, GET/suspect-findings, GET/recent-activity |
 | `/api/dashboard` | GET/account-summary, GET/category-summary, GET/metrics, GET/charts/net-worth, GET/charts/sankey, GET/tag-summary |
 | `/api/goals` | GET, POST, GET/:id, PUT/:id, DELETE/:id, GET/:id/progress |
-| `/api/parser` | POST/parse-statement `{text, accountId}` → `ParseStatementResult` |
+| `/api/parser` | POST/parse-statement `{text, accountId}` → `ParseStatementResult` (bank CSV text; format reports chase\|usbank\|discover) |
 | `/api/openapi` + `/api/openapi.json` | GET spec `{openapi:"3.0.3", info, paths}` |
 
 ## Envelope
