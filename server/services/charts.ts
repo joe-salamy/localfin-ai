@@ -8,7 +8,8 @@ import { getDb } from "../db/index.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
 import { buildTagExistsClause, netWorthEffectSql } from "./transaction-filters.js";
 import { resolveEntityColor } from "../../shared/finance/colors.js";
-import type { NetWorthDataPoint,
+import type { NetWorthChart,
+NetWorthDataPoint,
 SankeyData,
 SankeyLink,
 SankeyNode, } from "../../shared/contracts/index.js"
@@ -61,7 +62,7 @@ const MONTH_LABELS = [
   "Dec",
 ] as const;
 
-export function bucketDates(startDate: string, endDate: string, granularity: DateGranularity): string[] {
+function bucketDates(startDate: string, endDate: string, granularity: DateGranularity): string[] {
   const endIso = toIsoDate(parseIsoDate(endDate));
   const dates: string[] = [];
   let current = parseIsoDate(startDate);
@@ -82,71 +83,63 @@ export function bucketDates(startDate: string, endDate: string, granularity: Dat
 export function prepareNetWorthData(
   startDate: string,
   endDate: string,
-): NetWorthDataPoint[] {
+): NetWorthChart {
   const db = getDb();
   const effectiveStartDate = clampStartDateToFirstTransaction(
     startDate,
     endDate,
   );
   const totalDays = differenceInCalendarDaysUtc(parseIsoDate(endDate), parseIsoDate(effectiveStartDate));
-
-  // Determine granularity
   const granularity: DateGranularity = totalDays < 28 ? "day" : totalDays < 180 ? "week" : "month";
 
-  // Get all non-deleted accounts
   const accounts = db
     .prepare(
       `SELECT id, name, type, initial_balance, color FROM accounts WHERE deleted_at IS NULL ORDER BY created_at`,
     )
     .all() as AccountRow[];
+  const transactions = db
+    .prepare(
+      `SELECT t.account_id, t.date, t.amount
+       FROM transactions t
+       JOIN accounts a ON a.id = t.account_id AND a.deleted_at IS NULL
+       WHERE t.deleted_at IS NULL AND t.date <= ?
+       ORDER BY t.date`,
+    )
+    .all(endDate) as Array<{ account_id: string; date: string; amount: number }>;
 
-  // Prepare statement for cumulative balance per account up to a given date
-  const balanceStmt = db.prepare(
-    `SELECT COALESCE(SUM(t.amount), 0) AS balance
-     FROM transactions t
-     WHERE t.account_id = ? AND t.date <= ? AND t.deleted_at IS NULL`,
-  );
-
-  // Generate data points
-  const dataPoints: NetWorthDataPoint[] = [];
-  for (const dateStr of bucketDates(effectiveStartDate, endDate, granularity)) {
+  // Sweep transactions once, carrying running per-account balances forward
+  // from one bucket date to the next.
+  const balances = new Map(accounts.map((account) => [account.id, account.initial_balance]));
+  let next = 0;
+  const points = bucketDates(effectiveStartDate, endDate, granularity).map((dateStr): NetWorthDataPoint => {
+    for (; next < transactions.length && transactions[next].date <= dateStr; next += 1) {
+      const txn = transactions[next];
+      balances.set(txn.account_id, (balances.get(txn.account_id) ?? 0) + txn.amount);
+    }
     const bucketDate = parseIsoDate(dateStr);
-    const formattedDate =
-      granularity === "month"
-        ? `${MONTH_LABELS[bucketDate.getUTCMonth()]} ${bucketDate.getUTCFullYear()}`
-        : `${MONTH_LABELS[bucketDate.getUTCMonth()]} ${bucketDate.getUTCDate()}`;
-
     const point: NetWorthDataPoint = {
       date: dateStr,
-      formattedDate,
+      formattedDate:
+        granularity === "month"
+          ? `${MONTH_LABELS[bucketDate.getUTCMonth()]} ${bucketDate.getUTCFullYear()}`
+          : `${MONTH_LABELS[bucketDate.getUTCMonth()]} ${bucketDate.getUTCDate()}`,
       netWorth: 0,
-      accountColors: Object.fromEntries(
-        accounts.map((account) => [
-          account.name,
-          resolveEntityColor(account.id, account.color),
-        ]),
-      ),
+      balances: {},
     };
-
-    let netWorth = 0;
-
     for (const account of accounts) {
-      const row = balanceStmt.get(account.id, dateStr) as { balance: number };
-      const balance = account.initial_balance + row.balance;
-      point[account.name] = balance;
-
-      if (account.type === "asset") {
-        netWorth += balance;
-      } else {
-        netWorth -= balance;
-      }
+      const balance = balances.get(account.id) ?? 0;
+      point.balances[account.name] = balance;
+      point.netWorth += account.type === "asset" ? balance : -balance;
     }
+    return point;
+  });
 
-    point.netWorth = netWorth;
-    dataPoints.push(point);
-  }
-
-  return dataPoints;
+  return {
+    points,
+    accountColors: Object.fromEntries(
+      accounts.map((account) => [account.name, resolveEntityColor(account.id, account.color)]),
+    ),
+  };
 }
 
 export function prepareSankeyData(

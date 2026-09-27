@@ -162,27 +162,18 @@ void test("taxonomy stale fingerprint aborts with re-export instruction", async 
   assert.throws(() => validateTaxonomyRows(parsed), /stale/);
 });
 
-void test("taxonomy tolerates system-row updated_at drift when counts match", async (t) => {
+void test("taxonomy detects edits to existing rows and survives a restart", async (t) => {
   const dbPath = await useTempDatabase(t);
   seedFixture();
   const out = path.join(path.dirname(dbPath), "tax-review.fods");
   await exportTaxonomyOds({ out });
-  // Simulate the seed's per-start system-row touch (server/db/seed.ts bumps
-  // system updated_at on every getDb); counts are unchanged so validation
-  // must still pass with zero pending ops.
-  const db = getDb();
-  db.prepare("UPDATE categories SET updated_at = ? WHERE is_system = 1").run(
-    "2030-01-01T00:00:00.000Z",
-  );
-  db.prepare(
-    "UPDATE subcategories SET updated_at = ? WHERE is_system = 1",
-  ).run("2030-01-01T00:00:00.000Z");
-  const parsed = parseTaxonomyWorkbook(out);
-  const pending = validateTaxonomyRows(parsed);
-  assert.equal(pending.categoryCreates.length, 0);
-  assert.equal(pending.categoryUpdates.length, 0);
-  assert.equal(pending.subcategoryCreates.length, 0);
-  assert.equal(pending.subcategoryUpdates.length, 0);
-  assert.equal(pending.goalCreates.length, 0);
-  assert.equal(pending.goalUpdates.length, 0);
+  // A process restart re-runs the seed; it must not bump updated_at.
+  closeDbForTests();
+  assert.doesNotThrow(() => validateTaxonomyRows(parseTaxonomyWorkbook(out)));
+
+  const [category] = getCategories().filter((c) => !c.is_system);
+  getDb()
+    .prepare("UPDATE categories SET updated_at = ? WHERE id = ?")
+    .run("2030-01-01T00:00:00.000Z", category.id);
+  assert.throws(() => validateTaxonomyRows(parseTaxonomyWorkbook(out)), /stale/);
 });

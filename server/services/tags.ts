@@ -189,8 +189,11 @@ export function restoreTag(id: string): Tag {
   const existing = db.prepare("SELECT * FROM tags WHERE id = ?").get(id) as
     | TagRow
     | undefined;
-  if (!existing || existing.deleted_at === null) {
+  if (!existing) {
     throw new NotFoundError(`Tag with id "${id}" not found`)
+  }
+  if (existing.deleted_at === null) {
+    throw new ConflictError(`Tag with id "${id}" is not deleted`)
   }
 
   checkTagUniqueness(existing.name, existing.type as TagType, id);

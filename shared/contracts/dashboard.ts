@@ -89,8 +89,14 @@ export interface NetWorthDataPoint {
   date: string;
   formattedDate: string;
   netWorth: number;
-  accountColors?: Record<string, string>;
-  [accountName: string]: string | number | Record<string, string> | undefined;
+  /** Balance per account, keyed by account name. */
+  balances: Record<string, number>;
+}
+
+export interface NetWorthChart {
+  points: NetWorthDataPoint[];
+  /** Display color per account, keyed by account name. */
+  accountColors: Record<string, string>;
 }
 
 export interface SankeyNode {

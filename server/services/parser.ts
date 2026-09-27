@@ -7,6 +7,7 @@ import {
   roundCurrencyAmount,
 } from "../../shared/finance/transactionAmounts.js"
 export { inferTransactionKindForAccount } from "../../shared/finance/transactionAmounts.js"
+import { isIsoDate } from "../../shared/validation.js";
 import { getDb } from "../db/index.js";
 
 export type BankProfileId = "chase" | "usbank" | "discover";
@@ -65,10 +66,17 @@ export function parseCsvLine(line: string): string[] {
 
 // ---------- Date parsing ----------
 
-function parseDate(raw: string): string {
+function localIsoDate(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// Returns YYYY-MM-DD, or the trimmed input when it cannot be read as a date
+// (the row is then flagged for review). Statements without a year are dated
+// in the most recent year that does not put the row in the future.
+export function parseDate(raw: string, today = new Date()): string {
   const trimmed = raw.trim();
 
-  // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     return trimmed;
   }
@@ -77,27 +85,21 @@ function parseDate(raw: string): string {
   const slashMatch = trimmed.match(
     /^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/,
   );
-  if (slashMatch) {
-    const month = slashMatch[1].padStart(2, "0");
-    const day = slashMatch[2].padStart(2, "0");
-    let year: string;
+  if (!slashMatch) return trimmed;
 
-    if (!slashMatch[3]) {
-      year = String(new Date().getFullYear());
-    } else if (slashMatch[3].length === 2) {
-      const twoDigit = parseInt(slashMatch[3], 10);
-      year =
-        twoDigit >= 70
-          ? `19${slashMatch[3]}`
-          : `20${slashMatch[3].padStart(2, "0")}`;
-    } else {
-      year = slashMatch[3];
-    }
-
-    return `${year}-${month}-${day}`;
+  const month = slashMatch[1].padStart(2, "0");
+  const day = slashMatch[2].padStart(2, "0");
+  const rawYear = slashMatch[3];
+  if (rawYear === undefined) {
+    const todayIso = localIsoDate(today);
+    const thisYear = `${today.getFullYear()}-${month}-${day}`;
+    return thisYear <= todayIso ? thisYear : `${today.getFullYear() - 1}-${month}-${day}`;
   }
-
-  return trimmed;
+  if (rawYear.length === 2) {
+    const twoDigit = parseInt(rawYear, 10);
+    return `${twoDigit >= 70 ? "19" : "20"}${rawYear}-${month}-${day}`;
+  }
+  return `${rawYear}-${month}-${day}`;
 }
 
 // ---------- Amount parsing ----------
@@ -446,7 +448,7 @@ export async function parseStatement(
           )
         : normalizeTransactionAmount(magnitude, account.type, resolvedKind);
 
-    const needsReview = storedAmount === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date);
+    const needsReview = storedAmount === 0 || !isIsoDate(date);
 
     parsed.push({
       date,

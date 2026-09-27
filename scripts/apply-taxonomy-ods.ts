@@ -15,6 +15,7 @@ import {
   createCategory,
   createSubcategory,
   deleteCategory,
+  countSubcategoryTransactions,
   deleteSubcategory,
   getCategories,
   getSubcategories,
@@ -303,33 +304,8 @@ export function validateTaxonomyRows(
   );
   const fileFingerprint = parsed.meta.get("fingerprint") ?? "";
   if (fileFingerprint !== liveFingerprint) {
-    // Fallback (plan contingency): seed bumps system-row updated_at on every
-    // process start, so a strict cross-process fingerprint never matches.
-    // Accept the file when per-sheet counts match; per-row existence is still
-    // enforced below (unknown __id becomes a row error, zero rows applied).
-    const metaCount = (key: string): number | null => {
-      const raw = parsed.meta.get(key);
-      if (raw == null || raw === "") return null;
-      const parsedCount = Number(raw);
-      return Number.isInteger(parsedCount) ? parsedCount : null;
-    };
-    const metaCategories = metaCount("categories");
-    const metaSubcategories = metaCount("subcategories");
-    const metaGoals = metaCount("goals");
-    if (
-      metaCategories == null ||
-      metaSubcategories == null ||
-      metaGoals == null ||
-      metaCategories !== liveCategories.length ||
-      metaSubcategories !== liveSubcategories.length ||
-      metaGoals !== liveGoals.length
-    ) {
-      throw new Error(
-        "Taxonomy file is stale (DB changed since export); re-run taxonomy:export",
-      );
-    }
-    console.error(
-      "Taxonomy fingerprint drifted since export (counts match); validating rows against live DB",
+    throw new Error(
+      "Taxonomy file is stale (DB changed since export); re-run taxonomy:export",
     );
   }
 
@@ -649,6 +625,13 @@ export function validateTaxonomyRows(
         if (live.is_system) {
           errors.push(
             `Subcategories row ${rowNumber} (${id}): Cannot delete system subcategories`,
+          );
+          return;
+        }
+        const transactionCount = countSubcategoryTransactions(id);
+        if (transactionCount > 0) {
+          errors.push(
+            `Subcategories row ${rowNumber} (${id}): has ${transactionCount} transaction(s); recategorize them before deleting`,
           );
           return;
         }

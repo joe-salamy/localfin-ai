@@ -55,7 +55,7 @@ const spec = {
       delete: { summary: "Delete account", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Deleted" } } },
     },
     "/api/accounts/{id}/reconcile": {
-      post: { summary: "Reconcile account to target balance", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Reconciled" } } },
+      post: { summary: "Reconcile account to target balance", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Already at target balance" }, "201": { description: "Adjustment transaction created" } } },
     },
     "/api/accounts/{id}/restore": {
       post: { summary: "Restore soft-deleted account", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Restored" } } },
@@ -156,7 +156,7 @@ const spec = {
       get: { summary: "Dashboard metrics", responses: { "200": { description: "Metrics" } } },
     },
     "/api/dashboard/charts/net-worth": {
-      get: { summary: "Net worth chart", responses: { "200": { description: "Chart data" } } },
+      get: { summary: "Net worth chart: {points: [{date, formattedDate, netWorth, balances}], accountColors}", responses: { "200": { description: "Chart data" } } },
     },
     "/api/dashboard/charts/sankey": {
       get: { summary: "Sankey chart", responses: { "200": { description: "Chart data" } } },

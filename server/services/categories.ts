@@ -196,8 +196,11 @@ export function restoreCategory(id: string): Category {
   const existing = db
     .prepare("SELECT * FROM categories WHERE id = ?")
     .get(id) as CategoryRow | undefined;
-  if (!existing || existing.deleted_at === null) {
+  if (!existing) {
     throw new NotFoundError(`Category with id "${id}" not found`)
+  }
+  if (existing.deleted_at === null) {
+    throw new ConflictError(`Category with id "${id}" is not deleted`)
   }
 
   assertEntityNameIsUnique(existing.name, { table: "categories", id });
@@ -354,6 +357,15 @@ export function updateSubcategory(
   return rowToSubcategory(row);
 }
 
+export function countSubcategoryTransactions(id: string): number {
+  const row = getDb()
+    .prepare(
+      "SELECT COUNT(*) AS count FROM transactions WHERE subcategory_id = ? AND deleted_at IS NULL",
+    )
+    .get(id) as { count: number };
+  return row.count;
+}
+
 export function deleteSubcategory(id: string): void {
   const db = getDb();
   const now = new Date().toISOString();
@@ -369,6 +381,15 @@ export function deleteSubcategory(id: string): void {
     throw new ConflictError("Cannot delete system subcategories")
   }
 
+  // Transactions pointing at a deleted subcategory would read as uncategorized
+  // yet never show up in the needs-category queue, so they must move first.
+  const transactionCount = countSubcategoryTransactions(id);
+  if (transactionCount > 0) {
+    throw new ConflictError(
+      `Cannot delete subcategory with ${transactionCount} transaction(s). Recategorize them first.`,
+    );
+  }
+
   db.prepare("UPDATE subcategories SET deleted_at = ? WHERE id = ?").run(
     now,
     id,
@@ -382,8 +403,11 @@ export function restoreSubcategory(id: string): Subcategory {
   const existing = db
     .prepare("SELECT * FROM subcategories WHERE id = ?")
     .get(id) as SubcategoryRow | undefined;
-  if (!existing || existing.deleted_at === null) {
+  if (!existing) {
     throw new NotFoundError(`Subcategory with id "${id}" not found`)
+  }
+  if (existing.deleted_at === null) {
+    throw new ConflictError(`Subcategory with id "${id}" is not deleted`)
   }
 
   const parent = db

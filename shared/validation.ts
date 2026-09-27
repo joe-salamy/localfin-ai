@@ -10,6 +10,16 @@ export function isIsoDate(value: string): boolean {
   );
 }
 
+// Longer spans would generate unbounded per-day chart points and SQLite work.
+export const MAX_REPORT_SPAN_DAYS = 3660;
+
+export function isWithinReportSpan(startDate: string, endDate: string): boolean {
+  const spanDays =
+    (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) /
+    86_400_000;
+  return spanDays <= MAX_REPORT_SPAN_DAYS;
+}
+
 export const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 export const hexColorSchema = z
   .string()

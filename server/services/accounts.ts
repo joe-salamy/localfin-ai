@@ -298,8 +298,11 @@ export function restoreAccount(id: string): Account {
   const existing = db.prepare("SELECT * FROM accounts WHERE id = ?").get(id) as
     | AccountRow
     | undefined;
-  if (!existing || existing.deleted_at === null) {
+  if (!existing) {
     throw new NotFoundError(`Account with id "${id}" not found`)
+  }
+  if (existing.deleted_at === null) {
+    throw new ConflictError(`Account with id "${id}" is not deleted`)
   }
 
   assertEntityNameIsUnique(existing.name, { table: "accounts", id });

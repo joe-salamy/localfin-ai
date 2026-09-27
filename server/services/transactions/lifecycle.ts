@@ -1,6 +1,6 @@
 import type { TransactionWithDetails } from "../../../shared/contracts/index.js";
 import { getDb } from "../../db/index.js";
-import { NotFoundError } from "../../errors.js";
+import { ConflictError, NotFoundError } from "../../errors.js";
 import { getTransactionById } from "./read.js";
 import { assertActiveSubcategory, getActiveAccountType } from "./validation.js";
 
@@ -16,8 +16,11 @@ function restoreTransactionRecord(id: string): TransactionWithDetails {
     .prepare("SELECT * FROM transactions WHERE id = ?")
     .get(id) as RestoreTransactionRow | undefined;
 
-  if (!existing || existing.deleted_at === null) {
+  if (!existing) {
     throw new NotFoundError(`Transaction with id "${id}" not found`)
+  }
+  if (existing.deleted_at === null) {
+    throw new ConflictError(`Transaction with id "${id}" is not deleted`)
   }
 
   getActiveAccountType(existing.account_id);
@@ -92,7 +95,14 @@ export function bulkRestoreTransactions(
     for (const id of ids) {
       const existing = db.prepare("SELECT id, deleted_at FROM transactions WHERE id = ?").get(id) as { id: string; deleted_at: string | null } | undefined;
       if (!existing || existing.deleted_at === null) continue;
-      restoreTransactionRecord(id);
+      try {
+        restoreTransactionRecord(id);
+      } catch (error) {
+        // Account or subcategory no longer active: skip, as documented.
+        // The checks run before any write, so nothing is left half-restored.
+        if (error instanceof NotFoundError) continue;
+        throw error;
+      }
       updated.push(id);
     }
   });

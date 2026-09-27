@@ -1,8 +1,7 @@
 import path from "node:path";
 import process from "node:process";
-import { isIsoDate } from "../shared/validation.js";
+import { isIsoDate, isWithinReportSpan } from "../shared/validation.js";
 
-export const MAX_REPORT_SPAN_DAYS = 3660;
 export const REPORT_HTML_DIRECTORY = path.resolve(
   process.cwd(),
   "logs",
@@ -36,10 +35,7 @@ export function parseReportArgs(argv: string[]): ReportArgs | null {
   if (!start || !end) return null;
   if (!isIsoDate(start) || !isIsoDate(end)) return null;
   if (start > end) return null;
-  const spanDays =
-    (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) /
-    86_400_000;
-  if (spanDays > MAX_REPORT_SPAN_DAYS) return null;
+  if (!isWithinReportSpan(start, end)) return null;
   return { start, end, out };
 }
 

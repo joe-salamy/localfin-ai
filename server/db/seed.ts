@@ -200,12 +200,15 @@ function reconcileSystemPair(
     );
   }
 
+  // Only touch the row when it differs, so startup never bumps updated_at
+  // (the taxonomy export fingerprint depends on it).
   db.prepare(
     `UPDATE categories
      SET name = 'Unassigned', type = ?, is_system = 1,
          deleted_at = NULL, updated_at = ?
-     WHERE id = ?`,
-  ).run(systemRow.type, now, systemRow.categoryId);
+     WHERE id = ?
+       AND (name != 'Unassigned' OR type != ? OR is_system != 1 OR deleted_at IS NOT NULL)`,
+  ).run(systemRow.type, now, systemRow.categoryId, systemRow.type);
 
   let fixedSubcategoryAfterRepoint = db
     .prepare(
@@ -281,8 +284,9 @@ function reconcileSystemPair(
     `UPDATE subcategories
      SET category_id = ?, name = 'Unassigned', is_system = 1,
          deleted_at = NULL, updated_at = ?
-     WHERE id = ?`,
-  ).run(systemRow.categoryId, now, systemRow.subcategoryId);
+     WHERE id = ?
+       AND (category_id != ? OR name != 'Unassigned' OR is_system != 1 OR deleted_at IS NOT NULL)`,
+  ).run(systemRow.categoryId, now, systemRow.subcategoryId, systemRow.categoryId);
 }
 
 export function seed(db: Database.Database): void {

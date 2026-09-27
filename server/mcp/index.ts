@@ -46,14 +46,6 @@ import { transactionKindSchema } from "../../shared/contracts/transactions.js";
 import { goalPeriodSchema } from "../../shared/contracts/goals.js";
 import { colorSchema, finiteNumber, isoDateString as isoDate, nonEmptyString, nonEmptyUpdate } from "../routes/validation.js";
 
-// Ensure DB initialized
-try {
-  getDb();
-} catch (error) {
-  console.error(`Database initialization failed: ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
-}
-
 function handleResult(result: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
@@ -339,6 +331,9 @@ export const localfinParseStatementInputSchema = z
 defineTool("localfin_parse_statement", { title: "Parse statement", description: "Parse bank CSV text into transactions (deterministic, no AI categorization; format reports chase|usbank|discover). Returns EnrichedTransaction[] with subcategory_id null and categorizationSource none; apply exact lookup then the OMP categorization skill afterwards." }, localfinParseStatementInputSchema, (input) => parseStatement(input.text, input.accountId));
 
 async function main(): Promise<void> {
+  // Open (and migrate) the DB before accepting requests. stdout carries the
+  // JSON-RPC stream, so all diagnostics go to stderr.
+  getDb();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

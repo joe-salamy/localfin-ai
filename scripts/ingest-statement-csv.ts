@@ -42,8 +42,12 @@ export function buildTransactionPayloads(
     }
     let subcategoryId: string | null = null;
     const recent = getRecentTransactionByNameAndAccount(t.name, accountId);
+    // Reuse the merchant's usual subcategory only for the same kind: an
+    // income subcategory on an expense row fails validation and would abort
+    // the whole statement.
     if (
       recent?.subcategory_id != null &&
+      recent.kind === t.kind &&
       activeSubcategoryIds.has(recent.subcategory_id)
     ) {
       subcategoryId = recent.subcategory_id;

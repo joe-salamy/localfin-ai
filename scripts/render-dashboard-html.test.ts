@@ -16,7 +16,6 @@ import {
 import {
   createCategory,
   createSubcategory,
-  deleteSubcategory,
 } from "../server/services/categories.js";
 import { createTransaction } from "../server/services/transactions/create.js";
 import {
@@ -157,6 +156,15 @@ function runDashboardClient(html: string, width = 720): Map<string, StubElement>
   return els;
 }
 
+// The API refuses to delete a subcategory that still has transactions, but
+// databases from before that rule can contain such rows; the report must
+// still embed those transactions as uncategorized.
+function softDeleteSubcategoryWithTransactions(id: string): void {
+  getDb()
+    .prepare("UPDATE subcategories SET deleted_at = ? WHERE id = ?")
+    .run(new Date().toISOString(), id);
+}
+
 function buildFinancialFixture(): void {
   const asset = createAccount({
     name: "FixtureChecking",
@@ -229,7 +237,7 @@ function buildFinancialFixture(): void {
     kind: "expense",
     subcategory_id: obsolete.id,
   });
-  deleteSubcategory(obsolete.id);
+  softDeleteSubcategoryWithTransactions(obsolete.id);
   createTransaction({
     account_id: asset.id,
     date: "2026-09-16",
@@ -518,7 +526,7 @@ void test("dashboard payload excludes deleted accounts but keeps null and delete
     kind: "expense",
     subcategory_id: obsolete.id,
   });
-  deleteSubcategory(obsolete.id);
+  softDeleteSubcategoryWithTransactions(obsolete.id);
   const doomed = createAccount({
     name: "PayloadDoomed",
     type: "asset",

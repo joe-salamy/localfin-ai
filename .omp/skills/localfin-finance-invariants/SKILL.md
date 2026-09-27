@@ -12,7 +12,7 @@ Distilled from `server/services/ai-chat/prompting.ts:55-78`, `server/services/ai
 Amounts are **account-balance deltas**, normalized by `normalizeTransactionAmount(amount, accountType, kind)`:
 
 - **Expense** / **income** / **transfer** / **adjustment** are distinct `transactionKindSchema` values (`shared/contracts/transactions.ts:170`).
-- `asset` accounts: expense = negative delta (spending, groceries, rides, bills decrease balance), income = positive delta (payroll, refunds increase balance). `liability` is opposite: expense increases balance, income decreases balance. Transfers/adjustments are allowed any sign but still affect balances.
+- `asset` accounts: expense = negative delta (spending, groceries, rides, bills decrease balance), income = positive delta (payroll, refunds increase balance). `liability` is opposite: expense increases balance, income decreases balance. Transfers/adjustments keep the sign you give them: use the balance delta of *that* account. Money leaving checking is negative; a card payment lowers card debt, so it is negative on the card too (both sides of a checking → card payment are negative; checking → savings is negative then positive). Totals and transfer matching compare net-worth effect (`netWorthEffect`), not raw signs.
 - Pick kind from **meaning**, not sign text. User `+`/`-` signs are clues only. Transfers move money between owned accounts, have **no subcategory**, and still affect balances. Adjustments reconcile balances, also have no subcategory.
 - Infer kind when amount sign is given but kind omitted: `inferTransactionKindForAccount(amount, accountType)` (`shared/finance/transactionAmounts.ts:27`):
   - `amount===0` → `expense`
@@ -44,5 +44,5 @@ From `prompting.ts:67-70`: use tag fields **only** when user says `tag`, `tagged
 - Dates: `YYYY-MM-DD` only via `isIsoDate` (`shared/validation.ts:5`). Normalize `today` to `new Date().toISOString().slice(0,10)` in agent locale.
 - Colors: `hexColorSchema` nullable; omit when not provided.
 - Amounts: `finiteNumber` (Zod `z.number().finite()`); transaction amounts rounded to cents via `roundCurrencyAmount`.
-- Subcategories: transfers/adjustments must have `subcategory_id: null`; income/expense may have null but flagged as uncategorized. `needsCategory` filters income/expense with null subcategory.
+- Subcategories: a subcategory with active transactions cannot be deleted (409); recategorize them first. Transfers/adjustments must have `subcategory_id: null`; income/expense may have null but flagged as uncategorized. `needsCategory` filters income/expense with null subcategory.
 - Goals: `amount >0`, `period` in `weekly|monthly|quarterly|annual`, `start_date <= end_date` when end provided; one goal per subcategory (409 if duplicate).

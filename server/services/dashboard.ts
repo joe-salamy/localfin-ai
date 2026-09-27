@@ -143,36 +143,33 @@ export function getAccountSummary(
     )
     .all() as AccountRow[];
 
-  const summaries: AccountSummary[] = accounts.map((account) => {
-    // N+1 per-account balance reads share the cumulative-balance shape used by
-    // charts' balance statement; kept per-account here to preserve running-balance order.
-    // Starting balance: sum of all transactions before startDate
-    const balanceRow = db
-      .prepare(
-        `SELECT COALESCE(SUM(amount), 0) AS starting_balance
-       FROM transactions
-       WHERE account_id = ? AND date < ? AND deleted_at IS NULL`,
-      )
-      .get(account.id, effectiveStartDate) as BalanceRow;
+  const startingBalanceStmt = db.prepare(
+    `SELECT COALESCE(SUM(amount), 0) AS starting_balance
+     FROM transactions
+     WHERE account_id = ? AND date < ? AND deleted_at IS NULL`,
+  );
+  const rangeTransactionsStmt = db.prepare(
+    `SELECT t.id, t.date, t.name, t.amount,
+            s.name AS subcategory_name,
+            s.color AS subcategory_color,
+            c.name AS category_name,
+            c.color AS category_color
+     FROM transactions t
+     LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
+     LEFT JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
+     WHERE t.account_id = ? AND t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
+     ORDER BY t.date, t.created_at`,
+  );
 
+  const summaries: AccountSummary[] = accounts.map((account) => {
+    const balanceRow = startingBalanceStmt.get(account.id, effectiveStartDate) as BalanceRow;
     const startingBalance =
       account.initial_balance + balanceRow.starting_balance;
-
-    // Transactions within range
-    const transactions = db
-      .prepare(
-        `SELECT t.id, t.date, t.name, t.amount,
-              s.name AS subcategory_name,
-              s.color AS subcategory_color,
-              c.name AS category_name,
-              c.color AS category_color
-       FROM transactions t
-       LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
-       LEFT JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
-       WHERE t.account_id = ? AND t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
-       ORDER BY t.date, t.created_at`,
-      )
-      .all(account.id, effectiveStartDate, endDate) as TransactionRow[];
+    const transactions = rangeTransactionsStmt.all(
+      account.id,
+      effectiveStartDate,
+      endDate,
+    ) as TransactionRow[];
 
     // Build transactions with running balance
     let runningBalance = startingBalance;

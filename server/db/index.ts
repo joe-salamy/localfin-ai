@@ -30,7 +30,8 @@ export function getDb(): Database.Database {
     runMigrations(connection);
     seed(connection);
     db = connection;
-    console.log(`Database initialized at ${dbPath}`);
+    // stderr: stdout is the protocol channel when running as an MCP server.
+    console.error(`Database initialized at ${dbPath}`);
     return connection;
   } catch (error) {
     connection.close();
