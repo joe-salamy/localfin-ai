@@ -34,11 +34,21 @@ import {
 } from "../services/dashboard.js";
 import { parseStatement } from "../services/parser.js";
 import { SEARCH_QUERY_HELP } from "../services/transaction-search.js";
-import { accountTypeSchema } from "../../shared/contracts/accounts.js";
-import { categoryTypeSchema } from "../../shared/contracts/categories.js";
-import { tagTypeSchema } from "../../shared/contracts/tags.js";
-import { transactionKindSchema } from "../../shared/contracts/transactions.js";
-import { colorSchema, finiteNumber, isoDateString as isoDate, nonEmptyString, nonEmptyUpdate } from "../routes/validation.js";
+import { MAX_REPORT_SPAN_DAYS, isWithinReportSpan } from "../../shared/validation.js";
+import {
+  accountInput,
+  bulkTransactionIds,
+  bulkTransactionUpdateFields,
+  categoryInput,
+  idWithUpdate,
+  nonEmptyUpdate,
+  parseStatementInput,
+  subcategoryInput,
+  tagInput,
+  transactionInput,
+  transactionUpdateInput,
+} from "../input-schemas.js";
+import { isoDateString as isoDate, nonEmptyString } from "../routes/validation.js";
 
 function handleResult(result: unknown) {
   return {
@@ -73,25 +83,10 @@ const server = new McpServer({ name: "localfin", version: "0.1.0" });
 export const localfinListAccountsInputSchema = z.object({}).strict();
 defineTool("localfin_list_accounts", { title: "List accounts", description: "List all accounts with current balances" }, localfinListAccountsInputSchema, () => getAccountsWithBalances());
 
-export const localfinCreateAccountInputSchema = z
-  .object({
-    name: nonEmptyString,
-    type: accountTypeSchema,
-    initial_balance: finiteNumber.optional(),
-    color: colorSchema.optional(),
-  })
-  .strict();
+export const localfinCreateAccountInputSchema = accountInput.strict();
 defineTool("localfin_create_account", { title: "Create account", description: "Create a new finance account" }, localfinCreateAccountInputSchema, (input) => createAccount(input));
 
-export const localfinUpdateAccountInputSchema = z
-  .object({
-    id: nonEmptyString,
-    name: nonEmptyString.optional(),
-    type: accountTypeSchema.optional(),
-    initial_balance: finiteNumber.optional(),
-    color: colorSchema.optional(),
-  })
-  .strict();
+export const localfinUpdateAccountInputSchema = idWithUpdate(accountInput.partial().shape);
 defineTool("localfin_update_account", { title: "Update account", description: "Update an existing account" }, localfinUpdateAccountInputSchema, (input) => {
   const { id, ...updates } = input;
   return updateAccount(id, updates);
@@ -104,47 +99,19 @@ defineTool("localfin_list_categories", { title: "List categories", description: 
 export const localfinListSubcategoriesInputSchema = z.object({}).strict();
 defineTool("localfin_list_subcategories", { title: "List subcategories", description: "List all subcategories" }, localfinListSubcategoriesInputSchema, () => getSubcategories());
 
-export const localfinCreateCategoryInputSchema = z
-  .object({
-    name: nonEmptyString,
-    type: categoryTypeSchema,
-    color: colorSchema.optional(),
-  })
-  .strict();
+export const localfinCreateCategoryInputSchema = categoryInput.strict();
 defineTool("localfin_create_category", { title: "Create category", description: "Create a category" }, localfinCreateCategoryInputSchema, (input) => createCategory(input));
 
-export const localfinUpdateCategoryInputSchema = z
-  .object({
-    id: nonEmptyString,
-    name: nonEmptyString.optional(),
-    type: categoryTypeSchema.optional(),
-    color: colorSchema.optional(),
-  })
-  .strict();
+export const localfinUpdateCategoryInputSchema = idWithUpdate(categoryInput.partial().shape);
 defineTool("localfin_update_category", { title: "Update category", description: "Update a category" }, localfinUpdateCategoryInputSchema, (input) => {
   const { id, ...updates } = input;
   return updateCategory(id, updates);
 });
 
-export const localfinCreateSubcategoryInputSchema = z
-  .object({
-    name: nonEmptyString,
-    category_id: nonEmptyString,
-    monthly_goal: finiteNumber.nullable().optional(),
-    color: colorSchema.optional(),
-  })
-  .strict();
+export const localfinCreateSubcategoryInputSchema = subcategoryInput.strict();
 defineTool("localfin_create_subcategory", { title: "Create subcategory", description: "Create a subcategory under a category" }, localfinCreateSubcategoryInputSchema, (input) => createSubcategory(input));
 
-export const localfinUpdateSubcategoryInputSchema = z
-  .object({
-    id: nonEmptyString,
-    name: nonEmptyString.optional(),
-    category_id: nonEmptyString.optional(),
-    monthly_goal: finiteNumber.nullable().optional(),
-    color: colorSchema.optional(),
-  })
-  .strict();
+export const localfinUpdateSubcategoryInputSchema = idWithUpdate(subcategoryInput.partial().shape);
 defineTool("localfin_update_subcategory", { title: "Update subcategory", description: "Update a subcategory" }, localfinUpdateSubcategoryInputSchema, (input) => {
   const { id, ...updates } = input;
   return updateSubcategory(id, updates);
@@ -154,23 +121,10 @@ defineTool("localfin_update_subcategory", { title: "Update subcategory", descrip
 export const localfinListTagsInputSchema = z.object({}).strict();
 defineTool("localfin_list_tags", { title: "List tags", description: "List all tags" }, localfinListTagsInputSchema, () => getTags());
 
-export const localfinCreateTagInputSchema = z
-  .object({
-    name: nonEmptyString,
-    type: tagTypeSchema.optional(),
-    color: colorSchema.optional(),
-  })
-  .strict();
+export const localfinCreateTagInputSchema = tagInput.strict();
 defineTool("localfin_create_tag", { title: "Create tag", description: "Create a new tag" }, localfinCreateTagInputSchema, (input) => createTag(input));
 
-export const localfinUpdateTagInputSchema = z
-  .object({
-    id: nonEmptyString,
-    name: nonEmptyString.optional(),
-    type: tagTypeSchema.optional(),
-    color: colorSchema.optional(),
-  })
-  .strict();
+export const localfinUpdateTagInputSchema = idWithUpdate(tagInput.partial().shape);
 defineTool("localfin_update_tag", { title: "Update tag", description: "Update a tag" }, localfinUpdateTagInputSchema, (input) => {
   const { id, ...updates } = input;
   return updateTag(id, updates);
@@ -192,55 +146,15 @@ defineTool("localfin_search_transactions", { title: "Search transactions", descr
     accountId: input.accountId,
   }));
 
-export const localfinCreateTransactionInputSchema = z
-  .object({
-    account_id: nonEmptyString,
-    date: isoDate,
-    name: nonEmptyString,
-    amount: finiteNumber,
-    kind: transactionKindSchema.optional(),
-    subcategory_id: nonEmptyString.nullable().optional(),
-    tag_ids: z.array(nonEmptyString).max(50).optional(),
-    comment: z.string().nullable().optional(),
-    ai_suggested: z.boolean().optional(),
-  })
-  .strict();
+export const localfinCreateTransactionInputSchema = transactionInput.strict();
 defineTool("localfin_create_transaction", { title: "Create transaction", description: "Create a single transaction" }, localfinCreateTransactionInputSchema, (input) => createTransaction(input));
 
 export const localfinBulkCreateTransactionsInputSchema = z
-  .object({
-    transactions: z
-      .array(
-        z.object({
-          account_id: nonEmptyString,
-          date: isoDate,
-          name: nonEmptyString,
-          amount: finiteNumber,
-          kind: transactionKindSchema.optional(),
-          subcategory_id: nonEmptyString.nullable().optional(),
-          tag_ids: z.array(nonEmptyString).max(50).optional(),
-          comment: z.string().nullable().optional(),
-          ai_suggested: z.boolean().optional(),
-        }),
-      )
-      .min(1)
-      .max(500),
-  })
+  .object({ transactions: z.array(transactionInput).min(1).max(500) })
   .strict();
 defineTool("localfin_bulk_create_transactions", { title: "Bulk create transactions", description: "Bulk create up to 500 transactions" }, localfinBulkCreateTransactionsInputSchema, (input) => bulkCreateTransactions(input.transactions));
 
-export const localfinUpdateTransactionInputSchema = z
-  .object({
-    id: nonEmptyString,
-    date: isoDate.optional(),
-    name: nonEmptyString.optional(),
-    amount: finiteNumber.optional(),
-    kind: transactionKindSchema.optional(),
-    subcategory_id: nonEmptyString.nullable().optional(),
-    tag_ids: z.array(nonEmptyString).max(50).optional(),
-    comment: z.string().nullable().optional(),
-  })
-  .strict();
+export const localfinUpdateTransactionInputSchema = idWithUpdate(transactionUpdateInput.shape);
 defineTool("localfin_update_transaction", { title: "Update transaction", description: "Update a transaction by id" }, localfinUpdateTransactionInputSchema, (input) => {
   const { id, ...updates } = input;
   return updateTransaction(id, updates);
@@ -248,13 +162,8 @@ defineTool("localfin_update_transaction", { title: "Update transaction", descrip
 
 export const localfinBulkUpdateTransactionsInputSchema = z
   .object({
-    ids: z.array(nonEmptyString).min(1).max(500),
-    updates: nonEmptyUpdate({
-      kind: transactionKindSchema.optional(),
-      subcategory_id: nonEmptyString.nullable().optional(),
-      add_tag_ids: z.array(nonEmptyString).max(50).optional(),
-      remove_tag_ids: z.array(nonEmptyString).max(50).optional(),
-    }),
+    ids: bulkTransactionIds,
+    updates: nonEmptyUpdate(bulkTransactionUpdateFields.shape),
   })
   .strict();
 defineTool("localfin_bulk_update_transactions", { title: "Bulk update transactions", description: "Bulk update transactions by ids" }, localfinBulkUpdateTransactionsInputSchema, (input) => {
@@ -278,7 +187,12 @@ export const localfinDashboardInputSchema = z
     endDate: isoDate,
     tagIds: z.array(nonEmptyString).optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.startDate <= v.endDate, "startDate must be on or before endDate")
+  .refine(
+    (v) => isWithinReportSpan(v.startDate, v.endDate),
+    `Date range must not exceed ${MAX_REPORT_SPAN_DAYS} days`,
+  );
 defineTool("localfin_dashboard", { title: "Dashboard", description: "Get dashboard metrics/account summary/category summary for a date range" }, localfinDashboardInputSchema, (input) => {
   const metrics = getDashboardMetrics(input.startDate, input.endDate, input.tagIds);
   const accountSummary = getAccountSummary(input.startDate, input.endDate);
@@ -287,12 +201,7 @@ defineTool("localfin_dashboard", { title: "Dashboard", description: "Get dashboa
 });
 
 // Parser
-export const localfinParseStatementInputSchema = z
-  .object({
-    text: nonEmptyString.max(500_000),
-    accountId: nonEmptyString,
-  })
-  .strict();
+export const localfinParseStatementInputSchema = parseStatementInput.strict();
 defineTool("localfin_parse_statement", { title: "Parse statement", description: "Parse bank CSV text into transactions (deterministic, no AI categorization; format reports chase|usbank|discover). Rows are signed for the account and uncategorized; apply exact lookup then the OMP categorization skill afterwards." }, localfinParseStatementInputSchema, (input) => parseStatement(input.text, input.accountId));
 
 async function main(): Promise<void> {

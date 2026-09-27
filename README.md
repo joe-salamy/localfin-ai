@@ -29,7 +29,7 @@ npm run dev:server    # same as dev
 npm run dev:archive   # archive helper
 npm run mcp           # stdio MCP server (localfin_* tools)
 npm run mcp:inspect   # inspector for MCP
-npm run report:dashboard -- --start YYYY-MM-DD --end YYYY-MM-DD [--out path]
+npm run report:dashboard -- --start YYYY-MM-DD --end YYYY-MM-DD [--out path]   # default ~/Documents/LocalFin/reports/
 npm run report:history -- --start YYYY-MM-DD --end YYYY-MM-DD [--out path]
 npm run categorize:export -- <out.fods> [--needs-category-only] [--limit N]
 npm run categorize:apply -- <edited.fods> [--dry-run]

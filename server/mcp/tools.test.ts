@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import test from "node:test";
 import { z } from "zod";
-import { closeDbForTests, getDb } from "../db/index.js";
 import {
   createAccount,
   getAccountsWithBalances,
@@ -50,22 +46,7 @@ import {
   localfinUpdateCategoryInputSchema,
   localfinUpdateTransactionInputSchema,
 } from "./index.js";
-
-const originalDbPath = process.env.LOCALFIN_DB_PATH;
-async function useTempDatabase(
-  t: { after: (fn: () => void | Promise<void>) => void },
-): Promise<void> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-mcp-test-"));
-  closeDbForTests();
-  process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
-  getDb();
-  t.after(async () => {
-    closeDbForTests();
-    if (originalDbPath === undefined) delete process.env.LOCALFIN_DB_PATH;
-    else process.env.LOCALFIN_DB_PATH = originalDbPath;
-    await rm(tempDir, { recursive: true, force: true });
-  });
-}
+import { useTempDatabase } from "../tests/helpers.js";
 
 // Helper to assert Zod validation throws
 function expectZodError(fn: () => unknown): void {
@@ -102,6 +83,7 @@ void test("mcp: localfin_update_account success and validation error", async (t)
   const updated = updateAccount(id, updates);
   assert.equal(updated.name, "Renamed");
   expectZodError(() => schema.parse({ id: "", name: "X" }));
+  expectZodError(() => schema.parse({ id: account.id }));
 });
 
 void test("mcp: localfin_list_categories and list_subcategories", async (t) => {
@@ -141,6 +123,7 @@ void test("mcp: localfin_create_subcategory success and validation error", async
   assert.equal(sub.name, "Restaurants");
   expectZodError(() => schema.parse({ name: "", category_id: category.id }));
   expectZodError(() => schema.parse({ name: "X", category_id: "" }));
+  expectZodError(() => schema.parse({ name: "X", category_id: category.id, monthly_goal: -1 }));
 });
 
 void test("mcp: localfin_update_subcategory", async (t) => {

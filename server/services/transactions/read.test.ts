@@ -1,32 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import test from "node:test";
-import { closeDbForTests } from "../../db/index.js";
 import { createAccount } from "../accounts.js";
 import { createCategory, createSubcategory } from "../categories.js";
 import { createTransaction } from "./create.js";
 import { getRecentTransactionByNameAndAccount } from "./read.js";
+import { useTempDatabase } from "../../tests/helpers.js";
 
-const originalDbPath = process.env.LOCALFIN_DB_PATH;
-
-async function useTempDatabase(
-  t: { after: (fn: () => void | Promise<void>) => void },
-): Promise<void> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-lookup-test-"));
-  closeDbForTests();
-  process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
-  t.after(async () => {
-    closeDbForTests();
-    if (originalDbPath === undefined) {
-      delete process.env.LOCALFIN_DB_PATH;
-    } else {
-      process.env.LOCALFIN_DB_PATH = originalDbPath;
-    }
-    await rm(tempDir, { recursive: true, force: true });
-  });
-}
 
 function fixture() {
   const account = createAccount({ name: "Checking", type: "asset" });

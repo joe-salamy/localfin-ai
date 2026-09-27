@@ -3,6 +3,21 @@ import { getDb } from "../../db/index.js";
 import { getTagsForTransactions } from "../tags.js";
 import { buildWhereClause, type TransactionRow, type TransactionWithDetailsRow, rowToTransaction, rowToTransactionWithDetails } from "./internal.js";
 
+// Cumulative per-account sum of non-deleted amounts up to and including each
+// transaction, in ledger order (date, then insertion).
+const RUNNING_BALANCES_CTE = `
+  WITH running_balances AS (
+    SELECT
+      id,
+      SUM(amount) OVER (
+        PARTITION BY account_id
+        ORDER BY date, created_at, rowid
+        ROWS UNBOUNDED PRECEDING
+      ) AS balance_delta
+    FROM transactions
+    WHERE deleted_at IS NULL
+  )`;
+
 export function getTransactionsWithDetails(
   filters: TransactionFilters = {},
 ): TransactionWithDetails[] {
@@ -15,27 +30,14 @@ export function getTransactionsWithDetails(
   });
 
   let sql = `
+    ${RUNNING_BALANCES_CTE}
     SELECT t.*, a.name AS account_name, a.type AS account_type, a.initial_balance AS account_initial_balance, a.color AS account_color,
            s.name AS subcategory_name, s.color AS subcategory_color, s.category_id,
            c.name AS category_name, c.type AS category_type, c.color AS category_color,
-           a.initial_balance + (
-             SELECT COALESCE(SUM(prior.amount), 0)
-             FROM transactions prior
-             WHERE prior.account_id = t.account_id
-               AND prior.deleted_at IS NULL
-               AND (
-                 prior.date < t.date
-                 OR (
-                   prior.date = t.date
-                   AND (
-                     prior.created_at < t.created_at
-                     OR (prior.created_at = t.created_at AND prior.rowid <= t.rowid)
-                   )
-                 )
-               )
-           ) AS running_balance
+           a.initial_balance + b.balance_delta AS running_balance
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
+    JOIN running_balances b ON b.id = t.id
     LEFT JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
     LEFT JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
     WHERE ${clauses.join(" AND ")}
@@ -134,37 +136,22 @@ export function getRecentTransactionByNameAndAccount(
 }
 
 const recentActivityByAccountSql = `
-    WITH ranked_transactions AS (
+    ${RUNNING_BALANCES_CTE},
+    ranked_transactions AS (
       SELECT
         t.id,
         t.account_id,
         t.date,
         t.name,
         t.amount,
-        t.created_at,
-        t.rowid,
-        a.initial_balance + (
-          SELECT COALESCE(SUM(prior.amount), 0)
-          FROM transactions prior
-          WHERE prior.account_id = t.account_id
-            AND prior.deleted_at IS NULL
-            AND (
-              prior.date < t.date
-              OR (
-                prior.date = t.date
-                AND (
-                  prior.created_at < t.created_at
-                  OR (prior.created_at = t.created_at AND prior.rowid <= t.rowid)
-                )
-              )
-            )
-        ) AS running_balance,
+        a.initial_balance + b.balance_delta AS running_balance,
         ROW_NUMBER() OVER (
           PARTITION BY t.account_id
           ORDER BY t.date DESC, t.created_at DESC, t.rowid DESC
         ) AS rn
       FROM transactions t
       JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
+      JOIN running_balances b ON b.id = t.id
       WHERE t.deleted_at IS NULL
     )
     SELECT

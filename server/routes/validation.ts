@@ -8,9 +8,7 @@ export const isoDateString = z
   .refine(isIsoDate, "Expected date in YYYY-MM-DD format");
 export const finiteNumber = z.number().finite();
 export const idParamSchema = z.object({ id: nonEmptyString });
-export const colorSchema = hexColorSchema.nullable();
-export const colorSchemaOptional = colorSchema.optional();
-export function nonEmptyUpdate<T extends z.ZodRawShape>(shape: T) { return z.object(shape).refine((v) => Object.keys(v).length > 0, "At least one update field is required"); }
+export const colorSchemaOptional = hexColorSchema.nullable().optional();
 export const optionalQueryStringArray = z.preprocess(
   (value) => {
     if (value === undefined || value === "") return undefined;

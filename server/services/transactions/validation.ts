@@ -97,7 +97,6 @@ function normalizeTransactionFields(
   };
 }
 
-export const TRANSACTION_INSERT_SQL = "INSERT INTO transactions (id, account_id, date, name, amount, kind, subcategory_id, comment, is_initial_balance, ai_suggested, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)";
 export function prepareTransactionInsert(data: CreateTransactionData) {
   const accountType = getActiveAccountType(data.account_id);
   const normalized = normalizeTransactionFields(data, accountType);

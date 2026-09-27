@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import XLSX from "xlsx";
 import { getDb } from "../server/db/index.js";
 import {
   getCategories,
@@ -14,6 +12,7 @@ import { checkTransferMatch } from "../server/services/transactions/checks.js";
 import { bulkUpdateTransactions } from "../server/services/transactions/bulk.js";
 import { isIsoDate } from "../shared/validation.js";
 import { REVIEW_HEADER } from "./export-categorize-ods.js";
+import { cellAmount, cellText, findSheet, gridOf, readWorkbook } from "./ods-common.js";
 
 const amountSchema = z.number().finite();
 
@@ -24,26 +23,6 @@ interface PendingUpdate {
   oldLabel: string;
   newLabel: string;
   newSubcategoryId: string | null;
-}
-
-function cellText(value: unknown): string {
-  if (value == null) return "";
-  if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, "0");
-    const d = String(value.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  return String(value).trim();
-}
-
-function cellAmount(value: unknown): number | null {
-  if (typeof value === "number") return value;
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
 }
 
 export function applyUsage(): string {
@@ -67,16 +46,6 @@ export function parseApplyArgs(argv: string[]): {
   return { input, dryRun };
 }
 
-export function assertFodsCellBalance(xml: string): void {
-  const opens = xml.match(/<table:table-cell(\s[^>]*[^/])?>/g) ?? [];
-  const closes = xml.match(/<\/table:table-cell>/g) ?? [];
-  if (opens.length !== closes.length) {
-    throw new Error(
-      `Malformed spreadsheet XML: ${opens.length} table cells opened but ${closes.length} closed; applied zero rows`,
-    );
-  }
-}
-
 interface CategorizeColumns {
   id: number;
   date: number;
@@ -96,27 +65,13 @@ export interface ParsedCategorizeWorkbook {
 const REQUIRED_REVIEW_COLUMNS = ["__id", "date", "amount", "subcategory", "__subcategory_id"] as const;
 
 export function parseCategorizeWorkbook(inputPath: string): ParsedCategorizeWorkbook {
-  const resolved = path.resolve(inputPath);
-  if (resolved.toLowerCase().endsWith(".fods")) {
-    assertFodsCellBalance(readFileSync(resolved, "utf8"));
-  }
-  let workbook: XLSX.WorkBook;
-  try {
-    workbook = XLSX.readFile(resolved);
-  } catch (cause) {
-    throw new Error(`Cannot read spreadsheet: ${resolved} :: ${String(cause)}`);
-  }
+  const { resolved, workbook } = readWorkbook(inputPath);
   const reviewName =
     workbook.SheetNames.find((n) => n.toLowerCase() === "review") ??
     workbook.SheetNames[0];
-  if (!reviewName) throw new Error(`No sheets found in ${resolved}`);
-  const review = workbook.Sheets[reviewName];
-  if (!review) throw new Error(`No sheets found in ${resolved}`);
-  const grid = XLSX.utils.sheet_to_json<unknown[]>(review, {
-    header: 1,
-    raw: true,
-    defval: null,
-  });
+  const review = reviewName ? findSheet(workbook, reviewName) : null;
+  if (!reviewName || !review) throw new Error(`No sheets found in ${resolved}`);
+  const grid = gridOf(review);
   const header = (grid[0] ?? []).map((h) => cellText(h).toLowerCase());
   const col = (name: string): number => header.indexOf(name);
   const idCol = col("__id");
@@ -136,27 +91,19 @@ export function parseCategorizeWorkbook(inputPath: string): ParsedCategorizeWork
     );
   }
 
-  const choicesSheet =
-    workbook.SheetNames.map((n) => workbook.Sheets[n]).find((sheet) => {
-      if (!sheet) return false;
-      const first = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-        header: 1,
-        raw: true,
-        defval: null,
-      })[0];
-      return (
-        first != null &&
-        cellText(first[0]).toLowerCase() === "label" &&
-        cellText(first[1]).toLowerCase() === "id"
-      );
-    }) ?? null;
+  const choiceGrid =
+    workbook.SheetNames.map((n) => findSheet(workbook, n))
+      .map((sheet) => (sheet ? gridOf(sheet) : []))
+      .find((sheetGrid) => {
+        const first = sheetGrid[0];
+        return (
+          first != null &&
+          cellText(first[0]).toLowerCase() === "label" &&
+          cellText(first[1]).toLowerCase() === "id"
+        );
+      }) ?? null;
   const fileLabelToId = new Map<string, string>();
-  if (choicesSheet) {
-    const choiceGrid = XLSX.utils.sheet_to_json<unknown[]>(choicesSheet, {
-      header: 1,
-      raw: true,
-      defval: null,
-    });
+  if (choiceGrid) {
     for (const row of choiceGrid.slice(1)) {
       const label = cellText(row[0]);
       const id = cellText(row[1]);

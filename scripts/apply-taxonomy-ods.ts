@@ -2,13 +2,11 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
-  readFileSync,
   renameSync,
 } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import XLSX from "xlsx";
 import { getDb } from "../server/db/index.js";
 import { OperationalError } from "../server/errors.js";
 import {
@@ -23,8 +21,10 @@ import {
   updateSubcategory,
 } from "../server/services/categories.js";
 import { HEX_COLOR_PATTERN } from "../shared/validation.js";
-import type { CategoryType } from "../shared/contracts/index.js";
+import type { Category, CategoryType, Subcategory } from "../shared/contracts/index.js";
 import { computeTaxonomyFingerprint } from "./export-taxonomy-ods.js";
+import { cellAmount, cellText, findSheet, gridOf, isBlankRow, readWorkbook } from "./ods-common.js";
+import { localIsoDate, localTimeCompact } from "../server/services/dates.js";
 
 export interface ParsedTaxonomyWorkbook {
   meta: Map<string, string>;
@@ -66,26 +66,6 @@ export interface TaxonomyPending {
   subcategoryDeletes: string[];
 }
 
-function cellText(value: unknown): string {
-  if (value == null) return "";
-  if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, "0");
-    const d = String(value.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  return String(value).trim();
-}
-
-function cellAmount(value: unknown): number | null {
-  if (typeof value === "number") return value;
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
 function parseMonthlyGoal(value: unknown): {
   valid: boolean;
   value: number | null;
@@ -99,16 +79,6 @@ function parseMonthlyGoal(value: unknown): {
     return { valid: false, value: null };
   }
   return { valid: true, value: amount };
-}
-
-export function assertFodsCellBalance(xml: string): void {
-  const opens = xml.match(/<table:table-cell(\s[^>]*[^/])?>/g) ?? [];
-  const closes = xml.match(/<\/table:table-cell>/g) ?? [];
-  if (opens.length !== closes.length) {
-    throw new Error(
-      `Malformed spreadsheet XML: ${opens.length} table cells opened but ${closes.length} closed; applied zero rows`,
-    );
-  }
 }
 
 export function taxonomyApplyUsage(): string {
@@ -131,38 +101,10 @@ export function parseTaxonomyApplyArgs(
   return { input, dryRun };
 }
 
-function findSheet(
-  workbook: XLSX.WorkBook,
-  name: string,
-): XLSX.WorkSheet | null {
-  const found =
-    workbook.SheetNames.find((n) => n.toLowerCase() === name.toLowerCase()) ??
-    null;
-  if (!found) return null;
-  return workbook.Sheets[found] ?? null;
-}
-
-function gridOf(sheet: XLSX.WorkSheet): unknown[][] {
-  return XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    raw: true,
-    defval: null,
-  });
-}
-
 export function parseTaxonomyWorkbook(
   inputPath: string,
 ): ParsedTaxonomyWorkbook {
-  const resolved = path.resolve(inputPath);
-  if (resolved.toLowerCase().endsWith(".fods")) {
-    assertFodsCellBalance(readFileSync(resolved, "utf8"));
-  }
-  let workbook: XLSX.WorkBook;
-  try {
-    workbook = XLSX.readFile(resolved);
-  } catch (cause) {
-    throw new Error(`Cannot read spreadsheet: ${resolved} :: ${String(cause)}`);
-  }
+  const { resolved, workbook } = readWorkbook(inputPath);
 
   const metaSheet = findSheet(workbook, "_meta");
   const categoriesSheet = findSheet(workbook, "Categories");
@@ -226,22 +168,524 @@ export function parseTaxonomyWorkbook(
   return { meta, categoriesGrid, subcategoriesGrid };
 }
 
-function isBlankRow(row: unknown[]): boolean {
-  return row.every((cell) => cell == null || String(cell).trim() === "");
+interface ValidationContext {
+  errors: string[];
+  pending: TaxonomyPending;
+  liveCategories: Category[];
+  categoriesById: Map<string, Category>;
+  subcategoriesById: Map<string, Subcategory>;
+  /** Categories created earlier in this file, by name (count and type). */
+  createdCategoryCounts: Map<string, number>;
+  createdCategoryTypeByName: Map<string, string>;
+  /** Reserves a name across both sheets; records an error on conflict. */
+  claimName: (
+    sheet: string,
+    rowNumber: number,
+    idLabel: string,
+    name: string,
+    excludeCategoryId?: string,
+    excludeSubcategoryId?: string,
+  ) => boolean;
 }
 
-function localDatePart(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+function createValidationContext(
+  liveCategories: Category[],
+  liveSubcategories: Subcategory[],
+): ValidationContext {
+  const errors: string[] = [];
+  const liveCategoryNames = new Map(
+    liveCategories.map((c) => [c.name, c.id] as const),
+  );
+  const liveSubcategoryNames = new Map(
+    liveSubcategories.map((s) => [s.name, s.id] as const),
+  );
+  const seenNewNames = new Map<string, string>();
+
+  const claimName: ValidationContext["claimName"] = (
+    sheet,
+    rowNumber,
+    idLabel,
+    name,
+    excludeCategoryId,
+    excludeSubcategoryId,
+  ) => {
+    const seen = seenNewNames.get(name);
+    if (seen) {
+      errors.push(
+        `${sheet} row ${rowNumber} (${idLabel}): name "${name}" already exists (${seen})`,
+      );
+      return false;
+    }
+    const liveCat = liveCategoryNames.get(name);
+    const liveSub = liveSubcategoryNames.get(name);
+    if (
+      (liveCat && liveCat !== excludeCategoryId) ||
+      (liveSub && liveSub !== excludeSubcategoryId)
+    ) {
+      errors.push(
+        `${sheet} row ${rowNumber} (${idLabel}): name "${name}" already exists`,
+      );
+      return false;
+    }
+    seenNewNames.set(name, `${sheet} row ${rowNumber}`);
+    return true;
+  };
+
+  return {
+    errors,
+    pending: {
+      categoryCreates: [],
+      categoryUpdates: [],
+      categoryDeletes: [],
+      subcategoryCreates: [],
+      subcategoryUpdates: [],
+      subcategoryDeletes: [],
+    },
+    liveCategories,
+    categoriesById: new Map(liveCategories.map((c) => [c.id, c] as const)),
+    subcategoriesById: new Map(liveSubcategories.map((s) => [s.id, s] as const)),
+    createdCategoryCounts: new Map(),
+    createdCategoryTypeByName: new Map(),
+    claimName,
+  };
 }
 
-function localTimePart(date: Date): string {
-  const h = String(date.getHours()).padStart(2, "0");
-  const m = String(date.getMinutes()).padStart(2, "0");
-  const s = String(date.getSeconds()).padStart(2, "0");
-  return `${h}${m}${s}`;
+function validateCategoryRows(ctx: ValidationContext, grid: unknown[][]): void {
+  const {
+    errors,
+    pending,
+    categoriesById,
+    claimName,
+    createdCategoryCounts,
+    createdCategoryTypeByName,
+  } = ctx;
+  const header = (grid[0] ?? []).map((h) => cellText(h).toLowerCase());
+  const col = (n: string): number => header.indexOf(n);
+  const idCol = col("__id");
+  const nameCol = col("name");
+  const typeCol = col("type");
+  const colorCol = col("color");
+  const deleteCol = col("__delete");
+  grid.slice(1).forEach((row, index) => {
+    const rowNumber = index + 2;
+    if (isBlankRow(row)) return;
+    const id = cellText(row[idCol]);
+    const idLabel = id || "new";
+    const deleteRaw = cellText(row[deleteCol]);
+    if (deleteRaw !== "" && deleteRaw.toLowerCase() !== "x") {
+      errors.push(
+        `Categories row ${rowNumber} (${idLabel}): invalid __delete "${deleteRaw}" (expected "x" or empty)`,
+      );
+      return;
+    }
+    const isDelete = deleteRaw.toLowerCase() === "x";
+    if (isDelete) {
+      if (!id) {
+        errors.push(
+          `Categories row ${rowNumber} (new): __delete requires an existing __id`,
+        );
+        return;
+      }
+      const live = categoriesById.get(id);
+      if (!live) {
+        errors.push(`Categories row ${rowNumber} (${id}): not found`);
+        return;
+      }
+      if (live.is_system) {
+        errors.push(
+          `Categories row ${rowNumber} (${id}): Cannot delete system categories`,
+        );
+        return;
+      }
+      pending.categoryDeletes.push(id);
+      return;
+    }
+    const name = cellText(row[nameCol]);
+    const typeRaw = cellText(row[typeCol]).toLowerCase();
+    const colorRaw = cellText(row[colorCol]);
+    if (!id) {
+      if (!name) {
+        errors.push(
+          `Categories row ${rowNumber} (new): name is required`,
+        );
+        return;
+      }
+      if (typeRaw !== "income" && typeRaw !== "expense") {
+        errors.push(
+          `Categories row ${rowNumber} (new): type must be income or expense`,
+        );
+        return;
+      }
+      if (colorRaw !== "" && !HEX_COLOR_PATTERN.test(colorRaw)) {
+        errors.push(
+          `Categories row ${rowNumber} (new): invalid color "${colorRaw}"`,
+        );
+        return;
+      }
+      if (!claimName("Categories", rowNumber, "new", name)) return;
+      pending.categoryCreates.push({
+        rowNumber,
+        name,
+        type: typeRaw,
+        color: colorRaw === "" ? null : colorRaw,
+      });
+      createdCategoryCounts.set(
+        name,
+        (createdCategoryCounts.get(name) ?? 0) + 1,
+      );
+      createdCategoryTypeByName.set(name, typeRaw);
+      return;
+    }
+    const live = categoriesById.get(id);
+    if (!live) {
+      errors.push(`Categories row ${rowNumber} (${id}): not found`);
+      return;
+    }
+    if (!name) {
+      errors.push(`Categories row ${rowNumber} (${id}): name is required`);
+      return;
+    }
+    if (typeRaw !== "income" && typeRaw !== "expense") {
+      errors.push(
+        `Categories row ${rowNumber} (${id}): type must be income or expense`,
+      );
+      return;
+    }
+    if (colorRaw !== "" && !HEX_COLOR_PATTERN.test(colorRaw)) {
+      errors.push(
+        `Categories row ${rowNumber} (${id}): invalid color "${colorRaw}"`,
+      );
+      return;
+    }
+    const nameEdit = name !== live.name ? name : undefined;
+    const typeEdit = typeRaw !== live.type ? typeRaw : undefined;
+    const liveColor = live.color ?? "";
+    const colorEdit =
+      colorRaw !== liveColor
+        ? colorRaw === ""
+          ? null
+          : colorRaw
+        : undefined;
+    const hasColorEdit = colorRaw !== liveColor;
+    if (
+      live.is_system &&
+      (nameEdit !== undefined || typeEdit !== undefined)
+    ) {
+      errors.push(
+        `Categories row ${rowNumber} (${id}): Cannot update system categories`,
+      );
+      return;
+    }
+    if (typeEdit !== undefined) {
+      const db = getDb();
+      const activeSub = db
+        .prepare(
+          "SELECT 1 FROM subcategories WHERE category_id = ? AND deleted_at IS NULL LIMIT 1",
+        )
+        .get(id);
+      const txn = db
+        .prepare(
+          `SELECT 1 FROM transactions t JOIN subcategories s ON s.id = t.subcategory_id WHERE s.category_id = ? AND t.deleted_at IS NULL LIMIT 1`,
+        )
+        .get(id);
+      if (activeSub || txn) {
+        errors.push(
+          `Categories row ${rowNumber} (${id}): Cannot change category type while subcategories or transactions exist`,
+        );
+        return;
+      }
+    }
+    if (
+      nameEdit !== undefined &&
+      !claimName("Categories", rowNumber, id, nameEdit, id, undefined)
+    ) {
+      return;
+    }
+    if (
+      nameEdit === undefined &&
+      typeEdit === undefined &&
+      !hasColorEdit
+    ) {
+      return;
+    }
+    const update: TaxonomyPending["categoryUpdates"][number] = {
+      rowNumber,
+      id,
+    };
+    if (nameEdit !== undefined) update.name = nameEdit;
+    if (typeEdit !== undefined) update.type = typeEdit;
+    if (hasColorEdit) update.color = colorEdit ?? null;
+    pending.categoryUpdates.push(update);
+  });
+}
+
+function validateSubcategoryRows(ctx: ValidationContext, grid: unknown[][]): void {
+  const {
+    errors,
+    pending,
+    liveCategories,
+    categoriesById,
+    subcategoriesById,
+    claimName,
+    createdCategoryCounts,
+    createdCategoryTypeByName,
+  } = ctx;
+  const header = (grid[0] ?? []).map((h) => cellText(h).toLowerCase());
+  const col = (n: string): number => header.indexOf(n);
+  const idCol = col("__id");
+  const nameCol = col("name");
+  const categoryCol = col("category");
+  const categoryIdCol = col("__category_id");
+  const goalCol = col("monthly_goal");
+  const colorCol = col("color");
+  const deleteCol = col("__delete");
+
+  const resolveParentForCreate = (
+    rowNumber: number,
+    idLabel: string,
+    categoryDisplay: string,
+    categoryIdCell: string,
+  ): { categoryId: string | null; categoryLabel: string } | null => {
+    if (categoryIdCell !== "") {
+      const live = categoriesById.get(categoryIdCell);
+      if (!live) {
+        errors.push(
+          `Subcategories row ${rowNumber} (${idLabel}): unknown category "${categoryIdCell}"`,
+        );
+        return null;
+      }
+      return { categoryId: live.id, categoryLabel: categoryDisplay };
+    }
+    const createdCount = createdCategoryCounts.get(categoryDisplay) ?? 0;
+    if (createdCount === 1) {
+      return { categoryId: null, categoryLabel: categoryDisplay };
+    }
+    if (createdCount > 1) {
+      errors.push(
+        `Subcategories row ${rowNumber} (${idLabel}): ambiguous category "${categoryDisplay}"`,
+      );
+      return null;
+    }
+    const liveMatches = liveCategories.filter(
+      (c) => c.name === categoryDisplay,
+    );
+    if (liveMatches.length === 1 && liveMatches[0]) {
+      return {
+        categoryId: liveMatches[0].id,
+        categoryLabel: categoryDisplay,
+      };
+    }
+    errors.push(
+      `Subcategories row ${rowNumber} (${idLabel}): unknown category "${categoryDisplay || categoryIdCell}"`,
+    );
+    return null;
+  };
+
+  grid.slice(1).forEach((row, index) => {
+    const rowNumber = index + 2;
+    if (isBlankRow(row)) return;
+    const id = cellText(row[idCol]);
+    const idLabel = id || "new";
+    const deleteRaw = cellText(row[deleteCol]);
+    if (deleteRaw !== "" && deleteRaw.toLowerCase() !== "x") {
+      errors.push(
+        `Subcategories row ${rowNumber} (${idLabel}): invalid __delete "${deleteRaw}" (expected "x" or empty)`,
+      );
+      return;
+    }
+    const isDelete = deleteRaw.toLowerCase() === "x";
+    if (isDelete) {
+      if (!id) {
+        errors.push(
+          `Subcategories row ${rowNumber} (new): __delete requires an existing __id`,
+        );
+        return;
+      }
+      const live = subcategoriesById.get(id);
+      if (!live) {
+        errors.push(`Subcategories row ${rowNumber} (${id}): not found`);
+        return;
+      }
+      if (live.is_system) {
+        errors.push(
+          `Subcategories row ${rowNumber} (${id}): Cannot delete system subcategories`,
+        );
+        return;
+      }
+      const transactionCount = countSubcategoryTransactions(id);
+      if (transactionCount > 0) {
+        errors.push(
+          `Subcategories row ${rowNumber} (${id}): has ${transactionCount} transaction(s); recategorize them before deleting`,
+        );
+        return;
+      }
+      pending.subcategoryDeletes.push(id);
+      return;
+    }
+
+    const name = cellText(row[nameCol]);
+    const categoryDisplay = cellText(row[categoryCol]);
+    const categoryIdCell = cellText(row[categoryIdCol]);
+    const colorRaw = cellText(row[colorCol]);
+    const goalParsed = parseMonthlyGoal(row[goalCol]);
+
+    if (!id) {
+      if (!name) {
+        errors.push(
+          `Subcategories row ${rowNumber} (new): name is required`,
+        );
+        return;
+      }
+      const parent = resolveParentForCreate(
+        rowNumber,
+        "new",
+        categoryDisplay,
+        categoryIdCell,
+      );
+      if (!parent) return;
+      if (!goalParsed.valid) {
+        errors.push(
+          `Subcategories row ${rowNumber} (new): monthly_goal must be a non-negative number or empty`,
+        );
+        return;
+      }
+      if (colorRaw !== "" && !HEX_COLOR_PATTERN.test(colorRaw)) {
+        errors.push(
+          `Subcategories row ${rowNumber} (new): invalid color "${colorRaw}"`,
+        );
+        return;
+      }
+      if (!claimName("Subcategories", rowNumber, "new", name)) return;
+      pending.subcategoryCreates.push({
+        rowNumber,
+        name,
+        categoryLabel: parent.categoryLabel,
+        categoryId: parent.categoryId,
+        monthlyGoal: goalParsed.value,
+        color: colorRaw === "" ? null : colorRaw,
+      });
+      return;
+    }
+
+    const live = subcategoriesById.get(id);
+    if (!live) {
+      errors.push(`Subcategories row ${rowNumber} (${id}): not found`);
+      return;
+    }
+    if (!name) {
+      errors.push(
+        `Subcategories row ${rowNumber} (${id}): name is required`,
+      );
+      return;
+    }
+    if (!goalParsed.valid) {
+      errors.push(
+        `Subcategories row ${rowNumber} (${id}): monthly_goal must be a non-negative number or empty`,
+      );
+      return;
+    }
+    if (colorRaw !== "" && !HEX_COLOR_PATTERN.test(colorRaw)) {
+      errors.push(
+        `Subcategories row ${rowNumber} (${id}): invalid color "${colorRaw}"`,
+      );
+      return;
+    }
+    const nameEdit = name !== live.name ? name : undefined;
+    let categoryEdit: string | undefined;
+    if (categoryIdCell !== live.category_id) {
+      if (categoryIdCell !== "") {
+        const target = categoriesById.get(categoryIdCell);
+        if (!target) {
+          errors.push(
+            `Subcategories row ${rowNumber} (${id}): unknown category "${categoryIdCell}"`,
+          );
+          return;
+        }
+        categoryEdit = target.id;
+      } else {
+        const createdCount =
+          createdCategoryCounts.get(categoryDisplay) ?? 0;
+        if (createdCount === 1) {
+          categoryEdit = `new:${categoryDisplay}`;
+        } else if (createdCount > 1) {
+          errors.push(
+            `Subcategories row ${rowNumber} (${id}): ambiguous category "${categoryDisplay}"`,
+          );
+          return;
+        } else {
+          errors.push(
+            `Subcategories row ${rowNumber} (${id}): unknown category "${categoryDisplay || categoryIdCell}"`,
+          );
+          return;
+        }
+      }
+      const sourceType = categoriesById.get(live.category_id)?.type;
+      const targetType = categoryEdit?.startsWith("new:")
+        ? createdCategoryTypeByName.get(categoryDisplay)
+        : categoriesById.get(categoryEdit ?? "")?.type;
+      if (
+        sourceType &&
+        targetType &&
+        sourceType !== targetType
+      ) {
+        errors.push(
+          `Subcategories row ${rowNumber} (${id}): Cannot move subcategory between income and expense categories`,
+        );
+        return;
+      }
+    }
+    const goalEdit =
+      goalParsed.value !== live.monthly_goal ? goalParsed.value : undefined;
+    const hasGoalEdit = goalParsed.value !== live.monthly_goal;
+    const liveColor = live.color ?? "";
+    const hasColorEdit = colorRaw !== liveColor;
+    const colorEdit = hasColorEdit
+      ? colorRaw === ""
+        ? null
+        : colorRaw
+      : undefined;
+    if (
+      live.is_system &&
+      (nameEdit !== undefined ||
+        categoryEdit !== undefined ||
+        hasGoalEdit)
+    ) {
+      errors.push(
+        `Subcategories row ${rowNumber} (${id}): Cannot update system subcategories`,
+      );
+      return;
+    }
+    if (
+      nameEdit !== undefined &&
+      !claimName(
+        "Subcategories",
+        rowNumber,
+        id,
+        nameEdit,
+        undefined,
+        id,
+      )
+    ) {
+      return;
+    }
+    if (
+      nameEdit === undefined &&
+      categoryEdit === undefined &&
+      !hasGoalEdit &&
+      !hasColorEdit
+    ) {
+      return;
+    }
+    const update: TaxonomyPending["subcategoryUpdates"][number] = {
+      rowNumber,
+      id,
+    };
+    if (nameEdit !== undefined) update.name = nameEdit;
+    if (categoryEdit !== undefined) update.categoryId = categoryEdit;
+    if (hasGoalEdit) update.monthlyGoal = goalEdit ?? null;
+    if (hasColorEdit) update.color = colorEdit ?? null;
+    pending.subcategoryUpdates.push(update);
+  });
 }
 
 export function validateTaxonomyRows(
@@ -261,499 +705,18 @@ export function validateTaxonomyRows(
     );
   }
 
-  const errors: string[] = [];
-  const pending: TaxonomyPending = {
-    categoryCreates: [],
-    categoryUpdates: [],
-    categoryDeletes: [],
-    subcategoryCreates: [],
-    subcategoryUpdates: [],
-    subcategoryDeletes: [],
-  };
+  // Categories first: subcategory rows may reference categories created above.
+  const ctx = createValidationContext(liveCategories, liveSubcategories);
+  validateCategoryRows(ctx, parsed.categoriesGrid);
+  validateSubcategoryRows(ctx, parsed.subcategoriesGrid);
 
-  const categoriesById = new Map(liveCategories.map((c) => [c.id, c] as const));
-  const subcategoriesById = new Map(
-    liveSubcategories.map((s) => [s.id, s] as const),
-  );
-  const categoryTypeById = new Map(
-    liveCategories.map((c) => [c.id, c.type] as const),
-  );
-
-  const liveCategoryNames = new Map(
-    liveCategories.map((c) => [c.name, c.id] as const),
-  );
-  const liveSubcategoryNames = new Map(
-    liveSubcategories.map((s) => [s.name, s.id] as const),
-  );
-  const seenNewNames = new Map<string, string>();
-  const createdCategoryCounts = new Map<string, number>();
-  const createdCategoryTypeByName = new Map<string, string>();
-
-  const claimName = (
-    sheet: string,
-    rowNumber: number,
-    idLabel: string,
-    name: string,
-    excludeCategoryId?: string,
-    excludeSubcategoryId?: string,
-  ): boolean => {
-    const seen = seenNewNames.get(name);
-    if (seen) {
-      errors.push(
-        `${sheet} row ${rowNumber} (${idLabel}): name "${name}" already exists (${seen})`,
-      );
-      return false;
-    }
-    const liveCat = liveCategoryNames.get(name);
-    if (liveCat && liveCat !== excludeCategoryId) {
-      errors.push(
-        `${sheet} row ${rowNumber} (${idLabel}): name "${name}" already exists`,
-      );
-      return false;
-    }
-    const liveSub = liveSubcategoryNames.get(name);
-    if (liveSub && liveSub !== excludeSubcategoryId) {
-      errors.push(
-        `${sheet} row ${rowNumber} (${idLabel}): name "${name}" already exists`,
-      );
-      return false;
-    }
-    seenNewNames.set(name, `${sheet} row ${rowNumber}`);
-    return true;
-  };
-
-  // === Categories ===
-  {
-    const grid = parsed.categoriesGrid;
-    const header = (grid[0] ?? []).map((h) => cellText(h).toLowerCase());
-    const col = (n: string): number => header.indexOf(n);
-    const idCol = col("__id");
-    const nameCol = col("name");
-    const typeCol = col("type");
-    const colorCol = col("color");
-    const deleteCol = col("__delete");
-    grid.slice(1).forEach((row, index) => {
-      const rowNumber = index + 2;
-      if (isBlankRow(row)) return;
-      const id = cellText(row[idCol]);
-      const idLabel = id || "new";
-      const deleteRaw = cellText(row[deleteCol]);
-      if (deleteRaw !== "" && deleteRaw.toLowerCase() !== "x") {
-        errors.push(
-          `Categories row ${rowNumber} (${idLabel}): invalid __delete "${deleteRaw}" (expected "x" or empty)`,
-        );
-        return;
-      }
-      const isDelete = deleteRaw.toLowerCase() === "x";
-      if (isDelete) {
-        if (!id) {
-          errors.push(
-            `Categories row ${rowNumber} (new): __delete requires an existing __id`,
-          );
-          return;
-        }
-        const live = categoriesById.get(id);
-        if (!live) {
-          errors.push(`Categories row ${rowNumber} (${id}): not found`);
-          return;
-        }
-        if (live.is_system) {
-          errors.push(
-            `Categories row ${rowNumber} (${id}): Cannot delete system categories`,
-          );
-          return;
-        }
-        pending.categoryDeletes.push(id);
-        return;
-      }
-      const name = cellText(row[nameCol]);
-      const typeRaw = cellText(row[typeCol]).toLowerCase();
-      const colorRaw = cellText(row[colorCol]);
-      if (!id) {
-        if (!name) {
-          errors.push(
-            `Categories row ${rowNumber} (new): name is required`,
-          );
-          return;
-        }
-        if (typeRaw !== "income" && typeRaw !== "expense") {
-          errors.push(
-            `Categories row ${rowNumber} (new): type must be income or expense`,
-          );
-          return;
-        }
-        if (colorRaw !== "" && !HEX_COLOR_PATTERN.test(colorRaw)) {
-          errors.push(
-            `Categories row ${rowNumber} (new): invalid color "${colorRaw}"`,
-          );
-          return;
-        }
-        if (!claimName("Categories", rowNumber, "new", name)) return;
-        pending.categoryCreates.push({
-          rowNumber,
-          name,
-          type: typeRaw,
-          color: colorRaw === "" ? null : colorRaw,
-        });
-        createdCategoryCounts.set(
-          name,
-          (createdCategoryCounts.get(name) ?? 0) + 1,
-        );
-        createdCategoryTypeByName.set(name, typeRaw);
-        return;
-      }
-      const live = categoriesById.get(id);
-      if (!live) {
-        errors.push(`Categories row ${rowNumber} (${id}): not found`);
-        return;
-      }
-      if (!name) {
-        errors.push(`Categories row ${rowNumber} (${id}): name is required`);
-        return;
-      }
-      if (typeRaw !== "income" && typeRaw !== "expense") {
-        errors.push(
-          `Categories row ${rowNumber} (${id}): type must be income or expense`,
-        );
-        return;
-      }
-      if (colorRaw !== "" && !HEX_COLOR_PATTERN.test(colorRaw)) {
-        errors.push(
-          `Categories row ${rowNumber} (${id}): invalid color "${colorRaw}"`,
-        );
-        return;
-      }
-      const nameEdit = name !== live.name ? name : undefined;
-      const typeEdit = typeRaw !== live.type ? typeRaw : undefined;
-      const liveColor = live.color ?? "";
-      const colorEdit =
-        colorRaw !== liveColor
-          ? colorRaw === ""
-            ? null
-            : colorRaw
-          : undefined;
-      const hasColorEdit = colorRaw !== liveColor;
-      if (
-        live.is_system &&
-        (nameEdit !== undefined || typeEdit !== undefined)
-      ) {
-        errors.push(
-          `Categories row ${rowNumber} (${id}): Cannot update system categories`,
-        );
-        return;
-      }
-      if (typeEdit !== undefined) {
-        const db = getDb();
-        const activeSub = db
-          .prepare(
-            "SELECT 1 FROM subcategories WHERE category_id = ? AND deleted_at IS NULL LIMIT 1",
-          )
-          .get(id);
-        const txn = db
-          .prepare(
-            `SELECT 1 FROM transactions t JOIN subcategories s ON s.id = t.subcategory_id WHERE s.category_id = ? AND t.deleted_at IS NULL LIMIT 1`,
-          )
-          .get(id);
-        if (activeSub || txn) {
-          errors.push(
-            `Categories row ${rowNumber} (${id}): Cannot change category type while subcategories or transactions exist`,
-          );
-          return;
-        }
-      }
-      if (
-        nameEdit !== undefined &&
-        !claimName("Categories", rowNumber, id, nameEdit, id, undefined)
-      ) {
-        return;
-      }
-      if (
-        nameEdit === undefined &&
-        typeEdit === undefined &&
-        !hasColorEdit
-      ) {
-        return;
-      }
-      const update: TaxonomyPending["categoryUpdates"][number] = {
-        rowNumber,
-        id,
-      };
-      if (nameEdit !== undefined) update.name = nameEdit;
-      if (typeEdit !== undefined) update.type = typeEdit;
-      if (hasColorEdit) update.color = colorEdit ?? null;
-      pending.categoryUpdates.push(update);
-    });
-  }
-
-  // === Subcategories ===
-  {
-    const grid = parsed.subcategoriesGrid;
-    const header = (grid[0] ?? []).map((h) => cellText(h).toLowerCase());
-    const col = (n: string): number => header.indexOf(n);
-    const idCol = col("__id");
-    const nameCol = col("name");
-    const categoryCol = col("category");
-    const categoryIdCol = col("__category_id");
-    const goalCol = col("monthly_goal");
-    const colorCol = col("color");
-    const deleteCol = col("__delete");
-
-    const resolveParentForCreate = (
-      rowNumber: number,
-      idLabel: string,
-      categoryDisplay: string,
-      categoryIdCell: string,
-    ): { categoryId: string | null; categoryLabel: string } | null => {
-      if (categoryIdCell !== "") {
-        const live = categoriesById.get(categoryIdCell);
-        if (!live) {
-          errors.push(
-            `Subcategories row ${rowNumber} (${idLabel}): unknown category "${categoryIdCell}"`,
-          );
-          return null;
-        }
-        return { categoryId: live.id, categoryLabel: categoryDisplay };
-      }
-      const createdCount = createdCategoryCounts.get(categoryDisplay) ?? 0;
-      if (createdCount === 1) {
-        return { categoryId: null, categoryLabel: categoryDisplay };
-      }
-      if (createdCount > 1) {
-        errors.push(
-          `Subcategories row ${rowNumber} (${idLabel}): ambiguous category "${categoryDisplay}"`,
-        );
-        return null;
-      }
-      const liveMatches = liveCategories.filter(
-        (c) => c.name === categoryDisplay,
-      );
-      if (liveMatches.length === 1 && liveMatches[0]) {
-        return {
-          categoryId: liveMatches[0].id,
-          categoryLabel: categoryDisplay,
-        };
-      }
-      errors.push(
-        `Subcategories row ${rowNumber} (${idLabel}): unknown category "${categoryDisplay || categoryIdCell}"`,
-      );
-      return null;
-    };
-
-    grid.slice(1).forEach((row, index) => {
-      const rowNumber = index + 2;
-      if (isBlankRow(row)) return;
-      const id = cellText(row[idCol]);
-      const idLabel = id || "new";
-      const deleteRaw = cellText(row[deleteCol]);
-      if (deleteRaw !== "" && deleteRaw.toLowerCase() !== "x") {
-        errors.push(
-          `Subcategories row ${rowNumber} (${idLabel}): invalid __delete "${deleteRaw}" (expected "x" or empty)`,
-        );
-        return;
-      }
-      const isDelete = deleteRaw.toLowerCase() === "x";
-      if (isDelete) {
-        if (!id) {
-          errors.push(
-            `Subcategories row ${rowNumber} (new): __delete requires an existing __id`,
-          );
-          return;
-        }
-        const live = subcategoriesById.get(id);
-        if (!live) {
-          errors.push(`Subcategories row ${rowNumber} (${id}): not found`);
-          return;
-        }
-        if (live.is_system) {
-          errors.push(
-            `Subcategories row ${rowNumber} (${id}): Cannot delete system subcategories`,
-          );
-          return;
-        }
-        const transactionCount = countSubcategoryTransactions(id);
-        if (transactionCount > 0) {
-          errors.push(
-            `Subcategories row ${rowNumber} (${id}): has ${transactionCount} transaction(s); recategorize them before deleting`,
-          );
-          return;
-        }
-        pending.subcategoryDeletes.push(id);
-        return;
-      }
-
-      const name = cellText(row[nameCol]);
-      const categoryDisplay = cellText(row[categoryCol]);
-      const categoryIdCell = cellText(row[categoryIdCol]);
-      const colorRaw = cellText(row[colorCol]);
-      const goalParsed = parseMonthlyGoal(row[goalCol]);
-
-      if (!id) {
-        if (!name) {
-          errors.push(
-            `Subcategories row ${rowNumber} (new): name is required`,
-          );
-          return;
-        }
-        const parent = resolveParentForCreate(
-          rowNumber,
-          "new",
-          categoryDisplay,
-          categoryIdCell,
-        );
-        if (!parent) return;
-        if (!goalParsed.valid) {
-          errors.push(
-            `Subcategories row ${rowNumber} (new): monthly_goal must be a non-negative number or empty`,
-          );
-          return;
-        }
-        if (colorRaw !== "" && !HEX_COLOR_PATTERN.test(colorRaw)) {
-          errors.push(
-            `Subcategories row ${rowNumber} (new): invalid color "${colorRaw}"`,
-          );
-          return;
-        }
-        if (!claimName("Subcategories", rowNumber, "new", name)) return;
-        pending.subcategoryCreates.push({
-          rowNumber,
-          name,
-          categoryLabel: parent.categoryLabel,
-          categoryId: parent.categoryId,
-          monthlyGoal: goalParsed.value,
-          color: colorRaw === "" ? null : colorRaw,
-        });
-        return;
-      }
-
-      const live = subcategoriesById.get(id);
-      if (!live) {
-        errors.push(`Subcategories row ${rowNumber} (${id}): not found`);
-        return;
-      }
-      if (!name) {
-        errors.push(
-          `Subcategories row ${rowNumber} (${id}): name is required`,
-        );
-        return;
-      }
-      if (!goalParsed.valid) {
-        errors.push(
-          `Subcategories row ${rowNumber} (${id}): monthly_goal must be a non-negative number or empty`,
-        );
-        return;
-      }
-      if (colorRaw !== "" && !HEX_COLOR_PATTERN.test(colorRaw)) {
-        errors.push(
-          `Subcategories row ${rowNumber} (${id}): invalid color "${colorRaw}"`,
-        );
-        return;
-      }
-      const nameEdit = name !== live.name ? name : undefined;
-      let categoryEdit: string | undefined;
-      if (categoryIdCell !== live.category_id) {
-        if (categoryIdCell !== "") {
-          const target = categoriesById.get(categoryIdCell);
-          if (!target) {
-            errors.push(
-              `Subcategories row ${rowNumber} (${id}): unknown category "${categoryIdCell}"`,
-            );
-            return;
-          }
-          categoryEdit = target.id;
-        } else {
-          const createdCount =
-            createdCategoryCounts.get(categoryDisplay) ?? 0;
-          if (createdCount === 1) {
-            categoryEdit = `new:${categoryDisplay}`;
-          } else if (createdCount > 1) {
-            errors.push(
-              `Subcategories row ${rowNumber} (${id}): ambiguous category "${categoryDisplay}"`,
-            );
-            return;
-          } else {
-            errors.push(
-              `Subcategories row ${rowNumber} (${id}): unknown category "${categoryDisplay || categoryIdCell}"`,
-            );
-            return;
-          }
-        }
-        const sourceType = categoryTypeById.get(live.category_id);
-        const targetType =
-          categoryEdit.startsWith("new:")
-            ? createdCategoryTypeByName.get(categoryDisplay)
-            : categoryTypeById.get(categoryEdit);
-        if (
-          sourceType &&
-          targetType &&
-          sourceType !== targetType
-        ) {
-          errors.push(
-            `Subcategories row ${rowNumber} (${id}): Cannot move subcategory between income and expense categories`,
-          );
-          return;
-        }
-      }
-      const goalEdit =
-        goalParsed.value !== live.monthly_goal ? goalParsed.value : undefined;
-      const hasGoalEdit = goalParsed.value !== live.monthly_goal;
-      const liveColor = live.color ?? "";
-      const hasColorEdit = colorRaw !== liveColor;
-      const colorEdit = hasColorEdit
-        ? colorRaw === ""
-          ? null
-          : colorRaw
-        : undefined;
-      if (
-        live.is_system &&
-        (nameEdit !== undefined ||
-          categoryEdit !== undefined ||
-          hasGoalEdit)
-      ) {
-        errors.push(
-          `Subcategories row ${rowNumber} (${id}): Cannot update system subcategories`,
-        );
-        return;
-      }
-      if (
-        nameEdit !== undefined &&
-        !claimName(
-          "Subcategories",
-          rowNumber,
-          id,
-          nameEdit,
-          undefined,
-          id,
-        )
-      ) {
-        return;
-      }
-      if (
-        nameEdit === undefined &&
-        categoryEdit === undefined &&
-        !hasGoalEdit &&
-        !hasColorEdit
-      ) {
-        return;
-      }
-      const update: TaxonomyPending["subcategoryUpdates"][number] = {
-        rowNumber,
-        id,
-      };
-      if (nameEdit !== undefined) update.name = nameEdit;
-      if (categoryEdit !== undefined) update.categoryId = categoryEdit;
-      if (hasGoalEdit) update.monthlyGoal = goalEdit ?? null;
-      if (hasColorEdit) update.color = colorEdit ?? null;
-      pending.subcategoryUpdates.push(update);
-    });
-  }
-
-  if (errors.length > 0) {
-    for (const message of errors) console.error(message);
-    console.error(`Applied 0 rows (${errors.length} invalid)`);
+  if (ctx.errors.length > 0) {
+    for (const message of ctx.errors) console.error(message);
+    console.error(`Applied 0 rows (${ctx.errors.length} invalid)`);
     throw new Error("Invalid taxonomy rows; applied zero rows");
   }
 
-  return pending;
+  return ctx.pending;
 }
 
 export function applyTaxonomyUpdates(
@@ -887,7 +850,7 @@ export function applyTaxonomyUpdates(
 
   const now = new Date();
   const resolvedInput = path.resolve(inputPath);
-  const datePart = localDatePart(now);
+  const datePart = localIsoDate(now);
   let archivePath = path.resolve(
     "data",
     "archive",
@@ -896,7 +859,7 @@ export function applyTaxonomyUpdates(
   if (existsSync(archivePath)) {
     const ext = path.extname(archivePath);
     const base = archivePath.slice(0, -ext.length);
-    archivePath = `${base}-${localTimePart(now)}${ext}`;
+    archivePath = `${base}-${localTimeCompact(now)}${ext}`;
   }
   const logLine = `${JSON.stringify({
     timestamp: now.toISOString(),

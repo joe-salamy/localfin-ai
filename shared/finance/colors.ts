@@ -1,5 +1,5 @@
 import { HEX_COLOR_PATTERN } from "../validation.js";
-const DEFAULT_ENTITY_COLORS = [
+export const DEFAULT_ENTITY_COLORS = [
   "#ef4444",
   "#f97316",
   "#f59e0b",

@@ -1,7 +1,5 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { z } from "zod";
-import { accountTypeSchema } from "../../shared/contracts/accounts.js";
 import { NotFoundError } from "../errors.js";
 import {
   createAccount,
@@ -13,34 +11,11 @@ import {
   restoreAccount,
   getAccountTransactionCount,
 } from "../services/accounts.js";
-import {
-  colorSchemaOptional,
-  finiteNumber,
-  idParamSchema,
-  isoDateString,
-  nonEmptyString,
-  nonEmptyUpdate,
-  parseRequest,
-} from "./validation.js";
+import { accountInput, nonEmptyUpdate, reconcileAccountInput } from "../input-schemas.js";
+import { idParamSchema, parseRequest } from "./validation.js";
 
 const router = Router();
-const createAccountSchema = z.object({
-  name: nonEmptyString,
-  type: accountTypeSchema,
-  initial_balance: finiteNumber.optional(),
-  color: colorSchemaOptional,
-});
-const updateAccountSchema = nonEmptyUpdate({
-    name: nonEmptyString.optional(),
-    type: accountTypeSchema.optional(),
-    initial_balance: finiteNumber.optional(),
-    color: colorSchemaOptional,
-});
-const reconcileAccountSchema = z.object({
-  date: isoDateString,
-  target_balance: finiteNumber,
-  name: nonEmptyString.optional(),
-});
+const updateAccountSchema = nonEmptyUpdate(accountInput.partial().shape);
 
 router.get("/", (_req: Request, res: Response) => {
   const data = getAccountsWithBalances();
@@ -56,7 +31,7 @@ router.get("/:id", (req: Request, res: Response) => {
 });
 
 router.post("/", (req: Request, res: Response) => {
-  const body = parseRequest(createAccountSchema, req.body);
+  const body = parseRequest(accountInput, req.body);
 
   const data = createAccount(body);
   res.status(201).json({ success: true, data });
@@ -72,7 +47,7 @@ router.put("/:id", (req: Request, res: Response) => {
 
 router.post("/:id/reconcile", (req: Request, res: Response) => {
   const params = parseRequest(idParamSchema, req.params);
-  const body = parseRequest(reconcileAccountSchema, req.body);
+  const body = parseRequest(reconcileAccountInput, req.body);
 
   const data = reconcileAccount(params.id, body);
   res.status(data.transaction ? 201 : 200).json({ success: true, data });

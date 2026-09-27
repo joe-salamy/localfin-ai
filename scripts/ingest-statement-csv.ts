@@ -5,6 +5,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { getAccounts } from "../server/services/accounts.js";
 import { getSubcategories } from "../server/services/categories.js";
+import { localIsoDate, localTimeCompact } from "../server/services/dates.js";
 import { parseStatement } from "../server/services/parser.js";
 import { bulkCreateTransactions } from "../server/services/transactions/create.js";
 import { getRecentTransactionByNameAndAccount } from "../server/services/transactions/read.js";
@@ -85,20 +86,6 @@ export function resolveAccountName(accountName: string, accounts: Account[]): Ac
     );
   }
   return matches[0] as Account;
-}
-
-function localDatePart(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function localTimePart(date: Date): string {
-  const h = String(date.getHours()).padStart(2, "0");
-  const m = String(date.getMinutes()).padStart(2, "0");
-  const s = String(date.getSeconds()).padStart(2, "0");
-  return `${h}${m}${s}`;
 }
 
 export function ingestUsage(): string {
@@ -206,7 +193,7 @@ function archiveCsvMove(
   const bytes = readFileSync(srcPath);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const now = new Date();
-  const timestamp = `${localDatePart(now)}T${localTimePart(now)}`;
+  const timestamp = `${localIsoDate(now)}T${localTimeCompact(now)}`;
   const slugify = (s: string): string => {
     const slug = s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     return slug === "" ? "account" : slug;
@@ -232,7 +219,7 @@ function archiveCsvMove(
     unlinkSync(srcPath);
   }
 
-  const logPath = path.resolve(JSONL_DIR, `ingest-${localDatePart(now)}.jsonl`);
+  const logPath = path.resolve(JSONL_DIR, `ingest-${localIsoDate(now)}.jsonl`);
   mkdirSync(JSONL_DIR, { recursive: true });
   appendFileSync(logPath, `${JSON.stringify({
     timestamp: now.toISOString(),

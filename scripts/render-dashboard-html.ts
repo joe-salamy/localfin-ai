@@ -5,12 +5,13 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveDatabasePath } from "../server/db/index.js";
 import { MIGRATIONS } from "../server/db/migrations.js";
+import { DEFAULT_ENTITY_COLORS } from "../shared/finance/colors.js";
 import {
-  REPORT_HTML_DIRECTORY,
   escapeHtml,
   parseReportArgs,
   reportUsage,
 } from "./report-html-common.js";
+import { REPORTS_DIRECTORY } from "./exchange-paths.js";
 
 interface DashboardAccountRow {
   id: string;
@@ -132,7 +133,7 @@ var ACCOUNTS=PAY.accounts||[];
 var CATS=PAY.categories||[];
 var SUBS=PAY.subcategories||[];
 var TXNS=PAY.transactions||[];
-var PALETTE=['#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#10b981','#14b8a6','#06b6d4','#0ea5e9','#3b82f6','#6366f1','#8b5cf6','#a855f7','#d946ef','#ec4899','#f43f5e','#78716c','#64748b','#6b7280'];
+var PALETTE=__PALETTE__;
 var HEXRE=/^#[0-9a-fA-F]{6}$/;
 function normColor(v){ if(v==null||v==='') return null; return (typeof v==='string'&&HEXRE.test(v))?v.toLowerCase():null; }
 function colorIdx(id){ var h=0; for(var i=0;i<id.length;i++){ h=((h*31)+id.charCodeAt(i))>>>0; } return h%PALETTE.length; }
@@ -485,11 +486,13 @@ function catLabel(r){ if(r.cat&&r.sub) return r.cat+' › '+r.sub; if(r.sub) ret
 var PAGE_SIZE=100;
 var pageByAcct={};
 var openAccts={},searchQ={},LAST=null,CACHED=null,LAST_VALID=null,currentPreset='custom';
-function txnTable(a,q){
+function filterRows(rows,q){
   var ql=String(q||'').toLowerCase();
-  var filt=a.rows;
-  if(ql) filt=a.rows.filter(function(r){ return r.name.toLowerCase().indexOf(ql)>=0||(r.sub&&r.sub.toLowerCase().indexOf(ql)>=0)||(r.cat&&r.cat.toLowerCase().indexOf(ql)>=0); });
-  var rev=filt.slice().reverse();
+  if(!ql) return rows;
+  return rows.filter(function(r){ return r.name.toLowerCase().indexOf(ql)>=0||(r.sub&&r.sub.toLowerCase().indexOf(ql)>=0)||(r.cat&&r.cat.toLowerCase().indexOf(ql)>=0); });
+}
+function txnTable(a,q){
+  var rev=filterRows(a.rows,q).slice().reverse();
   var N=rev.length;
   var pages=N===0?1:Math.ceil(N/PAGE_SIZE);
   var pg=pageByAcct[a.id]||1;
@@ -549,9 +552,7 @@ function pagerHandler(ev){
   var a=findAcct(id);
   if(!a) return;
   var q=searchQ[id]||'';
-  var ql=String(q).toLowerCase();
-  var filt=ql?a.rows.filter(function(r){ return r.name.toLowerCase().indexOf(ql)>=0||(r.sub&&r.sub.toLowerCase().indexOf(ql)>=0)||(r.cat&&r.cat.toLowerCase().indexOf(ql)>=0); }):a.rows;
-  var pages=Math.max(1,Math.ceil(filt.length/PAGE_SIZE));
+  var pages=Math.max(1,Math.ceil(filterRows(a.rows,q).length/PAGE_SIZE));
   var pg=pageByAcct[id]||1;
   if(action==='prev'&&pg>1) pg-=1;
   else if(action==='next'&&pg<pages) pg+=1;
@@ -828,7 +829,7 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 </main>
 <script type="application/json" id="dashboard-data">${json}</script>
 <script>
-${PAGE_JS}
+${PAGE_JS.replace("__PALETTE__", JSON.stringify(DEFAULT_ENTITY_COLORS))}
 </script>
 </body>
 </html>`;
@@ -843,7 +844,7 @@ export async function renderDashboardHtmlFile(
   const outputPath =
     out != null
       ? path.resolve(out)
-      : path.join(REPORT_HTML_DIRECTORY, `dashboard-${start}-${end}.html`);
+      : path.join(REPORTS_DIRECTORY, `dashboard-${start}-${end}.html`);
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, html, "utf8");
   return outputPath;

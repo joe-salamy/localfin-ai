@@ -1,12 +1,5 @@
-import path from "node:path";
-import process from "node:process";
 import { isIsoDate, isWithinReportSpan } from "../shared/validation.js";
 
-export const REPORT_HTML_DIRECTORY = path.resolve(
-  process.cwd(),
-  "logs",
-  "html",
-);
 
 interface ReportArgs {
   start: string;

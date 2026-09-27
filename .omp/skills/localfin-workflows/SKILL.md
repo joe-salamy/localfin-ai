@@ -22,7 +22,7 @@ Example order: checking/savings accounts → Food/Bills categories → Groceries
 
 ### Taxonomy ODS loop
 
-Inbox `~/Documents/LocalFin/inbox/taxonomy-review.fods` — pass it explicitly; the script default `./taxonomy-review.fods` never reaches the user's laptop (see `AGENTS.md`). Archive `data/archive/`.
+Inbox `~/Documents/LocalFin/inbox/taxonomy-review.fods` (the export default; see `AGENTS.md`). Archive `data/archive/`.
 Commands: `npm run taxonomy:export [-- out.fods]` and `npm run taxonomy:apply -- <file.fods> [--dry-run]`.
 Sheets: `_meta(key,value)`; `Categories(__id,name,type,color,__delete)`; `Subcategories(__id,name,category,__category_id,monthly_goal,color,__delete)`.
 Semantics: empty `__id` = create, `__delete=x` = delete; hidden `__` columns authoritative over the `category` display label.

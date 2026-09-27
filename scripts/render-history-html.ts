@@ -6,12 +6,12 @@ import { getDb } from "../server/db/index.js";
 import { getTransactionsWithDetails } from "../server/services/transactions/read.js";
 import {
   INTERACTIVE_JS,
-  REPORT_HTML_DIRECTORY,
   escapeHtml,
   formatMoney,
   parseReportArgs,
   reportUsage,
 } from "./report-html-common.js";
+import { REPORTS_DIRECTORY } from "./exchange-paths.js";
 
 export const MAX_HISTORY_ROWS = 50_000;
 
@@ -85,7 +85,7 @@ export async function renderHistoryHtmlFile(
   const outputPath =
     out != null
       ? path.resolve(out)
-      : path.join(REPORT_HTML_DIRECTORY, `history-${start}-${end}.html`);
+      : path.join(REPORTS_DIRECTORY, `history-${start}-${end}.html`);
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, html, "utf8");
   return outputPath;

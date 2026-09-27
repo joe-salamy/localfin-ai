@@ -18,80 +18,31 @@ import {
   checkTransferMatch,
 } from "../services/transactions.js";
 import {
+  bulkTransactionIds,
+  bulkTransactionUpdateFields,
+  nonEmptyUpdate,
+  transactionFiltersInput,
+  transactionInput,
+  transactionUpdateInput,
+} from "../input-schemas.js";
+import {
   finiteNumber,
   idParamSchema,
   isoDateString,
   nonEmptyString,
-  nonEmptyUpdate,
-  optionalQueryStringArray,
   parseRequest,
 } from "./validation.js";
-import {
-  transactionKindSchema,
-} from "../../shared/contracts/transactions.js";
-
-const optionalQueryBoolean = z.preprocess((value) => {
-  if (value === undefined || value === "") return undefined;
-  if (value === true || value === "true") return true;
-  if (value === false || value === "false") return false;
-  return value;
-}, z.boolean().optional());
 
 const router = Router();
-export const transactionFiltersSchema = z.object({
-  accountId: nonEmptyString.optional(),
-  accountIds: optionalQueryStringArray,
-  categoryIds: optionalQueryStringArray,
-  subcategoryId: nonEmptyString.optional(),
-  subcategoryIds: optionalQueryStringArray,
-  tagIds: optionalQueryStringArray,
-  kind: transactionKindSchema.optional(),
-  needsCategory: optionalQueryBoolean,
-  startDate: isoDateString.optional(),
-  endDate: isoDateString.optional(),
-  searchQuery: z.string().trim().min(1).max(200).optional(),
-  limit: z.coerce.number().int().positive().max(500).optional(),
-  offset: z.coerce.number().int().nonnegative().optional(),
-});
-const createTransactionSchema = z.object({
-  account_id: nonEmptyString,
-  date: isoDateString,
-  name: nonEmptyString,
-  amount: finiteNumber,
-  kind: transactionKindSchema.optional(),
-  subcategory_id: nonEmptyString.nullable().optional(),
-  tag_ids: z.array(nonEmptyString).max(50).optional(),
-  comment: z.string().nullable().optional(),
-  ai_suggested: z.boolean().optional(),
-});
-const updateTransactionSchema = nonEmptyUpdate({
-    date: isoDateString.optional(),
-    name: nonEmptyString.optional(),
-    amount: finiteNumber.optional(),
-  kind: transactionKindSchema.optional(),
-    subcategory_id: nonEmptyString.nullable().optional(),
-    tag_ids: z.array(nonEmptyString).max(50).optional(),
-    comment: z.string().nullable().optional(),
-    ai_suggested: z.boolean().optional(),
-});
+const updateTransactionSchema = nonEmptyUpdate(transactionUpdateInput.shape);
 const bulkCreateSchema = z.object({
-  transactions: z.array(createTransactionSchema).min(1).max(500),
+  transactions: z.array(transactionInput).min(1).max(500),
 });
 const bulkUpdateSchema = z.object({
-  ids: z.array(nonEmptyString).min(1).max(500),
-  updates: nonEmptyUpdate({
-      kind: transactionKindSchema.optional(),
-      subcategory_id: nonEmptyString.nullable().optional(),
-      add_tag_ids: z.array(nonEmptyString).max(50).optional(),
-      remove_tag_ids: z.array(nonEmptyString).max(50).optional(),
-    }),
+  ids: bulkTransactionIds,
+  updates: nonEmptyUpdate(bulkTransactionUpdateFields.shape),
 });
-const bulkDeleteSchema = z.object({
-  ids: z.array(nonEmptyString).min(1).max(500),
-});
-const bulkRestoreSchema = z.object({
-  ids: z.array(nonEmptyString).min(1).max(500),
-});
+const bulkIdsSchema = z.object({ ids: bulkTransactionIds });
 const duplicateCheckSchema = z.object({
   transactions: z
     .array(
@@ -105,19 +56,18 @@ const duplicateCheckSchema = z.object({
     .min(1)
     .max(500),
 });
-const transferCheckSchema = z
-  .object({
-    amount: finiteNumber,
-    date: isoDateString,
-    account_id: nonEmptyString,
-  });
+const transferCheckSchema = z.object({
+  amount: finiteNumber,
+  date: isoDateString,
+  account_id: nonEmptyString,
+});
 
 // Bounded server-side default so omitted `limit` never triggers a full-table
 // scan; `offset` without `limit` now paginates instead of being ignored.
 const DEFAULT_LIST_LIMIT = 500;
 
 router.get("/", (req: Request, res: Response) => {
-  const filters = parseRequest(transactionFiltersSchema, req.query);
+  const filters = parseRequest(transactionFiltersInput, req.query);
 
   const data = getTransactionsWithDetails({
     ...filters,
@@ -147,14 +97,14 @@ router.put("/bulk", (req: Request, res: Response) => {
 });
 
 router.delete("/bulk", (req: Request, res: Response) => {
-  const body = parseRequest(bulkDeleteSchema, req.body);
+  const body = parseRequest(bulkIdsSchema, req.body);
 
   const deletedIds = bulkDeleteTransactions(body.ids);
   res.json({ success: true, data: { deletedIds } });
 });
 
 router.post("/bulk/restore", (req: Request, res: Response) => {
-  const body = parseRequest(bulkRestoreSchema, req.body);
+  const body = parseRequest(bulkIdsSchema, req.body);
 
   const data = bulkRestoreTransactions(body.ids);
   res.json({ success: true, data });
@@ -187,7 +137,7 @@ router.get("/:id", (req: Request, res: Response) => {
 });
 
 router.post("/", (req: Request, res: Response) => {
-  const body = parseRequest(createTransactionSchema, req.body);
+  const body = parseRequest(transactionInput, req.body);
 
   const data = createTransaction(body);
   res.status(201).json({ success: true, data });

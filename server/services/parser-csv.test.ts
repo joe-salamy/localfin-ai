@@ -1,31 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import test from "node:test";
-import { closeDbForTests } from "../db/index.js";
 import { createAccount } from "../services/accounts.js";
 import { createTransaction } from "../services/transactions.js";
 import { parseStatement } from "./parser.js";
+import { useTempDatabase } from "../tests/helpers.js";
 
-const originalDbPath = process.env.LOCALFIN_DB_PATH;
-
-async function useTempDatabase(
-  t: { after: (fn: () => void | Promise<void>) => void },
-): Promise<void> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "localfin-parser-csv-"));
-  closeDbForTests();
-  process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
-  t.after(async () => {
-    closeDbForTests();
-    if (originalDbPath === undefined) {
-      delete process.env.LOCALFIN_DB_PATH;
-    } else {
-      process.env.LOCALFIN_DB_PATH = originalDbPath;
-    }
-    await rm(tempDir, { recursive: true, force: true });
-  });
-}
 
 void test("parser: chase sale/payment/return/fee map to kinds and liability signs", async (t) => {
   await useTempDatabase(t);

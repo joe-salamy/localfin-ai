@@ -1,17 +1,13 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { z } from "zod";
 import { parseStatement } from "../services/parser.js";
-import { nonEmptyString, parseRequest } from "./validation.js";
+import { parseStatementInput } from "../input-schemas.js";
+import { parseRequest } from "./validation.js";
 
 const router = Router();
-const parseStatementSchema = z.object({
-  text: nonEmptyString.max(500_000),
-  accountId: nonEmptyString,
-});
 
 router.post("/parse-statement", (req: Request, res: Response) => {
-  const body = parseRequest(parseStatementSchema, req.body);
+  const body = parseRequest(parseStatementInput, req.body);
   const data = parseStatement(body.text, body.accountId);
   res.json({ success: true, data });
 });

@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
@@ -22,27 +20,8 @@ import {
   renderDashboardHtml,
   renderDashboardHtmlFile,
 } from "./render-dashboard-html.ts";
+import { useTempDatabase } from "../server/tests/helpers.js";
 
-const originalDbPath = process.env.LOCALFIN_DB_PATH;
-
-async function useTempDatabase(
-  t: { after: (fn: () => void | Promise<void>) => void },
-  prefix = "localfin-dashboard-test-",
-): Promise<string> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), prefix));
-  closeDbForTests();
-  process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
-  t.after(async () => {
-    closeDbForTests();
-    if (originalDbPath === undefined) {
-      delete process.env.LOCALFIN_DB_PATH;
-    } else {
-      process.env.LOCALFIN_DB_PATH = originalDbPath;
-    }
-    await rm(tempDir, { recursive: true, force: true });
-  });
-  return process.env.LOCALFIN_DB_PATH;
-}
 
 function parsePayload(html: string): {
   accounts: Array<{ id: string }>;

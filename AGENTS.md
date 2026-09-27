@@ -7,7 +7,7 @@ This repo and `data/budget.db` live on OMEN (headless). The user edits spreadshe
 - `~/Documents/LocalFin/inbox/` — `.fods` exports to edit, edited files to apply, bank CSVs to ingest.
 - `~/Documents/LocalFin/reports/` — dashboard and history HTML.
 
-Always pass explicit paths there (`--out` for reports, the positional path for `*:export` / `*:apply`, e.g. `~/Documents/LocalFin/inbox/categorize-review.fods`). Never leave user-facing files in the repo root or `logs/html/`. The laptop runs `lfin-sync pull` to fetch outputs and `lfin-sync push [csv...]` to send edits and CSVs (pushed CSVs land in the inbox). After writing a file the user needs, tell them to run `lfin-sync pull`; before applying an edited file, ask them to run `lfin-sync push`. The absolute path you report is the same on the laptop.
+Reports and `*:export` files default to those folders; still pass explicit paths (`--out` for reports, the positional path for `*:export` / `*:apply`, e.g. `~/Documents/LocalFin/inbox/categorize-review.fods`). Never leave user-facing files in the repo root. The laptop runs `lfin-sync pull` to fetch outputs and `lfin-sync push [csv...]` to send edits and CSVs (pushed CSVs land in the inbox). After writing a file the user needs, tell them to run `lfin-sync pull`; before applying an edited file, ask them to run `lfin-sync push`. The absolute path you report is the same on the laptop.
 
 ## Dashboard generation
 

@@ -17,10 +17,10 @@ import {
   nonEmptyString,
   parseRequest,
 } from "./validation.js";
-import { transactionFiltersSchema } from "./transactions.js";
+import { transactionFiltersInput } from "../input-schemas.js";
 
 const suspectScanSchema = z.object({
-  filters: transactionFiltersSchema.optional(),
+  filters: transactionFiltersInput.optional(),
   flaggedWords: z.array(nonEmptyString).max(100).optional(),
 });
 const suspectReasonSchema = suspectReasonCodeSchema;

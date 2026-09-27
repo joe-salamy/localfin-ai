@@ -11,6 +11,8 @@ import {
   getRecentTransactionByNameAndAccount,
   getTransactionsWithDetails,
 } from "../server/services/transactions/read.js";
+import { INBOX_DIRECTORY } from "./exchange-paths.js";
+import { escapeXml, fodsDocument, fodsRow, floatCell, headerRow, stringCell } from "./ods-common.js";
 
 export interface CategorizeChoice {
   id: string;
@@ -85,12 +87,14 @@ export function collectCategorizeRows(
     let subcategory = current;
     let subcategoryId = t.subcategory_id ?? "";
     if (!current) {
+      // Same-kind matches only: an income subcategory on an expense row would
+      // fail validation when the file is applied.
       const recent = getRecentTransactionByNameAndAccount(t.name, t.account_id);
       const matchLabel = labelForSubcategory(
         recent?.subcategory_id ?? null,
         byId,
       );
-      if (matchLabel && recent?.subcategory_id) {
+      if (matchLabel && recent?.subcategory_id && recent.kind === t.kind) {
         suggestion = matchLabel;
         subcategory = matchLabel;
         subcategoryId = recent.subcategory_id;
@@ -110,34 +114,13 @@ export function collectCategorizeRows(
   });
 }
 
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-function stringCell(value: string, validationName?: string): string {
-  const validation =
-    validationName != null
-      ? ` table:content-validation-name="${validationName}"`
-      : "";
-  if (value === "") return `<table:table-cell${validation}/>`;
-  return `<table:table-cell office:value-type="string"${validation}><text:p>${escapeXml(value)}</text:p></table:table-cell>`;
-}
-
-function floatCell(value: number): string {
-  return `<table:table-cell office:value-type="float" office:value="${value}"><text:p>${escapeXml(String(value))}</text:p></table:table-cell>`;
-}
-
 export const REVIEW_HEADER = [
   "__id",
   "date",
   "name",
   "amount",
   "account",
-  "ai_suggestion",
+  "suggestion",
   "subcategory",
   "comment",
   "__subcategory_id",
@@ -153,45 +136,41 @@ export function buildCategorizeFods(
   const validationName = "SubcategoryChoice";
 
   const reviewRows = [
-    `<table:table-row>${REVIEW_HEADER.map((h) => stringCell(h)).join("")}</table:table-row>`,
-    ...rows.map(
-      (r) =>
-        `<table:table-row>${stringCell(r.id)}${stringCell(r.date)}${stringCell(r.name)}${floatCell(r.amount)}${stringCell(r.account)}${stringCell(r.suggestion)}${stringCell(r.subcategory, hasValidation ? validationName : undefined)}${stringCell(r.comment)}${stringCell(r.subcategoryId)}</table:table-row>`,
+    headerRow(REVIEW_HEADER),
+    ...rows.map((r) =>
+      fodsRow([
+        stringCell(r.id),
+        stringCell(r.date),
+        stringCell(r.name),
+        floatCell(r.amount),
+        stringCell(r.account),
+        stringCell(r.suggestion),
+        stringCell(r.subcategory, hasValidation ? validationName : undefined),
+        stringCell(r.comment),
+        stringCell(r.subcategoryId),
+      ]),
     ),
-  ].join("\n");
-
+  ];
   const choiceRows = [
-    `<table:table-row>${stringCell("label")}${stringCell("id")}</table:table-row>`,
-    ...choices.map(
-      (c) =>
-        `<table:table-row>${stringCell(c.label)}${stringCell(c.id)}</table:table-row>`,
-    ),
-  ].join("\n");
+    headerRow(["label", "id"]),
+    ...choices.map((c) => fodsRow([stringCell(c.label), stringCell(c.id)])),
+  ];
 
-  const validation = hasValidation
-    ? `<table:content-validations><table:content-validation table:name="${validationName}" table:condition="of:cell-content-is-in-list([$Choices.$A$2:.$A$${lastChoiceRow}])" table:allow-empty-cell="true" table:display-list="unsorted" table:base-cell-address="Review.G2"/></table:content-validations>`
+  const validations = hasValidation
+    ? `<table:content-validations><table:content-validation table:name="${escapeXml(validationName)}" table:condition="of:cell-content-is-in-list([$Choices.$A$2:.$A$${lastChoiceRow}])" table:allow-empty-cell="true" table:display-list="unsorted" table:base-cell-address="Review.G2"/></table:content-validations>`
     : "";
 
-  const splitEntry = (name: string): string =>
-    `<config:config-item-map-entry config:name="${escapeXml(name)}"><config:config-item config:name="CursorPositionX" config:type="int">0</config:config-item><config:config-item config:name="CursorPositionY" config:type="int">0</config:config-item><config:config-item config:name="ActiveSplitRange" config:type="short">2</config:config-item><config:config-item config:name="HorizontalSplitMode" config:type="short">2</config:config-item><config:config-item config:name="VerticalSplitMode" config:type="short">0</config:config-item><config:config-item config:name="HorizontalSplitPosition" config:type="int">1</config:config-item><config:config-item config:name="VerticalSplitPosition" config:type="int">0</config:config-item><config:config-item config:name="PositionLeft" config:type="int">0</config:config-item><config:config-item config:name="PositionRight" config:type="int">1</config:config-item><config:config-item config:name="PositionTop" config:type="int">1</config:config-item><config:config-item config:name="PositionBottom" config:type="int">1</config:config-item><config:config-item config:name="ZoomType" config:type="short">0</config:config-item><config:config-item config:name="ZoomValue" config:type="int">100</config:config-item><config:config-item config:name="ShowGrid" config:type="boolean">true</config:config-item></config:config-item-map-entry>`;
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0" xmlns:of="urn:oasis:names:tc:opendocument:xmlns:of:1.2" office:version="1.3" office:mimetype="application/vnd.oasis.opendocument.spreadsheet">
-<office:settings><config:config-item-set config:name="ooo:view-settings"><config:config-item-map-indexed config:name="Views"><config:config-item-map-entry><config:config-item-map-named config:name="Tables">${splitEntry("Review")}${splitEntry("Choices")}</config:config-item-map-named><config:config-item config:name="ActiveTable" config:type="string">Review</config:config-item></config:config-item-map-entry></config:config-item-map-indexed></config:config-item-set></office:settings>
-<office:automatic-styles><style:style style:name="co-hidden" style:family="table-column"><style:table-column-properties table:visibility="collapse"/></style:style></office:automatic-styles>
-<office:body><office:spreadsheet>
-<table:calculation-settings table:automatic-find-labels="false" table:use-regular-expressions="false" table:use-wildcards="true"/>
-${validation}
-<table:table table:name="Review">
-<table:table-column table:style-name="co-hidden"/><table:table-column/><table:table-column/><table:table-column/><table:table-column/><table:table-column/><table:table-column/><table:table-column/><table:table-column table:style-name="co-hidden"/>
-${reviewRows}
-</table:table>
-<table:table table:name="Choices">
-<table:table-column/><table:table-column/>
-${choiceRows}
-</table:table>
-</office:spreadsheet></office:body></office:document>
-`;
+  return fodsDocument(
+    [
+      {
+        name: "Review",
+        hiddenColumns: REVIEW_HEADER.map((h) => h.startsWith("__")),
+        rows: reviewRows,
+      },
+      { name: "Choices", hiddenColumns: [false, false], rows: choiceRows },
+    ],
+    { activeTable: "Review", validations },
+  );
 }
 
 export async function exportCategorizeOds(
@@ -210,7 +189,7 @@ export async function exportCategorizeOds(
 }
 
 export function exportUsage(): string {
-  return "Usage: categorize:export [out.fods] [--needs-category-only] [--limit N] (default out: ./categorize-review.fods)";
+  return "Usage: categorize:export [out.fods] [--needs-category-only] [--limit N] (default out: ~/Documents/LocalFin/inbox/categorize-review.fods)";
 }
 
 export function parseExportArgs(argv: string[]): {
@@ -235,7 +214,7 @@ export function parseExportArgs(argv: string[]): {
       positional.push(arg);
     }
   }
-  const out = positional[0] ?? "categorize-review.fods";
+  const out = positional[0] ?? path.join(INBOX_DIRECTORY, "categorize-review.fods");
   return { options: { out, needsCategoryOnly, limit } };
 }
 

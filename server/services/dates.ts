@@ -31,3 +31,16 @@ export function differenceInCalendarDaysUtc(later: Date, earlier: Date): number 
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
   return Math.round((startOf(later) - startOf(earlier)) / 86_400_000);
 }
+
+// Local-time stamps for file names and log partitions, which follow the
+// user's calendar day rather than UTC.
+export function localIsoDate(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** HHMMSS in local time. */
+export function localTimeCompact(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}

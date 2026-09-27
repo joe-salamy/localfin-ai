@@ -11,6 +11,7 @@ import {
 } from "../../shared/finance/transactionAmounts.js"
 import { isIsoDate } from "../../shared/validation.js";
 import { getDb } from "../db/index.js";
+import { localIsoDate } from "./dates.js";
 import { checkDuplicates } from "./transactions/checks.js";
 
 type BankProfileId = "chase" | "usbank" | "discover";
@@ -68,11 +69,6 @@ function parseCsvLine(line: string): string[] {
 }
 
 // ---------- Date parsing ----------
-
-function localIsoDate(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
 
 // Returns YYYY-MM-DD, or the trimmed input when it cannot be read as a date
 // (the row is then flagged for review). Statements without a year are dated

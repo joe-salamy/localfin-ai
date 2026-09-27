@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { closeDbForTests, getDb } from "../server/db/index.js";
@@ -18,27 +16,8 @@ import {
   parseTaxonomyWorkbook,
   validateTaxonomyRows,
 } from "./apply-taxonomy-ods.ts";
+import { useTempDatabase } from "../server/tests/helpers.js";
 
-const originalDbPath = process.env.LOCALFIN_DB_PATH;
-
-async function useTempDatabase(
-  t: { after: (fn: () => void | Promise<void>) => void },
-  prefix = "localfin-taxonomy-test-",
-): Promise<string> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), prefix));
-  closeDbForTests();
-  process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
-  t.after(async () => {
-    closeDbForTests();
-    if (originalDbPath === undefined) {
-      delete process.env.LOCALFIN_DB_PATH;
-    } else {
-      process.env.LOCALFIN_DB_PATH = originalDbPath;
-    }
-    await rm(tempDir, { recursive: true, force: true });
-  });
-  return process.env.LOCALFIN_DB_PATH;
-}
 
 function seedFixture(): { categoryId: string; subcategoryId: string } {
   const category = createCategory({ name: "Food", type: "expense" });

@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
-import { closeDbForTests, getDb } from "./db/index.js";
+import { getDb } from "./db/index.js";
 import {
   createAccount,
   deleteAccount,
@@ -46,29 +43,8 @@ import {
   updateSuspectTransactionFindingStatus,
 } from "./services/suspect-transactions.js";
 import { compileTransactionSearch } from "./services/transaction-search.js";
+import { useTempDatabase } from "./tests/helpers.js";
 
-const originalDbPath = process.env.LOCALFIN_DB_PATH;
-
-async function useTempDatabase(
-  t: { after: (fn: () => void | Promise<void>) => void },
-  prefix = "localfin-core-test-",
-): Promise<string> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), prefix));
-  closeDbForTests();
-  process.env.LOCALFIN_DB_PATH = path.join(tempDir, "budget.db");
-
-  t.after(async () => {
-    closeDbForTests();
-    if (originalDbPath === undefined) {
-      delete process.env.LOCALFIN_DB_PATH;
-    } else {
-      process.env.LOCALFIN_DB_PATH = originalDbPath;
-    }
-    await rm(tempDir, { recursive: true, force: true });
-  });
-
-  return process.env.LOCALFIN_DB_PATH;
-}
 
 function createSubcategoryFixture(): {
   assetAccountId: string;

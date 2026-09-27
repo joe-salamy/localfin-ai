@@ -245,59 +245,47 @@ export function getTagsForTransactions(
   return result;
 }
 
+// The helpers below take tag ids already checked with assertActiveTags (the
+// transaction services validate once per request, not once per row).
+
 export function replaceTransactionTags(
   transactionId: string,
   tagIds: string[],
 ): void {
   const db = getDb();
-  const activeTagIds = assertActiveTags(tagIds);
-  const replaceTags = db.transaction(() => {
-    db.prepare("DELETE FROM transaction_tags WHERE transaction_id = ?").run(
-      transactionId,
-    );
-    const stmt = db.prepare(
-      "INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)",
-    );
-    for (const tagId of activeTagIds) {
-      stmt.run(transactionId, tagId);
-    }
-  });
-
-  replaceTags();
+  db.prepare("DELETE FROM transaction_tags WHERE transaction_id = ?").run(
+    transactionId,
+  );
+  const stmt = db.prepare(
+    "INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)",
+  );
+  for (const tagId of tagIds) {
+    stmt.run(transactionId, tagId);
+  }
 }
 
 export function addTransactionTags(
   transactionId: string,
   tagIds: string[],
 ): void {
-  const db = getDb();
-  const activeTagIds = assertActiveTags(tagIds);
-  if (activeTagIds.length === 0) return;
-
-  const addTags = db.transaction(() => {
-    const stmt = db.prepare(
-      "INSERT OR IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)",
-    );
-    for (const tagId of activeTagIds) {
-      stmt.run(transactionId, tagId);
-    }
-  });
-
-  addTags();
+  const stmt = getDb().prepare(
+    "INSERT OR IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)",
+  );
+  for (const tagId of tagIds) {
+    stmt.run(transactionId, tagId);
+  }
 }
 
 export function removeTransactionTags(
   transactionId: string,
   tagIds: string[],
 ): void {
-  const db = getDb();
-  const activeTagIds = assertActiveTags(tagIds);
-  if (activeTagIds.length === 0) return;
-
-  const placeholders = activeTagIds.map(() => "?").join(", ");
-  db.prepare(
-    `DELETE FROM transaction_tags
-     WHERE transaction_id = ?
-       AND tag_id IN (${placeholders})`,
-  ).run(transactionId, ...activeTagIds);
+  if (tagIds.length === 0) return;
+  getDb()
+    .prepare(
+      `DELETE FROM transaction_tags
+       WHERE transaction_id = ?
+         AND tag_id IN (${tagIds.map(() => "?").join(", ")})`,
+    )
+    .run(transactionId, ...tagIds);
 }
