@@ -6,7 +6,7 @@ import {
 } from "./dates.js";
 import { getDb } from "../db/index.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
-import { buildTagExistsClause } from "./transaction-filters.js";
+import { buildTagExistsClause, netWorthEffectSql } from "./transaction-filters.js";
 import { resolveEntityColor } from "../../shared/finance/colors.js";
 import type { NetWorthDataPoint,
 SankeyData,
@@ -161,12 +161,12 @@ export function prepareSankeyData(
   );
   const tagFilter = buildSankeyTagFilter(tagIds);
 
-  // Get income flows (positive amounts in income categories)
+  // Income flows, as positive net-worth effects
   const incomeRows = db
     .prepare(
       `SELECT c.id AS category_id, c.name AS category_name, c.color AS category_color,
             s.id AS subcategory_id, s.name AS subcategory_name, s.color AS subcategory_color,
-            COALESCE(SUM(t.amount), 0) AS total
+            COALESCE(SUM(${netWorthEffectSql("t.amount", "a.type")}), 0) AS total
      FROM transactions t
      JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL
@@ -182,12 +182,12 @@ export function prepareSankeyData(
     )
     .all(effectiveStartDate, endDate, ...tagFilter.params) as CategoryFlowRow[];
 
-  // Get expense flows (negative amounts in expense categories)
+  // Expense flows, as positive magnitudes of negative net-worth effects
   const expenseRows = db
     .prepare(
       `SELECT c.id AS category_id, c.name AS category_name, c.color AS category_color,
             s.id AS subcategory_id, s.name AS subcategory_name, s.color AS subcategory_color,
-            COALESCE(SUM(ABS(t.amount)), 0) AS total
+            COALESCE(SUM(-${netWorthEffectSql("t.amount", "a.type")}), 0) AS total
      FROM transactions t
      JOIN subcategories s ON t.subcategory_id = s.id AND s.deleted_at IS NULL
      JOIN categories c ON s.category_id = c.id AND c.deleted_at IS NULL

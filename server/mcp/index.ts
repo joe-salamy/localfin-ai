@@ -38,6 +38,7 @@ import {
   getDashboardMetrics,
 } from "../services/dashboard.js";
 import { parseStatement } from "../services/parser.js";
+import { SEARCH_QUERY_HELP } from "../services/transaction-search.js";
 import { accountTypeSchema } from "../../shared/contracts/accounts.js";
 import { categoryTypeSchema } from "../../shared/contracts/categories.js";
 import { tagTypeSchema } from "../../shared/contracts/tags.js";
@@ -198,7 +199,7 @@ export const localfinSearchTransactionsInputSchema = z
     accountId: nonEmptyString.optional(),
   })
   .strict();
-defineTool("localfin_search_transactions", { title: "Search transactions", description: "Search transactions with rich query: quoted phrases, (parens), AND/OR/NOT, |, -term, fields name:/comment:/account:/category:/subcategory:/tag:/tags:, amount>20, date>=2026-01-01" }, localfinSearchTransactionsInputSchema, (input) => getTransactionsWithDetails({
+defineTool("localfin_search_transactions", { title: "Search transactions", description: `Search transactions. ${SEARCH_QUERY_HELP}` }, localfinSearchTransactionsInputSchema, (input) => getTransactionsWithDetails({
     searchQuery: input.searchQuery?.trim() ? input.searchQuery : undefined,
     limit: input.limit ?? 500,
     offset: input.offset,

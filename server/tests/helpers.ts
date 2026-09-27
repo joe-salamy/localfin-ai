@@ -15,6 +15,25 @@ const envelopeSchema = z.object({
 });
 export type Envelope = z.infer<typeof envelopeSchema>;
 
+/** Points the DB singleton at a fresh temp database for the duration of a test. */
+export async function useTempDatabase(
+  t: Pick<TestContext, "after">,
+  prefix = "localfin-test-",
+): Promise<string> {
+  const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
+  const previousPath = process.env.LOCALFIN_DB_PATH;
+  closeDbForTests();
+  const dbPath = path.join(directory, "budget.db");
+  process.env.LOCALFIN_DB_PATH = dbPath;
+  t.after(async () => {
+    closeDbForTests();
+    if (previousPath === undefined) delete process.env.LOCALFIN_DB_PATH;
+    else process.env.LOCALFIN_DB_PATH = previousPath;
+    await rm(directory, { recursive: true, force: true });
+  });
+  return dbPath;
+}
+
 export async function useApp(t: TestContext, prefix: string): Promise<string> {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
   const previousPath = process.env.LOCALFIN_DB_PATH;

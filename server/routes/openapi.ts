@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { API_ROUTES } from "../config/app.js";
+import { SEARCH_QUERY_HELP } from "../services/transaction-search.js";
 
 export const openApiRouter = Router();
 
@@ -102,7 +103,7 @@ const spec = {
       get: {
         summary: "List/search transactions",
         parameters: [
-          { name: "searchQuery", in: "query", required: false, schema: { type: "string" }, description: "Rich search: quoted phrases, (parens), AND/OR/NOT, |, -term, fields name:/comment:/account:/category:/subcategory:/tag:/tags:, amount>20, date>=2026-01-01" },
+          { name: "searchQuery", in: "query", required: false, schema: { type: "string" }, description: SEARCH_QUERY_HELP },
           { name: "limit", in: "query", schema: { type: "integer" } },
           { name: "offset", in: "query", schema: { type: "integer" } },
           { name: "accountId", in: "query", schema: { type: "string" } },

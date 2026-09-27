@@ -1,10 +1,13 @@
 import type { Transaction } from "../../../shared/contracts/index.js";
+import { netWorthEffect } from "../../../shared/finance/transactionAmounts.js";
 import { getDb } from "../../db/index.js";
+import { netWorthEffectSql } from "../transaction-filters.js";
 import {
   type DuplicateCheckItem,
   type TransactionRow,
   rowToTransaction,
 } from "./internal.js";
+import { getActiveAccountType } from "./validation.js";
 
 export function checkDuplicates(transactions: DuplicateCheckItem[]): boolean[] {
   if (transactions.length === 0) return [];
@@ -38,26 +41,32 @@ export function checkDuplicates(transactions: DuplicateCheckItem[]): boolean[] {
   });
 }
 
+/**
+ * Finds the other side of a transfer: a transaction on another account within
+ * three days whose net-worth effect cancels this one. Between two assets the
+ * stored signs are opposite; between an asset and a liability (a card payment)
+ * both sides are stored negative.
+ */
 export function checkTransferMatch(
   amount: number,
   accountId: string,
   date: string,
 ): Transaction | null {
   const db = getDb();
-
+  const effect = netWorthEffect(amount, getActiveAccountType(accountId));
   const row = db
     .prepare(
       `
-    SELECT * FROM transactions
-    WHERE account_id != ?
-      AND amount = ?
-      AND deleted_at IS NULL
-      AND date BETWEEN date(?, '-3 days') AND date(?, '+3 days')
-    ORDER BY ABS(julianday(date) - julianday(?)) ASC
+    SELECT t.* FROM transactions t
+    JOIN accounts a ON a.id = t.account_id AND a.deleted_at IS NULL
+    WHERE t.account_id != ?
+      AND ABS(${netWorthEffectSql("t.amount", "a.type")} + ?) < 0.005
+      AND t.deleted_at IS NULL
+      AND t.date BETWEEN date(?, '-3 days') AND date(?, '+3 days')
+    ORDER BY ABS(julianday(t.date) - julianday(?)) ASC
     LIMIT 1
   `,
     )
-    .get(accountId, -amount, date, date, date) as TransactionRow | undefined;
-
+    .get(accountId, effect, date, date, date) as TransactionRow | undefined;
   return row ? rowToTransaction(row) : null;
 }

@@ -22,7 +22,7 @@ export interface Transaction {
 
 export interface TransactionWithDetails extends Transaction {
   account_name?: string;
-  account_type?: string;
+  account_type?: AccountType;
   account_color?: string | null;
   subcategory_name?: string;
   subcategory_color?: string | null;

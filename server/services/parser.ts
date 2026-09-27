@@ -2,6 +2,7 @@ import type { AccountType,
 EnrichedTransaction,
 ParsedTransaction, TransactionKind } from "../../shared/contracts/index.js"
 import {
+  netWorthEffect,
   normalizeTransactionAmount,
   roundCurrencyAmount,
 } from "../../shared/finance/transactionAmounts.js"
@@ -9,6 +10,14 @@ export { inferTransactionKindForAccount } from "../../shared/finance/transaction
 import { getDb } from "../db/index.js";
 
 export type BankProfileId = "chase" | "usbank" | "discover";
+
+// Sign of a raw CSV amount that adds money to the account holder: Chase and
+// US Bank export payments/deposits as positive, Discover exports them negative.
+const PROFILE_INFLOW_SIGN: Record<BankProfileId, 1 | -1> = {
+  chase: 1,
+  usbank: 1,
+  discover: -1,
+};
 
 export function detectBankProfile(headers: string[]): BankProfileId | null {
   const normalized = headers.map((cell) => cell.trim().replace(/^["']|["']$/g, "").trim().toLowerCase());
@@ -428,9 +437,13 @@ export async function parseStatement(
     }
 
     const resolvedKind = kind as TransactionKind;
+    // Transfers keep their direction: inbound money raises the account's
+    // net-worth effect, outbound lowers it, whatever the account type.
     const storedAmount =
       resolvedKind === "transfer"
-        ? roundCurrencyAmount(-magnitude)
+        ? roundCurrencyAmount(
+            netWorthEffect(rawAmountValue * PROFILE_INFLOW_SIGN[resolvedProfile], account.type),
+          )
         : normalizeTransactionAmount(magnitude, account.type, resolvedKind);
 
     const needsReview = storedAmount === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date);

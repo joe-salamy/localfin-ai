@@ -34,3 +34,12 @@ export function inferTransactionKindForAccount(
   }
   return amount > 0 ? "income" : "expense";
 }
+
+/**
+ * Stored amounts are signed per account: a positive asset amount adds money,
+ * a positive liability amount adds debt. The net-worth effect puts both on
+ * one scale so amounts from different account types can be compared or summed.
+ */
+export function netWorthEffect(amount: number, accountType: AccountType): number {
+  return accountType === "liability" ? -amount : amount;
+}

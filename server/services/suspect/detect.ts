@@ -6,6 +6,7 @@ import type {
   SuspectTransactionFinding,
   TransactionWithDetails,
 } from "../../../shared/contracts/index.js";
+import { netWorthEffect } from "../../../shared/finance/transactionAmounts.js";
 
 export interface FindingDraft {
   transaction: TransactionWithDetails;
@@ -283,6 +284,10 @@ export function detectRapidSmallCharge(
   };
 }
 
+function effectOf(tx: TransactionWithDetails): number {
+  return netWorthEffect(tx.amount, tx.account_type ?? "asset");
+}
+
 const transferPattern = /\b(payment|transfer|xfer|venmo|zelle|ach)\b/i;
 
 export function detectUnmatchedTransfer(
@@ -294,7 +299,7 @@ export function detectUnmatchedTransfer(
     (candidate) =>
       candidate.id !== tx.id &&
       candidate.account_id !== tx.account_id &&
-      Math.abs(candidate.amount + tx.amount) < 0.01 &&
+      Math.abs(effectOf(candidate) + effectOf(tx)) < 0.01 &&
       dateDistanceDays(candidate.date, tx.date) <= 3,
   );
   if (match) return null;

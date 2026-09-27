@@ -12,3 +12,8 @@ export function buildTagExistsClause(
     params: [...tagIds],
   };
 }
+
+/** SQL form of `netWorthEffect`: income is positive, expenses negative, on any account type. */
+export function netWorthEffectSql(amountColumn: string, accountTypeColumn: string): string {
+  return `(CASE WHEN ${accountTypeColumn} = 'liability' THEN -(${amountColumn}) ELSE ${amountColumn} END)`;
+}

@@ -1,4 +1,4 @@
-import type { Tag, Transaction, TransactionFilters, TransactionKind, TransactionWithDetails } from "../../../shared/contracts/index.js";
+import type { AccountType, Tag, Transaction, TransactionFilters, TransactionKind, TransactionWithDetails } from "../../../shared/contracts/index.js";
 import { toBool } from "../../db/index.js";
 import { compileTransactionSearch } from "../transaction-search.js";
 import { buildTagExistsClause, placeholders } from "../transaction-filters.js";
@@ -23,7 +23,7 @@ export interface TransactionRow {
 
 export interface TransactionWithDetailsRow extends TransactionRow {
   account_name: string | null;
-  account_type: string | null;
+  account_type: AccountType | null;
   account_initial_balance: number | null;
   account_color: string | null;
   subcategory_name: string | null;

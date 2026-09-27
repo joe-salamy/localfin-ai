@@ -1,6 +1,9 @@
 import { BadRequestError } from "../errors.js";
 import { isIsoDate } from "../../shared/validation.js";
 
+export const SEARCH_QUERY_HELP =
+  "Rich search: quoted phrases, (parens), AND/OR/NOT, |, -term, fields name:/comment:/account:/category:/subcategory:/tag:/tags:/type:, amount>20 (compares absolute value), date>=2026-01-01";
+
 export class TransactionSearchSyntaxError extends BadRequestError {
   constructor(message: string) {
     super(`Invalid transaction search: ${message}`);
@@ -402,28 +405,21 @@ function compileDateField(
 }
 
 
+// `type:` matches the transaction kind, plus the category type when the
+// category is joined. Stored amount signs depend on the account type, so they
+// cannot tell income from expense.
 function compileTypeField(
-  categoryTypeColumn: string,
-  amountColumn: string,
+  aliases: SearchAliases,
   operator: SearchOperator,
   value: string,
 ): CompiledTransactionSearch {
-  const compiledText = compileTextField(categoryTypeColumn, operator, value);
-  const normalizedValue = value.toLowerCase();
-  if (operator !== ":" && operator !== "=") return compiledText;
-  if (normalizedValue === "income") {
-    return {
-      clause: `(${compiledText.clause} OR ${amountColumn} > 0)`,
-      params: compiledText.params,
-    };
-  }
-  if (normalizedValue === "expense") {
-    return {
-      clause: `(${compiledText.clause} OR ${amountColumn} < 0)`,
-      params: compiledText.params,
-    };
-  }
-  return compiledText;
+  const kind = compileTextField(transactionColumn(aliases, "kind"), operator, value);
+  if (!aliases.category) return kind;
+  const categoryType = compileTextField(`${aliases.category}.type`, operator, value);
+  return {
+    clause: `(${kind.clause} OR ${categoryType.clause})`,
+    params: [...kind.params, ...categoryType.params],
+  };
 }
 
 function compileFieldNode(
@@ -464,8 +460,10 @@ function compileFieldNode(
     case "tag":
       return compileTagField(aliases, node.operator, node.value);
     case "amount":
+      // Magnitude comparison: expenses are negative on assets but positive on
+      // liabilities, so `amount>20` means "more than $20 either way".
       return compileNumericField(
-        transactionColumn(aliases, "amount"),
+        `ABS(${transactionColumn(aliases, "amount")})`,
         node.operator,
         node.value,
       );
@@ -476,12 +474,7 @@ function compileFieldNode(
         node.value,
       );
     case "type":
-      return compileTypeField(
-        `${optionalAlias(aliases, "category")}.type`,
-        transactionColumn(aliases, "amount"),
-        node.operator,
-        node.value,
-      );
+      return compileTypeField(aliases, node.operator, node.value);
   }
 }
 

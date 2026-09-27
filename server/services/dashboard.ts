@@ -5,7 +5,7 @@ import {
 } from "./dates.js";
 import { getDb } from "../db/index.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
-import { buildTagExistsClause } from "./transaction-filters.js";
+import { buildTagExistsClause, netWorthEffectSql } from "./transaction-filters.js";
 import type { AccountSummary,
 AccountTransaction,
 AccountType,
@@ -119,6 +119,12 @@ function prorateMonthlyGoal(
   return total;
 }
 
+// Income as a positive net-worth effect, expenses as a negative one, whatever
+// the account type (liability purchases are stored positive, refunds negative).
+const EFFECT = netWorthEffectSql("t.amount", "a.type");
+const INCOME_TOTAL = `COALESCE(SUM(CASE WHEN t.kind = 'income' THEN ${EFFECT} ELSE 0 END), 0)`;
+const EXPENSE_TOTAL = `COALESCE(SUM(CASE WHEN t.kind = 'expense' THEN -${EFFECT} ELSE 0 END), 0)`;
+
 // === Dashboard Functions ===
 
 export function getAccountSummary(
@@ -228,21 +234,17 @@ export function getCategorySummary(
        s.id AS subcategory_id,
        s.name AS subcategory_name,
        s.color AS subcategory_color,
-       COALESCE(SUM(t.amount), 0) AS total,
+       COALESCE(SUM(t.effect), 0) AS total,
        s.monthly_goal
      FROM categories c
      JOIN subcategories s ON s.category_id = c.id AND s.deleted_at IS NULL
-     LEFT JOIN transactions t
-       ON t.subcategory_id = s.id
-       AND t.date >= ? AND t.date <= ?
-       AND t.deleted_at IS NULL
-       AND EXISTS (
-         SELECT 1
-         FROM accounts a
-         WHERE a.id = t.account_id AND a.deleted_at IS NULL
-       )
-       AND t.kind = c.type
-       ${tagFilter.clause}
+     LEFT JOIN (
+       SELECT t.subcategory_id, t.kind, ${EFFECT} AS effect
+       FROM transactions t
+       JOIN accounts a ON a.id = t.account_id AND a.deleted_at IS NULL
+       WHERE t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
+         ${tagFilter.clause}
+     ) t ON t.subcategory_id = s.id AND t.kind = c.type
      WHERE c.deleted_at IS NULL
      GROUP BY c.id, s.id
      ORDER BY c.type, c.name, s.name`,
@@ -319,8 +321,8 @@ export function getDashboardMetrics(
   const row = db
     .prepare(
       `SELECT
-       COALESCE(SUM(CASE WHEN t.kind = 'income' THEN t.amount ELSE 0 END), 0) AS totalIncome,
-       COALESCE(SUM(CASE WHEN t.kind = 'expense' THEN ABS(t.amount) ELSE 0 END), 0) AS totalExpenses
+       ${INCOME_TOTAL} AS totalIncome,
+       ${EXPENSE_TOTAL} AS totalExpenses
      FROM transactions t
      JOIN accounts a ON t.account_id = a.id AND a.deleted_at IS NULL
      WHERE t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
@@ -358,9 +360,9 @@ export function getTagSummary(
         tag.name AS tag_name,
         tag.type AS tag_type,
         tag.color AS tag_color,
-        COALESCE(SUM(CASE WHEN t.kind = 'expense' THEN ABS(t.amount) ELSE 0 END), 0) AS expense_total,
-        COALESCE(SUM(CASE WHEN t.kind = 'income' THEN t.amount ELSE 0 END), 0) AS income_total,
-        COALESCE(SUM(t.amount), 0) AS net_total,
+        ${EXPENSE_TOTAL} AS expense_total,
+        ${INCOME_TOTAL} AS income_total,
+        ${INCOME_TOTAL} - ${EXPENSE_TOTAL} AS net_total,
         COUNT(DISTINCT t.id) AS transaction_count
        FROM tags tag
        JOIN transaction_tags tt ON tt.tag_id = tag.id
@@ -385,9 +387,9 @@ export function getTagSummary(
         c.name AS category_name,
         c.type AS category_type,
         c.color AS category_color,
-        COALESCE(SUM(CASE WHEN t.kind = 'expense' THEN ABS(t.amount) ELSE 0 END), 0) AS expense_total,
-        COALESCE(SUM(CASE WHEN t.kind = 'income' THEN t.amount ELSE 0 END), 0) AS income_total,
-        COALESCE(SUM(t.amount), 0) AS net_total,
+        ${EXPENSE_TOTAL} AS expense_total,
+        ${INCOME_TOTAL} AS income_total,
+        ${INCOME_TOTAL} - ${EXPENSE_TOTAL} AS net_total,
         COUNT(DISTINCT t.id) AS transaction_count
        FROM tags tag
        JOIN transaction_tags tt ON tt.tag_id = tag.id
