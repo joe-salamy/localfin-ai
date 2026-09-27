@@ -115,11 +115,18 @@ function assertFodsCellBalance(xml: string): void {
 
 export function readWorkbook(inputPath: string): { resolved: string; workbook: XLSX.WorkBook } {
   const resolved = path.resolve(inputPath);
-  if (resolved.toLowerCase().endsWith(".fods")) {
-    assertFodsCellBalance(readFileSync(resolved, "utf8"));
-  }
+  let bytes: Buffer;
   try {
-    return { resolved, workbook: XLSX.readFile(resolved) };
+    bytes = readFileSync(resolved);
+  } catch (cause) {
+    throw new Error(`Cannot read spreadsheet: ${resolved} :: ${String(cause)}`);
+  }
+  if (resolved.toLowerCase().endsWith(".fods")) {
+    assertFodsCellBalance(bytes.toString("utf8"));
+  }
+  // SheetJS's ESM build has no filesystem access, so parse the bytes here.
+  try {
+    return { resolved, workbook: XLSX.read(bytes, { type: "buffer" }) };
   } catch (cause) {
     throw new Error(`Cannot read spreadsheet: ${resolved} :: ${String(cause)}`);
   }
