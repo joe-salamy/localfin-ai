@@ -6,16 +6,9 @@ import { fileURLToPath } from "node:url";
 import { getAccounts } from "../server/services/accounts.js";
 import { getSubcategories } from "../server/services/categories.js";
 import { parseStatement } from "../server/services/parser.js";
-import {
-  bulkCreateTransactions,
-  createTransaction,
-} from "../server/services/transactions/create.js";
-import {
-  getRecentTransactionByNameAndAccount,
-  getTransactionById,
-} from "../server/services/transactions/read.js";
-import { ConflictError, OperationalError } from "../server/errors.js";
-import type { Account, CreateTransactionData, EnrichedTransaction } from "../shared/contracts/index.js";
+import { bulkCreateTransactions } from "../server/services/transactions/create.js";
+import { getRecentTransactionByNameAndAccount } from "../server/services/transactions/read.js";
+import type { Account, CreateTransactionData, ParsedStatementRow } from "../shared/contracts/index.js";
 import { isIsoDate } from "../shared/validation.js";
 import { exportCategorizeOds } from "./export-categorize-ods.js";
 
@@ -28,7 +21,7 @@ export function normalizeAccountName(name: string): string {
 }
 
 export function buildTransactionPayloads(
-  transactions: EnrichedTransaction[],
+  transactions: ParsedStatementRow[],
   accountId: string,
 ): { payloads: CreateTransactionData[]; skipped: number } {
   const activeSubcategoryIds = new Set(getSubcategories().map((s) => s.id));
@@ -164,11 +157,8 @@ interface ChunkStats {
   profile: string | null;
 }
 
-async function processChunk(
-  account: Account,
-  body: string,
-): Promise<ChunkStats> {
-  const parsed = await parseStatement(body, account.id);
+function processChunk(account: Account, body: string): ChunkStats {
+  const parsed = parseStatement(body, account.id);
   for (const message of parsed.errors) console.error(`[${account.name}] ${message}`);
   const unknownFormat = parsed.errors.find((e) => e.startsWith("Unknown CSV format"));
   if (unknownFormat !== undefined) throw new Error(unknownFormat);
@@ -178,42 +168,14 @@ async function processChunk(
 
   const { payloads, skipped } = buildTransactionPayloads(candidates, account.id);
 
-  let createdIds: string[] = [];
-  if (payloads.length > 0) {
-    try {
-      createdIds = bulkCreateTransactions(payloads).map((t) => t.id);
-    } catch (error) {
-      if (!(error instanceof ConflictError)) throw error;
-      console.error(`[${account.name}] Bulk create hit a duplicate (${error.message}); continuing per row`);
-      for (const payload of payloads) {
-        try {
-          createdIds.push(createTransaction(payload).id);
-        } catch (rowError) {
-          if (rowError instanceof OperationalError) {
-            console.error(
-              `[${account.name}] Skipping duplicate "${payload.name}" on ${payload.date}: ${rowError.message}`,
-            );
-          } else {
-            throw rowError;
-          }
-        }
-      }
-    }
-  }
-
-  const needsCategory: string[] = [];
-  for (const id of createdIds) {
-    const row = getTransactionById(id);
-    if (
-      row?.subcategory_id == null &&
-      (row?.kind === "income" || row?.kind === "expense")
-    ) {
-      needsCategory.push(id);
-    }
-  }
+  // One transaction for the whole statement: any invalid row rolls back all.
+  const created = payloads.length > 0 ? bulkCreateTransactions(payloads) : [];
+  const needsCategory = created
+    .filter((row) => row.subcategory_id == null && (row.kind === "income" || row.kind === "expense"))
+    .map((row) => row.id);
 
   console.log(
-    `[${account.name}] created ${createdIds.length}, duplicates ${duplicates.length}, skipped ${skipped}`,
+    `[${account.name}] created ${created.length}, duplicates ${duplicates.length}, skipped ${skipped}`,
   );
   if (duplicates.length > 0) {
     for (const d of duplicates.slice(0, 20)) {
@@ -226,7 +188,7 @@ async function processChunk(
 
   return {
     accountName: account.name,
-    created: createdIds.length,
+    created: created.length,
     duplicates: duplicates.length,
     skipped,
     needsCategory,
@@ -307,7 +269,7 @@ export async function ingestStatementCsv(
   const account = resolveAccountName(accountName, getAccounts());
   const text = readCsvFile(file);
   if (dryRun) {
-    const parsed = await parseStatement(text, account.id);
+    const parsed = parseStatement(text, account.id);
     for (const message of parsed.errors) console.error(`[${account.name}] ${message}`);
     const failedFormat = parsed.errors.find((e) => e.startsWith("Unknown CSV format"));
     if (failedFormat !== undefined) throw new Error(failedFormat);
@@ -326,7 +288,7 @@ export async function ingestStatementCsv(
       profile: parsed.format,
     };
   }
-  const stats = await processChunk(account, text);
+  const stats = processChunk(account, text);
   const archivePath = archiveCsvMove(path.resolve(file), account.name, stats.profile, stats);
   console.log(`Archived source CSV to ${archivePath}`);
   await maybeExportOds(out, [stats]);

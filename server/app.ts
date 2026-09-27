@@ -24,7 +24,7 @@ function hasExpressBodyErrorType(
   );
 }
 
-export const errorHandler: ErrorRequestHandler = (error, req, res, next) => {
+const errorHandler: ErrorRequestHandler = (error, req, res, next) => {
   if (res.headersSent) {
     next(error);
     return;

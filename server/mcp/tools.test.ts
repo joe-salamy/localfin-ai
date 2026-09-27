@@ -293,7 +293,7 @@ void test("mcp: localfin_parse_statement success and validation error", async (t
     text: "Transaction Date,Post Date,Description,Category,Type,Amount,Memo\n09/12/2026,09/13/2026,TRADER JOES,Food,Sale,-48.23,",
     accountId: account.id,
   });
-  const result = await parseStatement(parsed.text, parsed.accountId);
+  const result = parseStatement(parsed.text, parsed.accountId);
   assert.ok(result.transactions.length >= 1);
   expectZodError(() => schema.parse({ text: "", accountId: account.id }));
   expectZodError(() => schema.parse({ text: "hi", accountId: "" }));

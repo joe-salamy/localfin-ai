@@ -8,7 +8,7 @@ export const REPORT_HTML_DIRECTORY = path.resolve(
   "html",
 );
 
-export interface ReportArgs {
+interface ReportArgs {
   start: string;
   end: string;
   out: string | null;

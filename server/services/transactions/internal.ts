@@ -35,18 +35,6 @@ export interface TransactionWithDetailsRow extends TransactionRow {
   running_balance?: number | null;
 }
 
-export interface RecentActivityRow {
-  account_id: string;
-  account_name: string;
-  account_type: string;
-  account_color: string | null;
-  current_balance: number;
-  last_transaction_id: string | null;
-  last_transaction_date: string | null;
-  last_transaction_name: string | null;
-  last_transaction_amount: number | null;
-}
-
 export interface DuplicateCheckItem {
   date: string;
   name: string;

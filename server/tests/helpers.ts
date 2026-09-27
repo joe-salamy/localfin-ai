@@ -13,7 +13,7 @@ const envelopeSchema = z.object({
   data: z.unknown().optional(),
   error: z.string().optional(),
 });
-export type Envelope = z.infer<typeof envelopeSchema>;
+type Envelope = z.infer<typeof envelopeSchema>;
 
 /** Points the DB singleton at a fresh temp database for the duration of a test. */
 export async function useTempDatabase(

@@ -10,9 +10,9 @@ const parseStatementSchema = z.object({
   accountId: nonEmptyString,
 });
 
-router.post("/parse-statement", async (req: Request, res: Response) => {
+router.post("/parse-statement", (req: Request, res: Response) => {
   const body = parseRequest(parseStatementSchema, req.body);
-  const data = await parseStatement(body.text, body.accountId);
+  const data = parseStatement(body.text, body.accountId);
   res.json({ success: true, data });
 });
 

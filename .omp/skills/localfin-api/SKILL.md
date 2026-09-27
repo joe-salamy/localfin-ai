@@ -28,7 +28,7 @@ Plug-and-play finance endpoints for external agents (OMP, Claude, Codex). No emb
 
 ## Envelope
 
-All routes use `shared/contracts/api.ts: ApiResponse<T> = {success:boolean, data?:T, error?:string}`. Validate with Zod schemas from `shared/contracts/*` and `shared/validation.ts`.
+All routes return `{success: boolean, data?: T, error?: string}`. Validate with Zod schemas from `shared/contracts/*` and `shared/validation.ts`.
 
 ## Context fetch (how to become an agent)
 

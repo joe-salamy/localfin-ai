@@ -43,7 +43,7 @@ void test("parser dates: no-year rows never land in the future, invalid dates ne
 
   await useTempDatabase(t);
   const account = createAccount({ name: "Checking", type: "asset" });
-  const result = await parseStatement(
+  const result = parseStatement(
     [
       '"Date","Transaction","Name","Memo","Amount"',
       '"2026-13-40","DEBIT","BAD DATE STORE","x","-5.00"',
@@ -67,11 +67,6 @@ void test("ingest reuses a past subcategory only for the same kind", async (t) =
     originalLine: "",
     needsReview: false,
     isDuplicate: false,
-    confidence: 1,
-    subcategory_id: null,
-    subcategory_name: null,
-    category_name: null,
-    categorizationSource: "none" as const,
   };
   const { payloads } = buildTransactionPayloads(
     [

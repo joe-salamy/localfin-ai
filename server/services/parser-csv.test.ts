@@ -37,7 +37,7 @@ void test("parser: chase sale/payment/return/fee map to kinds and liability sign
     "09/11/2026,09/12/2026,Fangfrisch Return,,Return,25.00,",
     "09/10/2026,09/11/2026,ANNUAL MEMBERSHIP FEE,,Fee,-95.00,",
   ].join("\n");
-  const result = await parseStatement(text, account.id);
+  const result = parseStatement(text, account.id);
   assert.equal(result.format, "chase");
   assert.equal(result.transactions.length, 4);
   const byName = Object.fromEntries(result.transactions.map((r) => [r.name, r]));
@@ -60,7 +60,7 @@ void test("parser: usbank debit/credit/payment-name map to kinds and asset signs
     '"2026-07-13","DEBIT","DEBIT PURCHASE -VISA STORE","x","-17.00"',
     '"2026-07-23","DEBIT","MOBILE BANKING PAYMENT TO CREDIT CARD 8067","x","-955.93"',
   ].join("\n");
-  const result = await parseStatement(text, account.id);
+  const result = parseStatement(text, account.id);
   assert.equal(result.format, "usbank");
   assert.equal(result.transactions.length, 3);
   const byName = Object.fromEntries(result.transactions.map((r) => [r.name, r]));
@@ -81,7 +81,7 @@ void test("parser: discover purchase/payment/awards map to kinds and liability s
     '09/06/2026,09/06/2026,"AUTOMATIC STATEMENT CREDIT",-30.07,"Awards and Rebate Credits"',
     '09/07/2026,09/08/2026,"INTERNET PAYMENT - THANK YOU",-500.00,"Payments and Credits"',
   ].join("\n");
-  const result = await parseStatement(text, account.id);
+  const result = parseStatement(text, account.id);
   assert.equal(result.format, "discover");
   assert.equal(result.transactions.length, 3);
   const byName = Object.fromEntries(result.transactions.map((r) => [r.name, r]));
@@ -96,7 +96,7 @@ void test("parser: discover purchase/payment/awards map to kinds and liability s
 void test("parser: unknown headers abort with headers-seen error before writes", async (t) => {
   await useTempDatabase(t);
   const account = createAccount({ name: "Fidelity Brokerage", type: "asset" });
-  const result = await parseStatement("foo,bar,baz\n1,2,3", account.id);
+  const result = parseStatement("foo,bar,baz\n1,2,3", account.id);
   assert.equal(result.transactions.length, 0);
   assert.equal(result.format, null);
   assert.match(result.errors.join("\n"), /Unknown CSV format/);
@@ -114,7 +114,7 @@ void test("parser: count dedup creates one of two same-key rows, then zero on re
   });
   const header = "Transaction Date,Post Date,Description,Category,Type,Amount,Memo";
   const row = "09/12/2026,09/13/2026,TRADER JOE S #215,Food,Sale,-48.23,";
-  const first = await parseStatement([header, row, row].join("\n"), account.id);
+  const first = parseStatement([header, row, row].join("\n"), account.id);
   assert.equal(first.transactions.length, 2);
   assert.equal(first.transactions.filter((r) => r.isDuplicate).length, 1);
   assert.equal(first.transactions.filter((r) => !r.isDuplicate).length, 1);
@@ -128,7 +128,7 @@ void test("parser: count dedup creates one of two same-key rows, then zero on re
       kind: r.kind,
     });
   }
-  const second = await parseStatement([header, row, row].join("\n"), account.id);
+  const second = parseStatement([header, row, row].join("\n"), account.id);
   assert.equal(second.transactions.filter((r) => !r.isDuplicate).length, 0);
   assert.equal(second.transactions.filter((r) => r.isDuplicate).length, 2);
 });

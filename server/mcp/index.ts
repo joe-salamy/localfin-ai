@@ -293,7 +293,7 @@ export const localfinParseStatementInputSchema = z
     accountId: nonEmptyString,
   })
   .strict();
-defineTool("localfin_parse_statement", { title: "Parse statement", description: "Parse bank CSV text into transactions (deterministic, no AI categorization; format reports chase|usbank|discover). Returns EnrichedTransaction[] with subcategory_id null and categorizationSource none; apply exact lookup then the OMP categorization skill afterwards." }, localfinParseStatementInputSchema, (input) => parseStatement(input.text, input.accountId));
+defineTool("localfin_parse_statement", { title: "Parse statement", description: "Parse bank CSV text into transactions (deterministic, no AI categorization; format reports chase|usbank|discover). Rows are signed for the account and uncategorized; apply exact lookup then the OMP categorization skill afterwards." }, localfinParseStatementInputSchema, (input) => parseStatement(input.text, input.accountId));
 
 async function main(): Promise<void> {
   // Open (and migrate) the DB before accepting requests. stdout carries the

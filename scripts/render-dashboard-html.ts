@@ -233,8 +233,6 @@ function nwSeries(eff,end,req){
     for(kk=0;kk<ACCOUNTS.length;kk++){ var a=ACCOUNTS[kk]; var bl=a.initial_balance+bal[a.id]; if(a.type==='asset') nw+=bl; else nw-=bl; }
     pts.push({date:b,netWorth:nw});
   }
-  var wEnd=worthAt(end);
-  if(pts.length) pts[pts.length-1].netWorth=wEnd.net;
   return pts;
 }
 function hostWidth(){

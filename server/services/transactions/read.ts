@@ -1,7 +1,7 @@
-import type { Transaction, TransactionFilters, TransactionWithDetails } from "../../../shared/contracts/index.js";
+import type { RecentAccountTransaction, Transaction, TransactionFilters, TransactionWithDetails } from "../../../shared/contracts/index.js";
 import { getDb } from "../../db/index.js";
 import { getTagsForTransactions } from "../tags.js";
-import { buildWhereClause, type RecentActivityRow, type TransactionRow, type TransactionWithDetailsRow, rowToTransaction, rowToTransactionWithDetails } from "./internal.js";
+import { buildWhereClause, type TransactionRow, type TransactionWithDetailsRow, rowToTransaction, rowToTransactionWithDetails } from "./internal.js";
 
 export function getTransactionsWithDetails(
   filters: TransactionFilters = {},
@@ -183,12 +183,12 @@ const recentActivityByAccountSql = `
     ORDER BY a.name ASC
   `;
 
-export function getRecentActivityByAccount(): RecentActivityRow[] {
+export function getRecentActivityByAccount(): RecentAccountTransaction[] {
   const db = getDb();
 
   const rows = db
     .prepare(recentActivityByAccountSql)
-    .all() as RecentActivityRow[];
+    .all() as RecentAccountTransaction[];
 
   return rows;
 }

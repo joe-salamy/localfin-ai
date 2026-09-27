@@ -5,7 +5,7 @@ description: Use when categorizing transactions from bank CSV statements
 
 # LocalFin categorization (OMP session model only)
 
-Server and scripts stay keyless and deterministic. `POST /api/parser/parse-statement` always returns `subcategory_id:null`, `categorizationSource:"none"`, `summary:{fromLookup:0, fromAI:0}`. The only model path is this skill, run in the OMP session.
+Server and scripts stay keyless and deterministic. `POST /api/parser/parse-statement` returns uncategorized rows (`{date, name, amount, kind, needsReview, isDuplicate, originalLine}`); categorization is never done server-side. The only model path is this skill, run in the OMP session.
 
 ## Trigger
 

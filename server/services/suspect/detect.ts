@@ -8,7 +8,7 @@ import type {
 } from "../../../shared/contracts/index.js";
 import { netWorthEffect } from "../../../shared/finance/transactionAmounts.js";
 
-export interface FindingDraft {
+interface FindingDraft {
   transaction: TransactionWithDetails;
   reason: SuspectReasonCode;
   severity: SuspectSeverity;
@@ -16,7 +16,7 @@ export interface FindingDraft {
   evidence: SuspectEvidence;
 }
 
-export type SuspectDetector = (
+type SuspectDetector = (
   tx: TransactionWithDetails,
   peers: TransactionWithDetails[],
 ) => FindingDraft | null;
@@ -27,20 +27,20 @@ const severityRank: Record<SuspectSeverity, number> = {
   high: 3,
 };
 
-export function normalizeName(value: string): string {
+function normalizeName(value: string): string {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
 
-export function dateDistanceDays(a: string, b: string): number {
+function dateDistanceDays(a: string, b: string): number {
   const left = new Date(`${a}T00:00:00.000Z`).getTime();
   const right = new Date(`${b}T00:00:00.000Z`).getTime();
   return Math.abs(left - right) / 86_400_000;
 }
 
-export function median(values: number[]): number | null {
+function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -49,16 +49,14 @@ export function median(values: number[]): number | null {
     : sorted[mid];
 }
 
-export function medianAbsoluteDeviation(
+function medianAbsoluteDeviation(
   values: number[],
   center: number,
 ): number {
   return median(values.map((value) => Math.abs(value - center))) ?? 0;
 }
 
-export const MAD = medianAbsoluteDeviation;
-
-export function outlierScore(
+function outlierScore(
   amount: number,
   peers: number[],
 ): number | null {
@@ -115,7 +113,7 @@ function reasonLabel(reason: SuspectReasonCode): string {
     .join(" ");
 }
 
-export function detectExactDuplicate(
+function detectExactDuplicate(
   tx: TransactionWithDetails,
   group: TransactionWithDetails[],
 ): FindingDraft | null {
@@ -137,7 +135,7 @@ export function detectExactDuplicate(
   };
 }
 
-export function detectNearDuplicate(
+function detectNearDuplicate(
   tx: TransactionWithDetails,
   peers: TransactionWithDetails[],
 ): FindingDraft | null {
@@ -166,7 +164,7 @@ export function detectNearDuplicate(
   };
 }
 
-export function detectMissingCategory(
+function detectMissingCategory(
   tx: TransactionWithDetails,
 ): FindingDraft | null {
   if (
@@ -186,7 +184,7 @@ export function detectMissingCategory(
   return null;
 }
 
-export function createFlaggedWordDetector(
+function createFlaggedWordDetector(
   flaggedWords: string[],
 ): SuspectDetector {
   return (tx) => {
@@ -205,7 +203,7 @@ export function createFlaggedWordDetector(
   };
 }
 
-export function detectLargeAmountOutlier(
+function detectLargeAmountOutlier(
   tx: TransactionWithDetails,
   peers: TransactionWithDetails[],
 ): FindingDraft | null {
@@ -230,7 +228,7 @@ export function detectLargeAmountOutlier(
   };
 }
 
-export function detectMerchantAmountOutlier(
+function detectMerchantAmountOutlier(
   tx: TransactionWithDetails,
   peers: TransactionWithDetails[],
 ): FindingDraft | null {
@@ -256,7 +254,7 @@ export function detectMerchantAmountOutlier(
   };
 }
 
-export function detectRapidSmallCharge(
+function detectRapidSmallCharge(
   tx: TransactionWithDetails,
   group: TransactionWithDetails[],
 ): FindingDraft | null {
@@ -290,7 +288,7 @@ function effectOf(tx: TransactionWithDetails): number {
 
 const transferPattern = /\b(payment|transfer|xfer|venmo|zelle|ach)\b/i;
 
-export function detectUnmatchedTransfer(
+function detectUnmatchedTransfer(
   tx: TransactionWithDetails,
   peers: TransactionWithDetails[],
 ): FindingDraft | null {

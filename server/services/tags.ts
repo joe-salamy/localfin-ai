@@ -47,22 +47,6 @@ function requireNormalizedName(name: string): string {
   return normalized;
 }
 
-function findActiveTagByNameAndType(
-  name: string,
-  type: TagType,
-): TagRow | undefined {
-  const db = getDb();
-  return db
-    .prepare(
-      `SELECT *
-       FROM tags
-       WHERE lower(trim(name)) = lower(trim(?))
-         AND type = ?
-         AND deleted_at IS NULL`,
-    )
-    .get(name, type) as TagRow | undefined;
-}
-
 function checkTagUniqueness(
   name: string,
   type: TagType,
@@ -316,29 +300,4 @@ export function removeTransactionTags(
      WHERE transaction_id = ?
        AND tag_id IN (${placeholders})`,
   ).run(transactionId, ...activeTagIds);
-}
-
-export function resolveOrCreateTagsByName(
-  items: Array<{ name: string; type?: TagType }>,
-): Tag[] {
-  const tagsByKey = new Map<string, Tag>();
-  const resolvedTags: Tag[] = [];
-
-  for (const item of items) {
-    const name = requireNormalizedName(item.name);
-    const type = normalizeTagType(item.type);
-    const key = `${type}:${name.toLowerCase()}`;
-    const cached = tagsByKey.get(key);
-    if (cached) {
-      resolvedTags.push(cached);
-      continue;
-    }
-
-    const existing = findActiveTagByNameAndType(name, type);
-    const tag = existing ? rowToTag(existing) : createTag({ name, type });
-    tagsByKey.set(key, tag);
-    resolvedTags.push(tag);
-  }
-
-  return resolvedTags;
 }

@@ -1,16 +1,19 @@
-import type { AccountType,
-EnrichedTransaction,
-ParsedTransaction, TransactionKind } from "../../shared/contracts/index.js"
+import type {
+  AccountType,
+  ParseStatementResult,
+  ParsedStatementRow,
+  TransactionKind,
+} from "../../shared/contracts/index.js";
 import {
   netWorthEffect,
   normalizeTransactionAmount,
   roundCurrencyAmount,
 } from "../../shared/finance/transactionAmounts.js"
-export { inferTransactionKindForAccount } from "../../shared/finance/transactionAmounts.js"
 import { isIsoDate } from "../../shared/validation.js";
 import { getDb } from "../db/index.js";
+import { checkDuplicates } from "./transactions/checks.js";
 
-export type BankProfileId = "chase" | "usbank" | "discover";
+type BankProfileId = "chase" | "usbank" | "discover";
 
 // Sign of a raw CSV amount that adds money to the account holder: Chase and
 // US Bank export payments/deposits as positive, Discover exports them negative.
@@ -20,7 +23,7 @@ const PROFILE_INFLOW_SIGN: Record<BankProfileId, 1 | -1> = {
   discover: -1,
 };
 
-export function detectBankProfile(headers: string[]): BankProfileId | null {
+function detectBankProfile(headers: string[]): BankProfileId | null {
   const normalized = headers.map((cell) => cell.trim().replace(/^["']|["']$/g, "").trim().toLowerCase());
   const has = (target: string): boolean => normalized.includes(target);
   if (has("type") && has("transaction date") && has("description")) {
@@ -35,10 +38,10 @@ export function detectBankProfile(headers: string[]): BankProfileId | null {
   return null;
 }
 
-export const TRANSFER_NAME_PATTERN =
+const TRANSFER_NAME_PATTERN =
   /\b(?:transfer|online transfer|credit card payment|payment thank you|internet payment|mobile payment|web authorized pmt|mobile banking payment|autopay|ach payment|card payment|payment received|payment posted)\b/i;
 
-export function parseCsvLine(line: string): string[] {
+function parseCsvLine(line: string): string[] {
   const fields: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -155,94 +158,23 @@ function cleanName(raw: string): string {
   return name.trim();
 }
 
-// ---------- Duplicate checking ----------
-
-function checkDuplicatesInDb(
-  transactions: Array<{ date: string; name: string; amount: number }>,
-  accountId: string,
-): boolean[] {
-  if (transactions.length === 0) return [];
-  const db = getDb();
-
-  const counts = new Map<string, number>();
-
-  const distinct = new Map<string, { date: string; name: string; amount: number }>();
-  for (const t of transactions) {
-    const key = `${t.date}|${t.name}|${t.amount}`;
-    if (!distinct.has(key)) distinct.set(key, t);
-  }
-
-  const stmt = db.prepare(`
-    SELECT COUNT(*) AS cnt FROM transactions
-    WHERE date = ? AND name = ? AND amount = ? AND account_id = ? AND deleted_at IS NULL
-  `);
-  for (const [key, t] of distinct) {
-    const row = stmt.get(t.date, t.name, t.amount, accountId) as {
-      cnt: number;
-    };
-    counts.set(key, row.cnt);
-  }
-
-  const seen = new Map<string, number>();
-  return transactions.map((t) => {
-    const key = `${t.date}|${t.name}|${t.amount}`;
-    const occurrence = seen.get(key) ?? 0;
-    seen.set(key, occurrence + 1);
-    const dbCount = counts.get(key) ?? 0;
-    return occurrence < dbCount;
-  });
-}
-
 const UNKNOWN_FORMAT_SUFFIX =
   "Expected one of: Chase (Transaction Date,...,Type,...), US Bank (Date,Transaction,Name,Memo,Amount), Discover (Trans. Date,...,Category).";
 
-function unknownFormatResult(headerRaw: string): {
-  transactions: EnrichedTransaction[];
-  summary: {
-    total: number;
-    duplicates: number;
-    fromLookup: number;
-    fromAI: number;
-    uncategorized: number;
-    needsReview: number;
-  };
-  format: string | null;
-  parseSuccessRate: number;
-  errors: string[];
-} {
+function emptyResult(format: string | null, error: string): ParseStatementResult {
   return {
     transactions: [],
-    summary: {
-      total: 0,
-      duplicates: 0,
-      fromLookup: 0,
-      fromAI: 0,
-      uncategorized: 0,
-      needsReview: 0,
-    },
-    format: null,
+    summary: { total: 0, duplicates: 0, needsReview: 0 },
+    format,
     parseSuccessRate: 0,
-    errors: [`Unknown CSV format. Headers seen: ${headerRaw}. ${UNKNOWN_FORMAT_SUFFIX}`],
+    errors: [error],
   };
 }
 
-export async function parseStatement(
+export function parseStatement(
   text: string,
   accountId: string,
-): Promise<{
-  transactions: EnrichedTransaction[];
-  summary: {
-    total: number;
-    duplicates: number;
-    fromLookup: number;
-    fromAI: number;
-    uncategorized: number;
-    needsReview: number;
-  };
-  format: string | null;
-  parseSuccessRate: number;
-  errors: string[];
-}> {
+): ParseStatementResult {
   const errors: string[] = [];
   const withoutBom = text.replace(/^\uFEFF/, "");
   const rawLines = withoutBom.split(/\r?\n/);
@@ -256,20 +188,7 @@ export async function parseStatement(
   }
 
   if (headerIndex === -1) {
-    return {
-      transactions: [],
-      summary: {
-        total: 0,
-        duplicates: 0,
-        fromLookup: 0,
-        fromAI: 0,
-        uncategorized: 0,
-        needsReview: 0,
-      },
-      format: null,
-      parseSuccessRate: 0,
-      errors: ["No lines found in input text"],
-    };
+    return emptyResult(null, "No lines found in input text");
   }
 
   const headerLine = (rawLines[headerIndex] ?? "").trim();
@@ -303,7 +222,10 @@ export async function parseStatement(
   const columnsMissing =
     profile === null || dateIdx === -1 || nameIdx === -1 || amountIdx === -1 || discriminatorIdx === -1;
   if (columnsMissing) {
-    return unknownFormatResult(headerLine);
+    return emptyResult(
+      null,
+      `Unknown CSV format. Headers seen: ${headerLine}. ${UNKNOWN_FORMAT_SUFFIX}`,
+    );
   }
 
   const resolvedProfile = profile as BankProfileId;
@@ -317,23 +239,10 @@ export async function parseStatement(
     )
     .get(accountId) as { name: string; type: AccountType } | undefined;
   if (!account) {
-    return {
-      transactions: [],
-      summary: {
-        total: 0,
-        duplicates: 0,
-        fromLookup: 0,
-        fromAI: 0,
-        uncategorized: 0,
-        needsReview: 0,
-      },
-      format: resolvedProfile,
-      parseSuccessRate: 0,
-      errors: [`Account with id "${accountId}" not found`],
-    };
+    return emptyResult(resolvedProfile, `Account with id "${accountId}" not found`);
   }
 
-  const parsed: Array<ParsedTransaction & { kind: TransactionKind }> = [];
+  const parsed: Array<Omit<ParsedStatementRow, "isDuplicate">> = [];
   let failedLines = 0;
   let pendingSkipped = 0;
   const MAX_LINE_LENGTH = 1_000;
@@ -455,7 +364,6 @@ export async function parseStatement(
       name,
       amount: storedAmount,
       needsReview,
-      confidence: needsReview ? 0.5 : 1.0,
       originalLine: line,
       kind: resolvedKind,
     });
@@ -479,49 +387,20 @@ export async function parseStatement(
     parsed.length = MAX_PARSED_RECORDS;
   }
 
-  const duplicateFlags = checkDuplicatesInDb(
-    parsed.map((t) => ({
-      date: t.date,
-      name: t.name,
-      amount: t.amount,
-    })),
-    accountId,
+  const duplicateFlags = checkDuplicates(
+    parsed.map((t) => ({ date: t.date, name: t.name, amount: t.amount, account_id: accountId })),
   );
-
+  const transactions = parsed.map((t, i) => ({ ...t, isDuplicate: duplicateFlags[i] ?? false }));
   const summary = {
-    total: parsed.length,
-    duplicates: 0,
-    fromLookup: 0,
-    fromAI: 0,
-    uncategorized: 0,
-    needsReview: 0,
+    total: transactions.length,
+    duplicates: transactions.filter((t) => t.isDuplicate).length,
+    needsReview: transactions.filter((t) => t.needsReview).length,
   };
-
-  const enriched: EnrichedTransaction[] = parsed.map((t, i) => {
-    const isDuplicate = duplicateFlags[i] ?? false;
-    if (isDuplicate) summary.duplicates++;
-    summary.uncategorized++;
-    if (t.needsReview) summary.needsReview++;
-    return {
-      date: t.date,
-      name: t.name,
-      amount: t.amount,
-      needsReview: t.needsReview,
-      confidence: t.confidence,
-      originalLine: t.originalLine,
-      kind: t.kind,
-      subcategory_id: null,
-      subcategory_name: null,
-      category_name: null,
-      categorizationSource: "none" as const,
-      isDuplicate,
-    };
-  });
   const parseSuccessRate =
     totalDataRows > 0 ? Math.round((parsed.length / totalDataRows) * 1000) / 1000 : 0;
 
   return {
-    transactions: enriched,
+    transactions,
     summary,
     format: resolvedProfile,
     parseSuccessRate,

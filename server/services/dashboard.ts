@@ -7,6 +7,7 @@ import { getDb } from "../db/index.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
 import { buildTagExistsClause, netWorthEffectSql } from "./transaction-filters.js";
 import type { AccountSummary,
+AccountSummaryResponse,
 AccountTransaction,
 AccountType,
 CategorySummary,
@@ -130,7 +131,7 @@ const EXPENSE_TOTAL = `COALESCE(SUM(CASE WHEN t.kind = 'expense' THEN -${EFFECT}
 export function getAccountSummary(
   startDate: string,
   endDate: string,
-): { accounts: AccountSummary[]; netWorth: NetWorthSummary } {
+): AccountSummaryResponse {
   const db = getDb();
   const effectiveStartDate = clampStartDateToFirstTransaction(
     startDate,
@@ -436,7 +437,7 @@ export function getTagSummary(
   }));
 }
 
-export function calculateNetWorth(atDate: string): NetWorthSummary {
+function calculateNetWorth(atDate: string): NetWorthSummary {
   const db = getDb();
 
   const rows = db

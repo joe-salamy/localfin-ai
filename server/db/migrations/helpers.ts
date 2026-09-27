@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-export function tableExists(database: Database.Database, tableName: string): boolean {
+function tableExists(database: Database.Database, tableName: string): boolean {
   return Boolean(
     database
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
@@ -29,7 +29,7 @@ export function addColumnIfMissing(
   database.exec(`ALTER TABLE "${tableName}" ADD COLUMN ${definition}`);
 }
 
-export const TRANSACTION_CORE_INDEXES = `
+const TRANSACTION_CORE_INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date DESC);
   CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
   CREATE INDEX IF NOT EXISTS idx_transactions_subcategory ON transactions(subcategory_id);
@@ -37,7 +37,7 @@ export const TRANSACTION_CORE_INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_transactions_deleted ON transactions(deleted_at) WHERE deleted_at IS NULL;
 `;
 
-export function dependentTransactionTables(database: Database.Database): string[] {
+function dependentTransactionTables(database: Database.Database): string[] {
   const tables = database
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
     .all() as Array<{ name: string }>;
@@ -52,7 +52,7 @@ export function dependentTransactionTables(database: Database.Database): string[
     .map(({ name }) => name);
 }
 
-export function preserveTransactionDependents(database: Database.Database): string[] {
+function preserveTransactionDependents(database: Database.Database): string[] {
   const dependents = dependentTransactionTables(database);
   const unknown = dependents.filter(
     (name) =>
@@ -83,7 +83,7 @@ export function preserveTransactionDependents(database: Database.Database): stri
   return dependents;
 }
 
-export function restoreTransactionDependents(
+function restoreTransactionDependents(
   database: Database.Database,
   dependents: readonly string[],
 ): void {

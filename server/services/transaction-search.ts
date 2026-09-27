@@ -4,7 +4,7 @@ import { isIsoDate } from "../../shared/validation.js";
 export const SEARCH_QUERY_HELP =
   "Rich search: quoted phrases, (parens), AND/OR/NOT, |, -term, fields name:/comment:/account:/category:/subcategory:/tag:/tags:/type:, amount>20 (compares absolute value), date>=2026-01-01";
 
-export class TransactionSearchSyntaxError extends BadRequestError {
+class TransactionSearchSyntaxError extends BadRequestError {
   constructor(message: string) {
     super(`Invalid transaction search: ${message}`);
     this.name = "TransactionSearchSyntaxError";
@@ -50,7 +50,7 @@ interface SearchAliases {
   category?: string;
 }
 
-export interface CompiledTransactionSearch {
+interface CompiledTransactionSearch {
   clause: string;
   params: unknown[];
 }

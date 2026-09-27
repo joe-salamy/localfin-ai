@@ -18,11 +18,6 @@ export const API_ROUTES = {
   openapiJson: "/api/openapi.json",
 } as const;
 
-export const ENV_KEYS = {
-  localfinDataDirectory: "LOCALFIN_DATA_DIR",
-  localfinDatabasePath: "LOCALFIN_DB_PATH",
-} as const;
-
 export const DATABASE_CONFIG = {
   dataDirectory: path.resolve(process.cwd(), "data"),
   fileName: "budget.db",

@@ -9,8 +9,8 @@ Run `npm run dev` (Express on `127.0.0.1:3001`), read `.omp/skills/localfin-api/
 ## Prerequisites
 
 - Node.js and npm compatible with the checked-in `package-lock.json`.
-- A local `.env` copied from `.env.example`.
-- External LLM key only if your agent uses `.omp/skills/localfin-categorization`.
+- Optionally a local `.env` copied from `.env.example` to relocate the database.
+- No API keys: `.omp/skills/localfin-categorization` uses your agent session's own model.
 
 ## Setup
 
@@ -19,7 +19,7 @@ npm install
 cp .env.example .env
 ```
 
-Fill in secret values in `.env`. Do not commit `.env`, `data/budget.db`, logs, or generated cache artifacts.
+Do not commit `.env`, `data/budget.db`, logs, or generated cache artifacts.
 
 ## Development
 
@@ -33,6 +33,8 @@ npm run report:dashboard -- --start YYYY-MM-DD --end YYYY-MM-DD [--out path]
 npm run report:history -- --start YYYY-MM-DD --end YYYY-MM-DD [--out path]
 npm run categorize:export -- <out.fods> [--needs-category-only] [--limit N]
 npm run categorize:apply -- <edited.fods> [--dry-run]
+npm run taxonomy:export -- <out.fods>
+npm run taxonomy:apply -- <edited.fods> [--dry-run]
 npm run ingest:csv -- --file <abs path> --account <name> [--out review.fods] [--dry-run]
 ```
 
@@ -72,5 +74,4 @@ Names only; keep values in `.env`.
 
 - Use repo-local commands above and package scripts as the source of truth.
 - Do not read or modify `docs/scratchpad.md`.
-- Do not commit secrets, `data/*.db*`, logs, `dist/`, or generated cache artifacts.
-- Use `skill://optimize-repo-skills` when the skill set needs review, pruning, or expansion.
+- Do not commit `data/*.db*`, logs, `dist/`, or generated cache artifacts.

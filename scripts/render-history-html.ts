@@ -33,7 +33,7 @@ export function renderHistoryHtml(start: string, end: string): string {
         t.category_name != null
           ? `${t.category_name} > ${t.subcategory_name ?? "—"}`
           : "Unassigned";
-      return `<tr><td>${escapeHtml(t.date)}</td><td>${escapeHtml(t.name)}</td><td data-v="${t.amount}">${escapeHtml(formatMoney(t.amount))}</td><td>${escapeHtml(t.account_name ?? t.account_id)}</td><td>${escapeHtml(category)}</td><td>${escapeHtml(t.comment ?? "")}</td></tr>`;
+      return `<tr><td>${escapeHtml(t.date)}</td><td>${escapeHtml(t.name)}</td><td>${escapeHtml(formatMoney(t.amount))}</td><td>${escapeHtml(t.account_name ?? t.account_id)}</td><td>${escapeHtml(category)}</td><td>${escapeHtml(t.comment ?? "")}</td></tr>`;
     })
     .join("\n");
 

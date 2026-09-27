@@ -1,5 +1,5 @@
 import { HEX_COLOR_PATTERN } from "../validation.js";
-export const DEFAULT_ENTITY_COLORS = [
+const DEFAULT_ENTITY_COLORS = [
   "#ef4444",
   "#f97316",
   "#f59e0b",
@@ -22,16 +22,16 @@ export const DEFAULT_ENTITY_COLORS = [
   "#6b7280",
 ] as const;
 
-export function isHexColor(value: unknown): value is string {
+function isHexColor(value: unknown): value is string {
   return typeof value === "string" && HEX_COLOR_PATTERN.test(value);
 }
 
-export function normalizeColor(value: unknown): string | null {
+function normalizeColor(value: unknown): string | null {
   if (value == null || value === "") return null;
   return isHexColor(value) ? value.toLowerCase() : null;
 }
 
-export function stableColorIndex(id: string): number {
+function stableColorIndex(id: string): number {
   let hash = 0;
   for (let i = 0; i < id.length; i += 1) {
     hash = (hash * 31 + id.charCodeAt(i)) >>> 0;

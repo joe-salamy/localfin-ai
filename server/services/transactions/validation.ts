@@ -34,7 +34,7 @@ export function assertActiveSubcategory(subcategoryId: string): void {
   }
 }
 
-export function assertKindSubcategoryCompatible(
+function assertKindSubcategoryCompatible(
   kind: TransactionKind | undefined,
   subcategoryId: string | null | undefined,
 ): void {
@@ -77,7 +77,7 @@ export function assertKindSubcategoryCompatible(
   }
 }
 
-export function normalizeTransactionFields(
+function normalizeTransactionFields(
   data: CreateTransactionData,
   accountType: AccountType,
 ): CreateTransactionData & {

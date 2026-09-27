@@ -1,7 +1,7 @@
 import { getDb } from "../db/index.js";
 import { ConflictError } from "../errors.js";
 
-export type EntityNameTable =
+type EntityNameTable =
   | "accounts"
   | "categories"
   | "subcategories";

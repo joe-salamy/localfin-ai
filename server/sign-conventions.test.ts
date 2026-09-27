@@ -96,7 +96,7 @@ void test("search type and amount fields ignore stored sign conventions", async 
 void test("parser keeps transfer direction on asset and liability accounts", async (t) => {
   await useTempDatabase(t);
   const checking = createAccount({ name: "Checking", type: "asset" });
-  const usbank = await parseStatement(
+  const usbank = parseStatement(
     [
       '"Date","Transaction","Name","Memo","Amount"',
       '"2026-07-13","CREDIT","ONLINE TRANSFER FROM SAVINGS","x","250.00"',
@@ -110,7 +110,7 @@ void test("parser keeps transfer direction on asset and liability accounts", asy
   ]);
 
   const card = createAccount({ name: "Discover", type: "liability" });
-  const discover = await parseStatement(
+  const discover = parseStatement(
     [
       "Trans. Date,Post Date,Description,Amount,Category",
       '09/07/2026,09/08/2026,"INTERNET PAYMENT - THANK YOU",-500.00,"Payments and Credits"',
