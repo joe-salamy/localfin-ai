@@ -182,9 +182,6 @@ function reconcileSystemPair(
           "UPDATE transactions SET subcategory_id = ? WHERE subcategory_id = ?",
         ).run(existing.id, subcategory.id);
         db.prepare(
-          "UPDATE spending_goals SET subcategory_id = ? WHERE subcategory_id = ?",
-        ).run(existing.id, subcategory.id);
-        db.prepare(
           "UPDATE subcategories SET deleted_at = ?, updated_at = ? WHERE id = ?",
         ).run(now, now, subcategory.id);
       } else {
@@ -271,9 +268,6 @@ function reconcileSystemPair(
   for (const legacySubcategory of legacySubcategories) {
     db.prepare(
       "UPDATE transactions SET subcategory_id = ? WHERE subcategory_id = ?",
-    ).run(systemRow.subcategoryId, legacySubcategory.id);
-    db.prepare(
-      "UPDATE spending_goals SET subcategory_id = ? WHERE subcategory_id = ?",
     ).run(systemRow.subcategoryId, legacySubcategory.id);
     db.prepare(
       "UPDATE subcategories SET deleted_at = ?, updated_at = ? WHERE id = ?",

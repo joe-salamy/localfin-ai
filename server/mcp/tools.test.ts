@@ -29,11 +29,6 @@ import {
   updateTransaction,
 } from "../services/transactions.js";
 import {
-  createSpendingGoal,
-  getSpendingGoalsWithDetails,
-  updateSpendingGoal,
-} from "../services/goals.js";
-import {
   getAccountSummary,
   getCategorySummary,
   getDashboardMetrics,
@@ -44,7 +39,6 @@ import {
   localfinBulkUpdateTransactionsInputSchema,
   localfinCreateAccountInputSchema,
   localfinCreateCategoryInputSchema,
-  localfinCreateGoalInputSchema,
   localfinCreateSubcategoryInputSchema,
   localfinCreateTagInputSchema,
   localfinCreateTransactionInputSchema,
@@ -273,26 +267,6 @@ void test("mcp: localfin_delete and restore transaction", async (t) => {
   assert.equal(restored.name, "ToDelete");
   const schema = localfinDeleteTransactionInputSchema;
   expectZodError(() => schema.parse({ id: "" }));
-});
-
-void test("mcp: localfin_list_goals, create and update", async (t) => {
-  await useTempDatabase(t);
-  const category = createCategory({ name: "Food", type: "expense" });
-  const sub = createSubcategory({ name: "Groceries", category_id: category.id });
-  const schemaCreate = localfinCreateGoalInputSchema;
-  const parsed = schemaCreate.parse({
-    subcategory_id: sub.id,
-    amount: 500,
-    period: "monthly",
-    start_date: "2026-01-01",
-  });
-  const goal = createSpendingGoal(parsed);
-  assert.equal(goal.amount, 500);
-  assert.equal(getSpendingGoalsWithDetails().length, 1);
-  const updated = updateSpendingGoal(goal.id, { amount: 600 });
-  assert.equal(updated.amount, 600);
-  expectZodError(() => schemaCreate.parse({ subcategory_id: "", amount: 100, period: "monthly", start_date: "2026-01-01" }));
-  expectZodError(() => schemaCreate.parse({ subcategory_id: sub.id, amount: -5, period: "monthly", start_date: "2026-01-01" }));
 });
 
 void test("mcp: localfin_dashboard success and validation error", async (t) => {

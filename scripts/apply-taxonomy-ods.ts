@@ -22,24 +22,14 @@ import {
   updateCategory,
   updateSubcategory,
 } from "../server/services/categories.js";
-import {
-  createSpendingGoal,
-  deleteSpendingGoal,
-  getSpendingGoals,
-  updateSpendingGoal,
-} from "../server/services/goals.js";
-import { HEX_COLOR_PATTERN, isIsoDate } from "../shared/validation.js";
-import type {
-  CategoryType,
-  GoalPeriod,
-} from "../shared/contracts/index.js";
+import { HEX_COLOR_PATTERN } from "../shared/validation.js";
+import type { CategoryType } from "../shared/contracts/index.js";
 import { computeTaxonomyFingerprint } from "./export-taxonomy-ods.js";
 
 export interface ParsedTaxonomyWorkbook {
   meta: Map<string, string>;
   categoriesGrid: unknown[][];
   subcategoriesGrid: unknown[][];
-  goalsGrid: unknown[][];
 }
 
 export interface TaxonomyPending {
@@ -74,24 +64,6 @@ export interface TaxonomyPending {
     color?: string | null;
   }>;
   subcategoryDeletes: string[];
-  goalCreates: Array<{
-    rowNumber: number;
-    subcategoryId: string;
-    amount: number;
-    period: string;
-    startDate: string;
-    endDate: string | null;
-  }>;
-  goalUpdates: Array<{
-    rowNumber: number;
-    id: string;
-    amount?: number;
-    period?: string;
-    startDate?: string;
-    endDate?: string | null;
-  }>;
-  goalDeletes: string[];
-  createdCategoryNames: Map<string, string>;
 }
 
 function cellText(value: unknown): string {
@@ -195,16 +167,12 @@ export function parseTaxonomyWorkbook(
   const metaSheet = findSheet(workbook, "_meta");
   const categoriesSheet = findSheet(workbook, "Categories");
   const subcategoriesSheet = findSheet(workbook, "Subcategories");
-  const goalsSheet = findSheet(workbook, "Goals");
 
   if (!categoriesSheet) {
     throw new Error(`Sheet "Categories" not found in ${resolved}`);
   }
   if (!subcategoriesSheet) {
     throw new Error(`Sheet "Subcategories" not found in ${resolved}`);
-  }
-  if (!goalsSheet) {
-    throw new Error(`Sheet "Goals" not found in ${resolved}`);
   }
 
   const meta = new Map<string, string>();
@@ -224,7 +192,6 @@ export function parseTaxonomyWorkbook(
 
   const categoriesGrid = gridOf(categoriesSheet);
   const subcategoriesGrid = gridOf(subcategoriesSheet);
-  const goalsGrid = gridOf(goalsSheet);
 
   const requireColumns = (
     sheetName: string,
@@ -256,18 +223,7 @@ export function parseTaxonomyWorkbook(
     "color",
     "__delete",
   ]);
-  requireColumns("Goals", goalsGrid, [
-    "__id",
-    "subcategory",
-    "__subcategory_id",
-    "amount",
-    "period",
-    "start_date",
-    "end_date",
-    "__delete",
-  ]);
-
-  return { meta, categoriesGrid, subcategoriesGrid, goalsGrid };
+  return { meta, categoriesGrid, subcategoriesGrid };
 }
 
 function isBlankRow(row: unknown[]): boolean {
@@ -288,19 +244,15 @@ function localTimePart(date: Date): string {
   return `${h}${m}${s}`;
 }
 
-const GOAL_PERIODS = new Set(["weekly", "monthly", "quarterly", "annual"]);
-
 export function validateTaxonomyRows(
   parsed: ParsedTaxonomyWorkbook,
 ): TaxonomyPending {
   void getDb();
   const liveCategories = getCategories();
   const liveSubcategories = getSubcategories();
-  const liveGoals = getSpendingGoals();
   const liveFingerprint = computeTaxonomyFingerprint(
     liveCategories,
     liveSubcategories,
-    liveGoals,
   );
   const fileFingerprint = parsed.meta.get("fingerprint") ?? "";
   if (fileFingerprint !== liveFingerprint) {
@@ -317,19 +269,11 @@ export function validateTaxonomyRows(
     subcategoryCreates: [],
     subcategoryUpdates: [],
     subcategoryDeletes: [],
-    goalCreates: [],
-    goalUpdates: [],
-    goalDeletes: [],
-    createdCategoryNames: new Map<string, string>(),
   };
 
   const categoriesById = new Map(liveCategories.map((c) => [c.id, c] as const));
   const subcategoriesById = new Map(
     liveSubcategories.map((s) => [s.id, s] as const),
-  );
-  const goalsById = new Map(liveGoals.map((g) => [g.id, g] as const));
-  const goalsBySubcategoryId = new Map(
-    liveGoals.map((g) => [g.subcategory_id, g] as const),
   );
   const categoryTypeById = new Map(
     liveCategories.map((c) => [c.id, c.type] as const),
@@ -451,7 +395,6 @@ export function validateTaxonomyRows(
           type: typeRaw,
           color: colorRaw === "" ? null : colorRaw,
         });
-        pending.createdCategoryNames.set(name, "");
         createdCategoryCounts.set(
           name,
           (createdCategoryCounts.get(name) ?? 0) + 1,
@@ -543,7 +486,6 @@ export function validateTaxonomyRows(
   }
 
   // === Subcategories ===
-  const createdSubLabelCounts = new Map<string, number>();
   {
     const grid = parsed.subcategoriesGrid;
     const header = (grid[0] ?? []).map((h) => cellText(h).toLowerCase());
@@ -680,11 +622,6 @@ export function validateTaxonomyRows(
           monthlyGoal: goalParsed.value,
           color: colorRaw === "" ? null : colorRaw,
         });
-        const label = `${parent.categoryLabel} > ${name}`;
-        createdSubLabelCounts.set(
-          label,
-          (createdSubLabelCounts.get(label) ?? 0) + 1,
-        );
         return;
       }
 
@@ -803,240 +740,10 @@ export function validateTaxonomyRows(
         id,
       };
       if (nameEdit !== undefined) update.name = nameEdit;
-      if (categoryEdit !== undefined) {
-        update.categoryId = categoryEdit.startsWith("new:")
-          ? categoryEdit.slice(4)
-          : categoryEdit;
-        if (categoryEdit.startsWith("new:")) {
-          update.categoryId = `new:${categoryDisplay}`;
-        }
-      }
+      if (categoryEdit !== undefined) update.categoryId = categoryEdit;
       if (hasGoalEdit) update.monthlyGoal = goalEdit ?? null;
       if (hasColorEdit) update.color = colorEdit ?? null;
       pending.subcategoryUpdates.push(update);
-    });
-  }
-
-  // Build created-subcategory label map for goal resolution
-  const createdSubByLabel = new Map<string, number>();
-  for (const c of pending.subcategoryCreates) {
-    const label = `${c.categoryLabel} > ${c.name}`;
-    createdSubByLabel.set(label, (createdSubByLabel.get(label) ?? 0) + 1);
-  }
-  const liveSubLabelCounts = new Map<string, number>();
-  for (const s of liveSubcategories) {
-    const catName = categoriesById.get(s.category_id)?.name ?? "?";
-    const label = `${catName} > ${s.name}`;
-    liveSubLabelCounts.set(label, (liveSubLabelCounts.get(label) ?? 0) + 1);
-  }
-
-  // === Goals ===
-  {
-    const grid = parsed.goalsGrid;
-    const header = (grid[0] ?? []).map((h) => cellText(h).toLowerCase());
-    const col = (n: string): number => header.indexOf(n);
-    const idCol = col("__id");
-    const subCol = col("subcategory");
-    const subIdCol = col("__subcategory_id");
-    const amountCol = col("amount");
-    const periodCol = col("period");
-    const startCol = col("start_date");
-    const endCol = col("end_date");
-    const deleteCol = col("__delete");
-    const claimedLiveSubs = new Set<string>();
-    const claimedNewLabels = new Set<string>();
-
-    grid.slice(1).forEach((row, index) => {
-      const rowNumber = index + 2;
-      if (isBlankRow(row)) return;
-      const id = cellText(row[idCol]);
-      const idLabel = id || "new";
-      const deleteRaw = cellText(row[deleteCol]);
-      if (deleteRaw !== "" && deleteRaw.toLowerCase() !== "x") {
-        errors.push(
-          `Goals row ${rowNumber} (${idLabel}): invalid __delete "${deleteRaw}" (expected "x" or empty)`,
-        );
-        return;
-      }
-      const isDelete = deleteRaw.toLowerCase() === "x";
-      if (isDelete) {
-        if (!id) {
-          errors.push(
-            `Goals row ${rowNumber} (new): __delete requires an existing __id`,
-          );
-          return;
-        }
-        if (!goalsById.has(id)) {
-          errors.push(`Goals row ${rowNumber} (${id}): not found`);
-          return;
-        }
-        pending.goalDeletes.push(id);
-        return;
-      }
-
-      const subDisplay = cellText(row[subCol]);
-      const subIdCell = cellText(row[subIdCol]);
-      const periodRaw = cellText(row[periodCol]).toLowerCase();
-      const startRaw = cellText(row[startCol]);
-      const endRaw = cellText(row[endCol]);
-
-      if (!id) {
-        let resolvedSubId: string | null = null;
-        let resolvedIsNew = false;
-        let resolvedLabel = subDisplay;
-        if (subIdCell !== "") {
-          const liveSub = subcategoriesById.get(subIdCell);
-          if (!liveSub || !categoriesById.has(liveSub.category_id)) {
-            errors.push(
-              `Goals row ${rowNumber} (new): unknown subcategory "${subIdCell}"`,
-            );
-            return;
-          }
-          resolvedSubId = liveSub.id;
-        } else {
-          const createdCount =
-            createdSubByLabel.get(subDisplay) ?? 0;
-          if (createdCount !== 1) {
-            errors.push(
-              `Goals row ${rowNumber} (new): unknown subcategory "${subDisplay || subIdCell}"`,
-            );
-            return;
-          }
-          resolvedIsNew = true;
-          resolvedLabel = subDisplay;
-          resolvedSubId = `new:${subDisplay}`;
-        }
-        const amount = cellAmount(row[amountCol]);
-        if (amount == null || !Number.isFinite(amount) || amount <= 0) {
-          errors.push(
-            `Goals row ${rowNumber} (new): amount must be greater than 0`,
-          );
-          return;
-        }
-        if (!GOAL_PERIODS.has(periodRaw)) {
-          errors.push(
-            `Goals row ${rowNumber} (new): period must be weekly, monthly, quarterly, or annual`,
-          );
-          return;
-        }
-        if (!isIsoDate(startRaw)) {
-          errors.push(
-            `Goals row ${rowNumber} (new): invalid start_date "${startRaw}"`,
-          );
-          return;
-        }
-        const endValue = endRaw === "" ? null : endRaw;
-        if (endValue !== null && !isIsoDate(endValue)) {
-          errors.push(
-            `Goals row ${rowNumber} (new): invalid end_date "${endRaw}"`,
-          );
-          return;
-        }
-        if (endValue !== null && startRaw > endValue) {
-          errors.push(
-            `Goals row ${rowNumber} (new): start_date must be on or before end_date`,
-          );
-          return;
-        }
-        if (resolvedIsNew) {
-          if (claimedNewLabels.has(resolvedLabel)) {
-            errors.push(
-              `Goals row ${rowNumber} (new): A spending goal already exists for this subcategory`,
-            );
-            return;
-          }
-          claimedNewLabels.add(resolvedLabel);
-        } else if (resolvedSubId) {
-          if (
-            goalsBySubcategoryId.has(resolvedSubId) ||
-            claimedLiveSubs.has(resolvedSubId)
-          ) {
-            errors.push(
-              `Goals row ${rowNumber} (new): A spending goal already exists for this subcategory`,
-            );
-            return;
-          }
-          claimedLiveSubs.add(resolvedSubId);
-        }
-        pending.goalCreates.push({
-          rowNumber,
-          subcategoryId: resolvedSubId ?? "",
-          amount,
-          period: periodRaw,
-          startDate: startRaw,
-          endDate: endValue,
-        });
-        return;
-      }
-
-      const live = goalsById.get(id);
-      if (!live) {
-        errors.push(`Goals row ${rowNumber} (${id}): not found`);
-        return;
-      }
-      if (subIdCell !== live.subcategory_id) {
-        errors.push(
-          `Goals row ${rowNumber} (${id}): goals cannot be repointed to another subcategory`,
-        );
-        return;
-      }
-      const amount = cellAmount(row[amountCol]);
-      if (amount == null || !Number.isFinite(amount) || amount <= 0) {
-        errors.push(
-          `Goals row ${rowNumber} (${id}): amount must be greater than 0`,
-        );
-        return;
-      }
-      if (!GOAL_PERIODS.has(periodRaw)) {
-        errors.push(
-          `Goals row ${rowNumber} (${id}): period must be weekly, monthly, quarterly, or annual`,
-        );
-        return;
-      }
-      if (!isIsoDate(startRaw)) {
-        errors.push(
-          `Goals row ${rowNumber} (${id}): invalid start_date "${startRaw}"`,
-        );
-        return;
-      }
-      const endValue = endRaw === "" ? null : endRaw;
-      if (endValue !== null && !isIsoDate(endValue)) {
-        errors.push(
-          `Goals row ${rowNumber} (${id}): invalid end_date "${endRaw}"`,
-        );
-        return;
-      }
-      if (endValue !== null && startRaw > endValue) {
-        errors.push(
-          `Goals row ${rowNumber} (${id}): start_date must be on or before end_date`,
-        );
-        return;
-      }
-      const amountEdit = amount !== live.amount ? amount : undefined;
-      const periodEdit =
-        periodRaw !== live.period ? periodRaw : undefined;
-      const startEdit =
-        startRaw !== live.start_date ? startRaw : undefined;
-      const liveEnd = live.end_date ?? null;
-      const endEdit = endValue !== liveEnd ? endValue : undefined;
-      const hasEndEdit = endValue !== liveEnd;
-      if (
-        amountEdit === undefined &&
-        periodEdit === undefined &&
-        startEdit === undefined &&
-        !hasEndEdit
-      ) {
-        return;
-      }
-      const update: TaxonomyPending["goalUpdates"][number] = {
-        rowNumber,
-        id,
-      };
-      if (amountEdit !== undefined) update.amount = amountEdit;
-      if (periodEdit !== undefined) update.period = periodEdit;
-      if (startEdit !== undefined) update.startDate = startEdit;
-      if (hasEndEdit) update.endDate = endEdit ?? null;
-      pending.goalUpdates.push(update);
     });
   }
 
@@ -1054,7 +761,7 @@ export function applyTaxonomyUpdates(
   dryRun: boolean,
   inputPath: string,
   fingerprint: string,
-): { categories: number; subcategories: number; goals: number } {
+): { categories: number; subcategories: number } {
   const categoryCount =
     pending.categoryCreates.length +
     pending.categoryUpdates.length +
@@ -1063,10 +770,6 @@ export function applyTaxonomyUpdates(
     pending.subcategoryCreates.length +
     pending.subcategoryUpdates.length +
     pending.subcategoryDeletes.length;
-  const goalCount =
-    pending.goalCreates.length +
-    pending.goalUpdates.length +
-    pending.goalDeletes.length;
 
   if (dryRun) {
     for (const c of pending.categoryCreates) {
@@ -1095,30 +798,17 @@ export function applyTaxonomyUpdates(
     for (const id of pending.subcategoryDeletes) {
       console.log(`delete subcategory ${id}`);
     }
-    for (const g of pending.goalCreates) {
-      console.log(
-        `create goal for ${g.subcategoryId} amount ${g.amount}`,
-      );
-    }
-    for (const g of pending.goalUpdates) {
-      console.log(`update goal ${g.id}`);
-    }
-    for (const id of pending.goalDeletes) {
-      console.log(`delete goal ${id}`);
-    }
     console.log(
-      `Dry run: ${categoryCount} categories, ${subcategoryCount} subcategories, ${goalCount} goals would update`,
+      `Dry run: ${categoryCount} categories, ${subcategoryCount} subcategories would update`,
     );
     return {
       categories: categoryCount,
       subcategories: subcategoryCount,
-      goals: goalCount,
     };
   }
 
   const db = getDb();
   const createdCategoryIds = new Map<string, string>();
-  const createdSubIdsByLabel = new Map<string, string>();
 
   const applyAll = db.transaction(() => {
     for (const c of pending.categoryCreates) {
@@ -1128,10 +818,6 @@ export function applyTaxonomyUpdates(
         color: c.color,
       });
       createdCategoryIds.set(c.name, created.id);
-    }
-    pending.createdCategoryNames.clear();
-    for (const [name, id] of createdCategoryIds) {
-      pending.createdCategoryNames.set(name, id);
     }
     for (const c of pending.categoryUpdates) {
       updateCategory(c.id, {
@@ -1152,13 +838,12 @@ export function applyTaxonomyUpdates(
         }
         categoryId = resolved;
       }
-      const created = createSubcategory({
+      createSubcategory({
         name: s.name,
         category_id: categoryId,
         monthly_goal: s.monthlyGoal,
         color: s.color,
       });
-      createdSubIdsByLabel.set(`${s.categoryLabel} > ${s.name}`, created.id);
     }
     for (const s of pending.subcategoryUpdates) {
       let categoryId = s.categoryId;
@@ -1179,38 +864,6 @@ export function applyTaxonomyUpdates(
         ...(s.color !== undefined ? { color: s.color } : {}),
       });
     }
-    for (const g of pending.goalCreates) {
-      let subcategoryId = g.subcategoryId;
-      if (subcategoryId.startsWith("new:")) {
-        const label = subcategoryId.slice(4);
-        const resolved = createdSubIdsByLabel.get(label);
-        if (!resolved) {
-          throw new OperationalError(
-            `Unknown subcategory "${label}"`,
-            400,
-          );
-        }
-        subcategoryId = resolved;
-      }
-      createSpendingGoal({
-        subcategory_id: subcategoryId,
-        amount: g.amount,
-        period: g.period as GoalPeriod,
-        start_date: g.startDate,
-        end_date: g.endDate,
-      });
-    }
-    for (const g of pending.goalUpdates) {
-      updateSpendingGoal(g.id, {
-        ...(g.amount !== undefined ? { amount: g.amount } : {}),
-        ...(g.period !== undefined ? { period: g.period as GoalPeriod } : {}),
-        ...(g.startDate !== undefined ? { start_date: g.startDate } : {}),
-        ...(g.endDate !== undefined ? { end_date: g.endDate } : {}),
-      });
-    }
-    for (const id of pending.goalDeletes) {
-      deleteSpendingGoal(id);
-    }
     for (const id of pending.subcategoryDeletes) {
       deleteSubcategory(id);
     }
@@ -1229,7 +882,7 @@ export function applyTaxonomyUpdates(
   }
 
   console.log(
-    `Updated ${categoryCount} categories, ${subcategoryCount} subcategories, ${goalCount} goals`,
+    `Updated ${categoryCount} categories, ${subcategoryCount} subcategories`,
   );
 
   const now = new Date();
@@ -1253,7 +906,6 @@ export function applyTaxonomyUpdates(
     fingerprint,
     categories: categoryCount,
     subcategories: subcategoryCount,
-    goals: goalCount,
     result: "applied",
   })}\n`;
   const logPath = path.resolve(
@@ -1269,14 +921,13 @@ export function applyTaxonomyUpdates(
   return {
     categories: categoryCount,
     subcategories: subcategoryCount,
-    goals: goalCount,
   };
 }
 
 export function applyTaxonomyOds(
   inputPath: string,
   dryRun: boolean,
-): { categories: number; subcategories: number; goals: number } {
+): { categories: number; subcategories: number } {
   const parsed = parseTaxonomyWorkbook(inputPath);
   const pending = validateTaxonomyRows(parsed);
   const fingerprint = parsed.meta.get("fingerprint") ?? "";

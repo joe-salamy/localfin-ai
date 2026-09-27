@@ -125,7 +125,10 @@ export function restoreTransactionDependents(
   }
 }
 
-export function rebuildTransactions(database: Database.Database): void {
+export function rebuildTransactions(
+  database: Database.Database,
+  { dropProviderColumns = false }: { dropProviderColumns?: boolean } = {},
+): void {
   const oldColumns = columns(database, "transactions");
   const dependents = preserveTransactionDependents(database);
   const hasProviderConnectionTable = tableExists(
@@ -140,9 +143,8 @@ export function rebuildTransactions(database: Database.Database): void {
     "provider_pending_transaction_id",
     "provider_synced_at",
   ] as const;
-  const includeProviderColumns = providerColumns.some((name) =>
-    oldColumns.has(name),
-  );
+  const includeProviderColumns =
+    !dropProviderColumns && providerColumns.some((name) => oldColumns.has(name));
   const expression = (name: string, fallback: string): string =>
     oldColumns.has(name) ? name : fallback;
 

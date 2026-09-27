@@ -13,7 +13,6 @@ export const API_ROUTES = {
   tags: "/api/tags",
   transactions: "/api/transactions",
   dashboard: "/api/dashboard",
-  goals: "/api/goals",
   parser: "/api/parser",
   openapi: "/api/openapi",
   openapiJson: "/api/openapi.json",

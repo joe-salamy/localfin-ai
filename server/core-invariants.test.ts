@@ -684,6 +684,21 @@ void test("database migration allows adjustment kind and absorbs legacy initial 
 
   assert.equal(account.initial_balance, 125);
   assert.equal(initialBalanceRows.count, 0);
+
+  const tables = new Set(
+    (
+      migratedDb
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .all() as Array<{ name: string }>
+    ).map((row) => row.name),
+  );
+  for (const dropped of ["spending_goals", "provider_connections", "provider_accounts", "provider_oauth_states", "app_meta"]) {
+    assert.ok(!tables.has(dropped), `${dropped} dropped`);
+  }
+  const transactionColumns = (
+    migratedDb.prepare("PRAGMA table_info(transactions)").all() as Array<{ name: string }>
+  ).map((column) => column.name);
+  assert.ok(!transactionColumns.some((name) => name.startsWith("provider")));
 });
 
 void test("suspect transaction scan persists explainable duplicate, flagged, and missing category findings", async (t) => {

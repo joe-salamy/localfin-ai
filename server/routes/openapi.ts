@@ -164,18 +164,6 @@ const spec = {
     "/api/dashboard/tag-summary": {
       get: { summary: "Dashboard tag summary", responses: { "200": { description: "Tag summary" } } },
     },
-    "/api/goals": {
-      get: { summary: "List goals", responses: { "200": { description: "Goals" } } },
-      post: { summary: "Create goal", responses: { "201": { description: "Created" } } },
-    },
-    "/api/goals/{id}": {
-      get: { summary: "Get goal", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Goal" } } },
-      put: { summary: "Update goal", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Updated" } } },
-      delete: { summary: "Delete goal", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Deleted" } } },
-    },
-    "/api/goals/{id}/progress": {
-      get: { summary: "Get spending-goal progress", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }, { name: "referenceDate", in: "query", required: false, schema: { type: "string" } }], responses: { "200": { description: "Progress" } } },
-    },
     "/api/parser/parse-statement": {
       post: {
         summary: "Parse bank CSV text into transactions",

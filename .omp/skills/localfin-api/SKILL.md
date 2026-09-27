@@ -23,7 +23,6 @@ Plug-and-play finance endpoints for external agents (OMP, Claude, Codex). No emb
 | `/api/tags` | GET, POST, PUT/:id, DELETE/:id, POST/:id/restore |
 | `/api/transactions` | GET (filters + searchQuery), POST, GET/:id, PUT/:id, DELETE/:id, POST/:id/restore, POST/bulk, PUT/bulk, DELETE/bulk, POST/bulk/restore, POST/check-duplicates, POST/check-transfer, POST/suspect-scan, GET/suspect-findings, GET/recent-activity |
 | `/api/dashboard` | GET/account-summary, GET/category-summary, GET/metrics, GET/charts/net-worth, GET/charts/sankey, GET/tag-summary |
-| `/api/goals` | GET, POST, GET/:id, PUT/:id, DELETE/:id, GET/:id/progress |
 | `/api/parser` | POST/parse-statement `{text, accountId}` → `ParseStatementResult` (bank CSV text; format reports chase\|usbank\|discover) |
 | `/api/openapi` + `/api/openapi.json` | GET spec `{openapi:"3.0.3", info, paths}` |
 
@@ -34,13 +33,13 @@ All routes use `shared/contracts/api.ts: ApiResponse<T> = {success:boolean, data
 ## Context fetch (how to become an agent)
 
 1. `GET /api/openapi.json` → discover paths
-2. `GET /api/accounts`, `GET /api/categories`, `GET /api/subcategories`, `GET /api/tags`, `GET /api/goals` → resolve names to ids (never invent ids)
+2. `GET /api/accounts`, `GET /api/categories`, `GET /api/subcategories`, `GET /api/tags` → resolve names to ids (never invent ids)
 3. `GET /api/dashboard/metrics?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` + summaries for budget awareness
 4. `GET /api/transactions?searchQuery=&limit=&offset=` for search-before-update
 
 ## MCP alternative
 
-Stdio transport (primary). Run `npm run mcp` (`node --import tsx server/mcp/index.ts`). Tools: `localfin_list_accounts`, `localfin_create_account`, `localfin_update_account`, `localfin_list_categories`, `localfin_list_subcategories`, `localfin_create_category`, `localfin_update_category`, `localfin_create_subcategory`, `localfin_update_subcategory`, `localfin_list_tags`, `localfin_create_tag`, `localfin_update_tag`, `localfin_search_transactions`, `localfin_create_transaction`, `localfin_bulk_create_transactions`, `localfin_update_transaction`, `localfin_bulk_update_transactions`, `localfin_delete_transaction`, `localfin_restore_transaction`, `localfin_list_goals`, `localfin_create_goal`, `localfin_update_goal`, `localfin_dashboard`, `localfin_parse_statement`. Each validates with Zod strict schemas and returns `{content:[{type:"text", text: JSON.stringify(result)}]}` or `{isError:true, ...}` on `OperationalError`.
+Stdio transport (primary). Run `npm run mcp` (`node --import tsx server/mcp/index.ts`). Tools: `localfin_list_accounts`, `localfin_create_account`, `localfin_update_account`, `localfin_list_categories`, `localfin_list_subcategories`, `localfin_create_category`, `localfin_update_category`, `localfin_create_subcategory`, `localfin_update_subcategory`, `localfin_list_tags`, `localfin_create_tag`, `localfin_update_tag`, `localfin_search_transactions`, `localfin_create_transaction`, `localfin_bulk_create_transactions`, `localfin_update_transaction`, `localfin_bulk_update_transactions`, `localfin_delete_transaction`, `localfin_restore_transaction`, `localfin_dashboard`, `localfin_parse_statement`. Each validates with Zod strict schemas and returns `{content:[{type:"text", text: JSON.stringify(result)}]}` or `{isError:true, ...}` on `OperationalError`.
 
 ## Audit log
 

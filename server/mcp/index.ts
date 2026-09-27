@@ -28,11 +28,6 @@ import {
   updateTransaction,
 } from "../services/transactions.js";
 import {
-  createSpendingGoal,
-  getSpendingGoalsWithDetails,
-  updateSpendingGoal,
-} from "../services/goals.js";
-import {
   getAccountSummary,
   getCategorySummary,
   getDashboardMetrics,
@@ -43,7 +38,6 @@ import { accountTypeSchema } from "../../shared/contracts/accounts.js";
 import { categoryTypeSchema } from "../../shared/contracts/categories.js";
 import { tagTypeSchema } from "../../shared/contracts/tags.js";
 import { transactionKindSchema } from "../../shared/contracts/transactions.js";
-import { goalPeriodSchema } from "../../shared/contracts/goals.js";
 import { colorSchema, finiteNumber, isoDateString as isoDate, nonEmptyString, nonEmptyUpdate } from "../routes/validation.js";
 
 function handleResult(result: unknown) {
@@ -276,35 +270,6 @@ defineTool("localfin_delete_transaction", { title: "Delete transaction", descrip
 
 export const localfinRestoreTransactionInputSchema = z.object({ id: nonEmptyString }).strict();
 defineTool("localfin_restore_transaction", { title: "Restore transaction", description: "Restore a soft-deleted transaction" }, localfinRestoreTransactionInputSchema, (input) => restoreTransaction(input.id));
-
-// Goals
-export const localfinListGoalsInputSchema = z.object({}).strict();
-defineTool("localfin_list_goals", { title: "List goals", description: "List spending goals with details" }, localfinListGoalsInputSchema, () => getSpendingGoalsWithDetails());
-
-export const localfinCreateGoalInputSchema = z
-  .object({
-    subcategory_id: nonEmptyString,
-    amount: finiteNumber.positive(),
-    period: goalPeriodSchema,
-    start_date: isoDate,
-    end_date: isoDate.nullable().optional(),
-  })
-  .strict();
-defineTool("localfin_create_goal", { title: "Create goal", description: "Create a spending goal" }, localfinCreateGoalInputSchema, (input) => createSpendingGoal(input));
-
-export const localfinUpdateGoalInputSchema = z
-  .object({
-    id: nonEmptyString,
-    amount: finiteNumber.positive().optional(),
-    period: goalPeriodSchema.optional(),
-    start_date: isoDate.optional(),
-    end_date: isoDate.nullable().optional(),
-  })
-  .strict();
-defineTool("localfin_update_goal", { title: "Update goal", description: "Update a spending goal" }, localfinUpdateGoalInputSchema, (input) => {
-  const { id, ...updates } = input;
-  return updateSpendingGoal(id, updates);
-});
 
 // Dashboard
 export const localfinDashboardInputSchema = z

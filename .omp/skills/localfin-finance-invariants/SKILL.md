@@ -45,4 +45,4 @@ From `prompting.ts:67-70`: use tag fields **only** when user says `tag`, `tagged
 - Colors: `hexColorSchema` nullable; omit when not provided.
 - Amounts: `finiteNumber` (Zod `z.number().finite()`); transaction amounts rounded to cents via `roundCurrencyAmount`.
 - Subcategories: a subcategory with active transactions cannot be deleted (409); recategorize them first. Transfers/adjustments must have `subcategory_id: null`; income/expense may have null but flagged as uncategorized. `needsCategory` filters income/expense with null subcategory.
-- Goals: `amount >0`, `period` in `weekly|monthly|quarterly|annual`, `start_date <= end_date` when end provided; one goal per subcategory (409 if duplicate).
+- Budget goals: `subcategories.monthly_goal` (>= 0 or null); the category summary prorates it by day over the requested range.

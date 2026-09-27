@@ -6,7 +6,6 @@ import { tagRouter } from "./routes/tags.js";
 import { transactionRouter } from "./routes/transactions.js";
 import { suspectRouter } from "./routes/suspect.js";
 import { dashboardRouter } from "./routes/dashboard.js";
-import { goalRouter } from "./routes/goals.js";
 import { parserRouter } from "./routes/parser.js";
 import { openApiRouter } from "./routes/openapi.js";
 import { auditLog } from "./middleware/audit-log.js";
@@ -70,7 +69,6 @@ export function createApp(): express.Express {
   app.use(API_ROUTES.transactions, suspectRouter);
   app.use(API_ROUTES.transactions, transactionRouter);
   app.use(API_ROUTES.dashboard, dashboardRouter);
-  app.use(API_ROUTES.goals, goalRouter);
   app.use(API_ROUTES.parser, parserRouter);
   app.use((_req, res) => {
     res.status(404).json({ success: false, error: "Route not found" });

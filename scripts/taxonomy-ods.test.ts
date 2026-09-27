@@ -11,10 +11,6 @@ import {
   getSubcategories,
 } from "../server/services/categories.js";
 import {
-  createSpendingGoal,
-  getSpendingGoals,
-} from "../server/services/goals.js";
-import {
   computeTaxonomyFingerprint,
   exportTaxonomyOds,
 } from "./export-taxonomy-ods.ts";
@@ -44,28 +40,14 @@ async function useTempDatabase(
   return process.env.LOCALFIN_DB_PATH;
 }
 
-function seedFixture(): {
-  categoryId: string;
-  subcategoryId: string;
-  goalId: string;
-} {
+function seedFixture(): { categoryId: string; subcategoryId: string } {
   const category = createCategory({ name: "Food", type: "expense" });
   const subcategory = createSubcategory({
     name: "Groceries",
     category_id: category.id,
+    monthly_goal: 400,
   });
-  const goal = createSpendingGoal({
-    subcategory_id: subcategory.id,
-    amount: 400,
-    period: "monthly",
-    start_date: "2026-01-01",
-    end_date: null,
-  });
-  return {
-    categoryId: category.id,
-    subcategoryId: subcategory.id,
-    goalId: goal.id,
-  };
+  return { categoryId: category.id, subcategoryId: subcategory.id };
 }
 
 void test("taxonomy export parses back with matching ids and fingerprint", async (t) => {
@@ -76,7 +58,6 @@ void test("taxonomy export parses back with matching ids and fingerprint", async
   const exported = await exportTaxonomyOds({ out });
   assert.ok(exported.categories >= 1);
   assert.ok(exported.subcategories >= 1);
-  assert.equal(exported.goals, 1);
 
   const parsed = parseTaxonomyWorkbook(out);
   assert.equal(parsed.meta.get("purpose"), "taxonomy");
@@ -86,16 +67,13 @@ void test("taxonomy export parses back with matching ids and fingerprint", async
   const liveFingerprint = computeTaxonomyFingerprint(
     getCategories(),
     getSubcategories(),
-    getSpendingGoals(),
   );
   assert.equal(parsed.meta.get("fingerprint"), liveFingerprint);
 
   const catText = JSON.stringify(parsed.categoriesGrid);
   const subText = JSON.stringify(parsed.subcategoriesGrid);
-  const goalText = JSON.stringify(parsed.goalsGrid);
   assert.ok(catText.includes(fixture.categoryId));
   assert.ok(subText.includes(fixture.subcategoryId));
-  assert.ok(goalText.includes(fixture.goalId));
 
   const pending = validateTaxonomyRows(parsed);
   assert.equal(pending.categoryCreates.length, 0);
@@ -104,12 +82,9 @@ void test("taxonomy export parses back with matching ids and fingerprint", async
   assert.equal(pending.subcategoryCreates.length, 0);
   assert.equal(pending.subcategoryUpdates.length, 0);
   assert.equal(pending.subcategoryDeletes.length, 0);
-  assert.equal(pending.goalCreates.length, 0);
-  assert.equal(pending.goalUpdates.length, 0);
-  assert.equal(pending.goalDeletes.length, 0);
 });
 
-void test("taxonomy invalid color, type, and period applies zero rows", async (t) => {
+void test("taxonomy invalid color, type, and monthly goal applies zero rows", async (t) => {
   const dbPath = await useTempDatabase(t);
   seedFixture();
   const out = path.join(path.dirname(dbPath), "tax-review.fods");
@@ -118,7 +93,6 @@ void test("taxonomy invalid color, type, and period applies zero rows", async (t
 
   const categoriesBefore = getCategories().length;
   const subcategoriesBefore = getSubcategories().length;
-  const goalsBefore = getSpendingGoals().length;
 
   const catHeader = (parsed.categoriesGrid[0] ?? []).map((h) =>
     String(h ?? "").trim().toLowerCase(),
@@ -126,20 +100,16 @@ void test("taxonomy invalid color, type, and period applies zero rows", async (t
   const subHeader = (parsed.subcategoriesGrid[0] ?? []).map((h) =>
     String(h ?? "").trim().toLowerCase(),
   );
-  const goalHeader = (parsed.goalsGrid[0] ?? []).map((h) =>
-    String(h ?? "").trim().toLowerCase(),
-  );
   const catTypeCol = catHeader.indexOf("type");
   const subColorCol = subHeader.indexOf("color");
-  const goalPeriodCol = goalHeader.indexOf("period");
-  assert.ok(catTypeCol >= 0 && subColorCol >= 0 && goalPeriodCol >= 0);
+  const subGoalCol = subHeader.indexOf("monthly_goal");
+  assert.ok(catTypeCol >= 0 && subColorCol >= 0 && subGoalCol >= 0);
   const catRow = parsed.categoriesGrid[1];
   const subRow = parsed.subcategoriesGrid[1];
-  const goalRow = parsed.goalsGrid[1];
-  assert.ok(catRow && subRow && goalRow);
+  assert.ok(catRow && subRow);
   catRow[catTypeCol] = "bogus";
   subRow[subColorCol] = "not-a-color";
-  goalRow[goalPeriodCol] = "fortnightly";
+  subRow[subGoalCol] = -5;
 
   assert.throws(
     () => validateTaxonomyRows(parsed),
@@ -147,7 +117,6 @@ void test("taxonomy invalid color, type, and period applies zero rows", async (t
   );
   assert.equal(getCategories().length, categoriesBefore);
   assert.equal(getSubcategories().length, subcategoriesBefore);
-  assert.equal(getSpendingGoals().length, goalsBefore);
 });
 
 void test("taxonomy stale fingerprint aborts with re-export instruction", async (t) => {

@@ -5,32 +5,30 @@ description: Use for multi-step LocalFin tasks (budget setup, messy capture, bul
 
 # LocalFin Workflows
 
-Distilled from `docs/agent-use-cases.md` and `server/services/ai-chat/prompting.ts:72-76`. Each workflow uses `GET /api/openapi.json` for shapes, `localfin-*` MCP tools as alternative, and handles 409 duplicate-name partial failures (`server/services/action-executor` pattern: valid actions persist, invalid return error).
+Each workflow uses `GET /api/openapi.json` for shapes, `localfin_*` MCP tools as alternative, and handles 409 duplicate-name failures per call: successful calls persist, so retry only what failed.
 
 ## 1. Budget setup
 
-**Goal:** Create accounts → categories → subcategories → goals in order; handle duplicates without blocking siblings.
+**Goal:** Create accounts → categories → subcategories (with monthly goals) in order; handle duplicates without blocking siblings.
 
 Steps:
 
 1. Accounts: `POST /api/accounts` or `localfin_create_account` with `{name, type: asset|liability, initial_balance?, color?: hex}`. On 409 duplicate `name`, fetch `GET /api/accounts` and reuse existing id.
 2. Categories: `POST /api/categories` with `{name, type: income|expense, color?}`. Same 409 handling via `GET /api/categories`.
-3. Subcategories: `POST /api/subcategories` with `{name, category_id, monthly_goal?, color?}`. Resolve `category_id` from step 2; 409 on `(name, category_id)` → reuse.
-4. Goals: `POST /api/goals` or `localfin_create_goal` with `{subcategory_id, amount>0, period: weekly|monthly|quarterly|annual, start_date: YYYY-MM-DD, end_date?: YYYY-MM-DD|null}`. One goal per subcategory; 409 if exists → `PUT /api/goals/:id` if user wants update. Validate `start_date <= end_date`.
-5. Verify: `GET /api/dashboard/account-summary?startDate=&endDate=` etc., or `localfin_dashboard` with date range. Show partial failures in summary.
+3. Subcategories: `POST /api/subcategories` with `{name, category_id, monthly_goal?, color?}`. `monthly_goal` (>= 0 or null) is the budget target; the category summary prorates it over the requested range. Resolve `category_id` from step 2; 409 on duplicate name → reuse.
+4. Verify: `GET /api/dashboard/account-summary?startDate=&endDate=` etc., or `localfin_dashboard` with date range. Show partial failures in summary.
 
-Example order: checking/savings accounts → Food/Bills categories → Groceries/Restaurants under Food → monthly grocery target 400 starting 2026-01-01.
+Example order: checking/savings accounts → Food/Bills categories → Groceries (`monthly_goal: 400`)/Restaurants under Food.
 
 ### Taxonomy ODS loop
 
 Inbox `~/Documents/LocalFin/inbox/taxonomy-review.fods` — pass it explicitly; the script default `./taxonomy-review.fods` never reaches the user's laptop (see `AGENTS.md`). Archive `data/archive/`.
 Commands: `npm run taxonomy:export [-- out.fods]` and `npm run taxonomy:apply -- <file.fods> [--dry-run]`.
-Sheets: `_meta(key,value)`; `Categories(__id,name,type,color,__delete)`; `Subcategories(__id,name,category,__category_id,monthly_goal,color,__delete)`; `Goals(__id,subcategory,__subcategory_id,amount,period,start_date,end_date,__delete)`.
-Semantics: empty `__id` = create, `__delete=x` = delete; hidden `__` columns authoritative over display labels (`category`, `subcategory`).
-`type` in `income|expense`; `period` in `weekly|monthly|quarterly|annual`; colors `#rrggbb` or empty; `amount>0`; ISO dates with `start_date <= end_date`; one goal per subcategory; goals never repoint.
-Stale fingerprint aborts: re-run `taxonomy:export` before editing again.
+Sheets: `_meta(key,value)`; `Categories(__id,name,type,color,__delete)`; `Subcategories(__id,name,category,__category_id,monthly_goal,color,__delete)`.
+Semantics: empty `__id` = create, `__delete=x` = delete; hidden `__` columns authoritative over the `category` display label.
+`type` in `income|expense`; `monthly_goal` >= 0 or empty; colors `#rrggbb` or empty. A subcategory with active transactions cannot be deleted.
+Stale fingerprint (any category/subcategory changed since export) aborts: re-run `taxonomy:export` before editing again.
 Always `--dry-run` first, then apply; success appends `logs/jsonl/ods-<date>.jsonl` and moves inbox to `data/archive/<date>-taxonomy-<hash8>.fods`.
-`monthly_goal` and `spending_goals.amount` stay independent (no sync).
 System `Unassigned` rows: color-only edits, no rename/retype/delete.
 
 ## 2. Messy transaction capture

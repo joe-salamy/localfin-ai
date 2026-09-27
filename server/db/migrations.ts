@@ -7,8 +7,9 @@ import { up as up005ProviderLinking } from "./migrations/005-provider-linking.js
 import { up as up006AgentConversationCompatibility } from "./migrations/006-agent-conversation-compatibility.js";
 import { up as up007AgentApprovalReceipts } from "./migrations/007-agent-approval-receipts.js";
 import { up as up008DropAgentTables } from "./migrations/008-drop-agent-tables.js";
+import { up as up009DropUnusedTables } from "./migrations/009-drop-unused-tables.js";
 
-export interface Migration {
+interface Migration {
   version: number;
   name: string;
   up(database: Database.Database): void;
@@ -35,6 +36,7 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
     name: "drop-agent-tables",
     up: up008DropAgentTables,
   },
+  { version: 9, name: "drop-unused-tables", up: up009DropUnusedTables },
 ]);
 
 export function runMigrations(
