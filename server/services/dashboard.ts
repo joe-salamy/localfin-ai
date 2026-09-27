@@ -3,6 +3,7 @@ import {
   differenceInCalendarDaysUtc,
   parseIsoDate,
 } from "./dates.js";
+import { roundCurrencyAmount } from "../../shared/finance/transactionAmounts.js";
 import { getDb } from "../db/index.js";
 import { clampStartDateToFirstTransaction } from "./date-ranges.js";
 import { buildTagExistsClause, netWorthEffectSql } from "./transaction-filters.js";
@@ -329,9 +330,9 @@ export function getDashboardMetrics(
     .get(effectiveStartDate, endDate, ...tagFilter.params) as MetricsRow;
 
   return {
-    totalIncome: row.totalIncome,
-    totalExpenses: row.totalExpenses,
-    netChange: row.totalIncome - row.totalExpenses,
+    totalIncome: roundCurrencyAmount(row.totalIncome),
+    totalExpenses: roundCurrencyAmount(row.totalExpenses),
+    netChange: roundCurrencyAmount(row.totalIncome - row.totalExpenses),
   };
 }
 
