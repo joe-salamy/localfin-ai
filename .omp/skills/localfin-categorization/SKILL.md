@@ -33,23 +33,30 @@ A name matching the pattern with no fitting subcategory becomes `{kind:"transfer
 
 ## Choices and few-shot
 
-Fetch `GET /api/subcategories` (or `localfin_list_subcategories`) as `{id, category_id, name, category_name, category_type}` and present verbatim as `category > subcategory (id)` lines. Fetch `GET /api/transactions?limit=50` (or `localfin_search_transactions` with `limit:50`), preferring same-account or merchant-substring rows, as `{name, subcategory_name, category_name}` pairs. Never invent ids.
+Fetch `GET /api/subcategories` (or `localfin_list_subcategories`) as `{id, category_id, name, category_name, category_type}`. Build one shared Choice criteria map: label `"category > subcategory"` → rubric `"<category_type>: category > subcategory"`, plus `"Uncertain"` → `"No listed subcategory fits this transaction"`. Keep a local label→id table (never sent to the judge); labels stay verbatim. Never invent ids. Fetch `GET /api/transactions?limit=50` (or `localfin_search_transactions` with `limit:50`), preferring same-account or merchant-substring rows, as `{name, subcategory label, category}` triples for per-state examples (up to 5 per state).
 
 ## OMP execution
 
-No external key; uses the session model from `~/.omp/agent/models.yml` provider routing. Shard size 25 is a context-window convenience, not a server limit.
+No external key; uses the eval kernel `judge` role (native TypeSafe Jev when credentialed, else the tiny/smol chat fallback through the same typed interface). Optional native Jev: declare a `judge`-role model in `~/.omp/agent/models.yml` with `api: typesafe` (TypeSafe direct, `TYPESAFE_API_KEY`) or `api: openrouter-decisions` (OpenRouter `typesafe/jev-1.13`, billed to OpenRouter). No sharding, no `workpool`, no JSON-schema parsing: `judge_batch` owns concurrency.
 
-If unknown count after lookup is 0, stop.
+If unknown count after lookup is 0, stop. If 1 unknown, one `eval` `judge(state, questions)` call; if 2+, one batch call — JS `await judgeBatch(states, questions, { concurrency: 32, retries: 1, minOk: 1, intent: "Categorize" })`, Python `judge_batch(states, questions, concurrency=32, retries=1, min_ok=1, intent="Categorize")` — then `drain` in bounded slices until done (JS `await b.drain({ timeout })` yields `[[key, {key, answers, model}], ...]`; Python `await b.drain(timeout)` yields `[(key, item)]`). No custom tool in `.omp/tools` and no new server endpoint; MCP/REST already covers reads and writes.
 
-If 1–25 unknowns, one `eval` `completion(prompt, {system, schema})` call (JS) or `completion(prompt, system=..., schema=...)` (Python) with the JSON schema `{"type":"object","properties":{"results":{"type":"array","maxItems":25,"items":{"type":"object","properties":{"kind":{"enum":["income","expense","transfer"]},"subcategory_id":{"type":["string","null"]}},"required":["kind","subcategory_id"],"additionalProperties":false}}},"required":["results"],"additionalProperties":false}`. System content MUST embed the transfer rule, the verbatim choices, the few-shot pairs, and the order rule (one result per input, input order).
+`states` is `{key: state}` keyed by parsed-row index (or transaction id for already-created rows). Each state is `{name, amount, date, account_name, account_type, parser_kind, paymentish_name_match, examples}` where `paymentish_name_match` is the Transfer-guard regex result for that name and `examples` holds up to 5 `{name, subcategory label}` triples. Per-transaction context lives in the state because `judge_batch` applies identical questions to every state.
 
-If 26+ unknowns, shard into items of exactly 25 (last shard 1–25) and run `eval` `workpool(agent=None, name="categorize", context=<same system content>, tools=None)` with `eval.workpool.freshAgents=true`, `.push(*items)` where each item is `{transactions:[{id,name,amount,date,account_id,kind}], choices, examples}`; each worker returns `yield({key, data:{results:[...]}})` or `yield({key, error})` per the `omp://tools/eval.md` contract. No custom tool in `.omp/tools` and no new server endpoint; MCP/REST already covers reads and writes.
+`questions` (identical for every state):
+- `txn_kind`: `{type:"choice", instructions:"Classify this bank transaction. Transfer means money moving between the user's own accounts (credit card payment, autopay, account-to-account); when unsure between transfer and income/expense, answer the parser kind given in the state.", criteria:{income:"Money coming in: payroll, refunds, interest", expense:"Money going out: purchases, bills, fees", transfer:"Payment between own accounts; payment-like name"}}`
+- `subcategory`: `{type:"choice", instructions:"Which subcategory best fits this transaction? Answer Uncertain when nothing fits; never answer a subcategory whose category type contradicts the transaction kind.", criteria:<shared map>}`
 
-If the session model rejects 25 items, halve to 12 and retry once, then leave failures as `categorizationSource:"none"` and surface them via `needsCategory` / ODS export. If model auth is unavailable mid-run, skip the model step, keep lookup results, and export leftovers instead of failing the ingest.
+Decide per key with default threshold 0.6 (tune on a small labeled sample; probabilities make re-tuning free):
+- Transfer-guard regex hit OR `txn_kind.choice==="transfer"` with confidence ≥ 0.6 → `{kind:"transfer", subcategory_id:null}`.
+- `txn_kind.choice` income/expense with confidence ≥ 0.6 → that kind; else keep `parser_kind` (never force transfer on low confidence).
+- Subcategory: accept the label only when it is not `Uncertain`, confidence ≥ 0.6, the label maps to a live id, and its `category_type` matches the final kind; else `null`. Transfer forces `null`.
+
+On per-key `item.error`, mark exactly those inputs `categorizationSource:"none"`, `subcategory_id:null`, and continue. If `drain` raises wholesale (fewer than `min_ok` answered), mark all remaining the same, keep lookup results, and surface leftovers via `needsCategory` / ODS export instead of failing the ingest.
 
 ## Validation
 
-Require `results.length === inputs.length` per batch; reject non-object entries and numeric-choice hallucinations; filter every `subcategory_id` against the live choices fetched above (unknown id becomes `null`); force `subcategory_id:null` when `kind` is `transfer`; preserve parser `kind` for non-transfer rows unless the model returns transfer under the guard above. On `completion` `.wait()` failure or a worker `error`, mark exactly those inputs `categorizationSource:"none"`, `subcategory_id:null`, and continue remaining batches. Leave still-unknown income/expense rows `subcategory_id:null` for `needsCategory` rather than guessing. Tags stay explicit-only (set only on the words `tag` / `tagged` or `tag it as X` per `localfin-finance-invariants`).
+Require both `txn_kind` and `subcategory` answers per key; a missing answer marks that input `categorizationSource:"none"`, `subcategory_id:null`. Map labels to ids through the local table only (an unmapped label becomes `null`, never a guess); force `subcategory_id:null` when final kind is `transfer`; null out a subcategory whose `category_type` contradicts the final kind. Leave still-unknown income/expense rows `subcategory_id:null` for `needsCategory` rather than guessing. Tags stay explicit-only (set only on the words `tag` / `tagged` or `tag it as X` per `localfin-finance-invariants`).
 
 ## Write
 
