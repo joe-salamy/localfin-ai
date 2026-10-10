@@ -9,6 +9,12 @@ The live copy of this repo and `data/budget.db` are on inspiron-3535 (daily driv
 
 Reports and `*:export` files default to those folders; still pass explicit paths (`--out` for reports, the positional path for `*:export` / `*:apply`). Never leave user-facing files in the repo root. Everything runs locally on the 3535 — no sync step.
 
+## New bank transactions
+
+When the user asks to add/ingest new transactions or categorize a new statement without giving a path, look in `~/Inbox/` for staged bank CSVs. They run `csvinbox` (fish function) to move `~/Downloads/*.csv` there; `~/Downloads` is hidden inside the agent jail, so never look there. If no CSV is staged, say so and ask them to run `csvinbox` instead of guessing.
+
+Flow per CSV: `npm run ingest:csv -- --file ~/Inbox/<file>.csv --account "<name>"` (`--dry-run` first when unsure). `--account` resolves fuzzy against existing accounts; ask if it matches zero or two-plus. Successful ingest move-archives the source CSV into `data/archive/statements/` (re-runs are safe: duplicates are skipped). Then categorize leftovers per `skill://localfin-categorization`, with still-unknown rows going through the `categorize:export` / `categorize:apply` ODS loop in `~/Documents/LocalFin/inbox/`.
+
 An OMEN checkout exists for development only. Its `.env` points at `data/testing/dev-scratch.db`; never run ingest/categorize/apply there against live data.
 
 ## Dashboard generation

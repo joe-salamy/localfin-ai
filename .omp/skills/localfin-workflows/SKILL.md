@@ -42,8 +42,7 @@ Steps:
 3. Pick kind & amount sign: use `localfin-finance-invariants` → `inferTransactionKindForAccount` + `normalizeTransactionAmount`. Example: 48.23 expense on asset → delta -48.23; 32.10 reimbursement (income) on asset → +32.10; credit card payment between owned accounts → `kind: transfer`, no subcategory.
 4. Tags: only if user says `tag/tagged` or `tag it as X`; resolve via `GET /api/tags`, default type `custom`.
 5. Write: `POST /api/transactions` single or `POST /api/transactions/bulk` (`localfin_bulk_create_transactions`) with `{account_id, date, name, amount, kind?, subcategory_id?, tag_ids?, comment?}`. Use bulk for multiple.
-6. If given a bank CSV path: `npm run ingest:csv -- --file <path> --account <name>`, then the categorization skill for leftovers, then bulk create.
-
+6. If given a bank CSV path, use it; if asked to add new transactions with no path, look in `~/Inbox/` for staged CSVs (`csvinbox` staging; `~/Downloads` is jail-hidden). Then `npm run ingest:csv -- --file <path> --account <name>`, the categorization skill for leftovers, then bulk create.
 Acceptance: created rows have expected account, ISO date, signed amount, kind, subcategory, comment; missing refs surface as visible errors.
 
 ## 3. Search / correction
