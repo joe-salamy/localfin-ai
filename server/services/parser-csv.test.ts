@@ -111,3 +111,17 @@ void test("parser: count dedup creates one of two same-key rows, then zero on re
   assert.equal(second.transactions.filter((r) => !r.isDuplicate).length, 0);
   assert.equal(second.transactions.filter((r) => r.isDuplicate).length, 2);
 });
+
+void test("parser: Chase HTML entities are decoded and dedup against stored decoded names", async (t) => {
+  await useTempDatabase(t);
+  const account = createAccount({ name: "Chase Sapphire Preferred", type: "liability" });
+  const text = [
+    "Transaction Date,Post Date,Description,Category,Type,Amount,Memo",
+    "10/05/2026,10/06/2026,EMILES PASTRY &amp; CAFE LLC,Food,Sale,-12.50,",
+  ].join("\n");
+  const first = parseStatement(text, account.id);
+  assert.equal(first.transactions[0]?.name, "EMILES PASTRY & CAFE LLC");
+  assert.equal(first.transactions[0]?.isDuplicate, false);
+  createTransaction({ account_id: account.id, date: "2026-10-05", name: "EMILES PASTRY & CAFE LLC", amount: 12.5, kind: "expense" });
+  assert.equal(parseStatement(text, account.id).transactions[0]?.isDuplicate, true);
+});

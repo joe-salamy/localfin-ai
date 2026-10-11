@@ -7,10 +7,8 @@ import {
   getCategories,
   getSubcategories,
 } from "../server/services/categories.js";
-import {
-  getRecentTransactionByNameAndAccount,
-  getTransactionsWithDetails,
-} from "../server/services/transactions/read.js";
+import { createCategoryLookup } from "../server/services/transactions/lookup.js";
+import { getTransactionsWithDetails } from "../server/services/transactions/read.js";
 import { INBOX_DIRECTORY } from "./exchange-paths.js";
 import { escapeXml, fodsDocument, fodsRow, floatCell, headerRow, stringCell } from "./ods-common.js";
 
@@ -68,6 +66,7 @@ export function collectCategorizeRows(
   void getDb();
   const choices = loadCategorizeChoices();
   const byId = new Map(choices.map((c) => [c.id, c.label] as const));
+  const lookupCategory = createCategoryLookup();
   const idFilter = ids != null ? new Set(ids) : null;
 
   let rows = getTransactionsWithDetails(
@@ -87,17 +86,12 @@ export function collectCategorizeRows(
     let subcategory = current;
     let subcategoryId = t.subcategory_id ?? "";
     if (!current) {
-      // Same-kind matches only: an income subcategory on an expense row would
-      // fail validation when the file is applied.
-      const recent = getRecentTransactionByNameAndAccount(t.name, t.account_id);
-      const matchLabel = labelForSubcategory(
-        recent?.subcategory_id ?? null,
-        byId,
-      );
-      if (matchLabel && recent?.subcategory_id && recent.kind === t.kind) {
+      const hit = lookupCategory(t.name, t.account_id, t.kind);
+      const matchLabel = labelForSubcategory(hit?.subcategoryId ?? null, byId);
+      if (hit && matchLabel) {
         suggestion = matchLabel;
         subcategory = matchLabel;
-        subcategoryId = recent.subcategory_id;
+        subcategoryId = hit.subcategoryId;
       }
     }
     return {
@@ -189,18 +183,18 @@ export async function exportCategorizeOds(
 }
 
 export function exportUsage(): string {
-  return "Usage: categorize:export [out.fods] [--needs-category-only] [--limit N] (default out: ~/Documents/LocalFin/inbox/categorize-review.fods)";
+  return "Usage: categorize:export [out.fods] [--all] [--limit N] (default: rows needing a category; out: ~/Documents/LocalFin/inbox/categorize-review.fods)";
 }
 
 export function parseExportArgs(argv: string[]): {
   options: ExportCategorizeOptions;
 } | null {
   const positional: string[] = [];
-  let needsCategoryOnly = false;
+  let needsCategoryOnly = true;
   let limit: number | null = null;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--needs-category-only") needsCategoryOnly = true;
+    if (arg === "--all") needsCategoryOnly = false;
     else if (arg === "--limit") {
       const raw = argv[i + 1];
       i += 1;

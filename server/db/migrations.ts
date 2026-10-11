@@ -8,6 +8,7 @@ import { up as up006AgentConversationCompatibility } from "./migrations/006-agen
 import { up as up007AgentApprovalReceipts } from "./migrations/007-agent-approval-receipts.js";
 import { up as up008DropAgentTables } from "./migrations/008-drop-agent-tables.js";
 import { up as up009DropUnusedTables } from "./migrations/009-drop-unused-tables.js";
+import { up as up010DecodeTransactionNameEntities } from "./migrations/010-decode-transaction-name-entities.js";
 
 interface Migration {
   version: number;
@@ -37,6 +38,11 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
     up: up008DropAgentTables,
   },
   { version: 9, name: "drop-unused-tables", up: up009DropUnusedTables },
+  {
+    version: 10,
+    name: "decode-transaction-name-entities",
+    up: up010DecodeTransactionNameEntities,
+  },
 ]);
 
 export function runMigrations(

@@ -160,6 +160,8 @@ export interface BulkTransactionUpdateData {
   subcategory_id?: string | null;
   add_tag_ids?: string[];
   remove_tag_ids?: string[];
+  /** True when the session model chose the category; false when a person confirmed it. */
+  ai_suggested?: boolean;
 }
 
 export const transactionKindSchema = z.enum([

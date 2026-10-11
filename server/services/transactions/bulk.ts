@@ -1,5 +1,5 @@
 import type { AccountType, BulkTransactionUpdateData, TransactionKind } from "../../../shared/contracts/index.js";
-import { getDb } from "../../db/index.js";
+import { fromBool, getDb } from "../../db/index.js";
 import { BadRequestError } from "../../errors.js";
 import { addTransactionTags, assertActiveTags, removeTransactionTags } from "../tags.js";
 import { resolveNextState } from "./validation.js";
@@ -27,6 +27,7 @@ export function bulkUpdateTransactions(
   if (
     updates.kind === undefined &&
     updates.subcategory_id === undefined &&
+    updates.ai_suggested === undefined &&
     !hasTagUpdates
   ) {
     throw new BadRequestError("At least one update field is required")
@@ -54,11 +55,12 @@ export function bulkUpdateTransactions(
     return { row, nextKind, nextSubcategoryId, nextAmount: nextAmount ?? row.amount };
   });
   const stmt = db.prepare(
-    `UPDATE transactions SET kind = ?, amount = ?, subcategory_id = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+    `UPDATE transactions SET kind = ?, amount = ?, subcategory_id = ?, ai_suggested = COALESCE(?, ai_suggested), updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
   );
+  const aiSuggested = updates.ai_suggested === undefined ? null : fromBool(updates.ai_suggested);
   const updateAll = db.transaction(() => {
     for (const item of planned) {
-      stmt.run(item.nextKind, item.nextAmount, item.nextSubcategoryId, now, item.row.id);
+      stmt.run(item.nextKind, item.nextAmount, item.nextSubcategoryId, aiSuggested, now, item.row.id);
       if (addTagIds.length > 0) addTransactionTags(item.row.id, addTagIds);
       if (removeTagIds.length > 0) removeTransactionTags(item.row.id, removeTagIds);
     }

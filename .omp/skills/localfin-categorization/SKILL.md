@@ -1,67 +1,53 @@
 ---
 name: localfin-categorization
-description: Use when categorizing transactions from bank CSV statements
+description: Use for categorizing bank CSV statement transactions; not for live account feeds.
 ---
 
 # LocalFin categorization (OMP session model only)
 
-Server and scripts stay keyless and deterministic. `POST /api/parser/parse-statement` returns uncategorized rows (`{date, name, amount, kind, needsReview, isDuplicate, originalLine}`); categorization is never done server-side. The only model path is this skill, run in the OMP session.
+Scripts stay keyless and deterministic; the only model step is one eval `judge_batch` call in this session. Everything else is an npm script. Do not write ad-hoc SQL, `node -e`/`tsx -e` snippets, or `/tmp` scripts to read or write transactions.
 
 ## Trigger
 
-Run only when the user invokes `/skill:localfin-categorization` or explicitly asks to categorize parsed CSV or uncategorized transactions. Never run silently on parse or ingest.
+Run when the user asks to categorize new/uncategorized transactions, or right after `ingest:inbox` / `ingest:csv` when they asked to "add and categorize". Never run silently on ingest alone.
 
-## Preconditions
+## What ingest already did
 
-Start from `POST /api/parser/parse-statement` (or `localfin_parse_statement`) output from a bank CSV ingest plus `GET /api/accounts` for `account.type`. Preserve each parsed row's `date/name/amount/kind`; do not recompute kind except for the transfer rule below.
+`ingest:csv` / `ingest:inbox` reuse past subcategories deterministically (`createCategoryLookup`, `server/services/transactions/lookup.ts`):
 
-## Lookup first
+1. exact name on the same account, majority >= 0.6 of the last 20 (fewer than 3 rows: most recent);
+2. merchant key across all accounts (`merchantKey`, `shared/finance/merchantNames.ts`: bank boilerplate, wallet suffixes, digits stripped; first 8-16 letters compared), majority >= 0.8 of the last 20, at least 3 rows.
 
-For each unknown, call `GET /api/transactions?searchQuery=` scoped by exact name and account (or `localfin_search_transactions`), applying `getRecentTransactionByNameAndAccount` semantics:
+Only same-kind income/expense hits are reused. Do not repeat this lookup; whatever still has no subcategory goes to the model.
 
-`WHERE name = ? AND account_id = ? AND deleted_at IS NULL AND (kind = 'transfer' OR subcategory_id IS NOT NULL) ORDER BY date DESC, created_at DESC LIMIT 20`: group the window by `(kind, subcategory_id)`; fewer than 3 rows falls back to the most recent row; otherwise reuse the most recent row of the majority key only when its share is >= 0.6, else treat as no hit.
+## Flow
 
-No fuzzy match, no cross-account match. On a hit with a live subcategory id, reuse it and treat as `source:"lookup"` (`categorizationSource:"lookup"`), `ai_suggested:false`. Copy the existing `cleanName` behavior (strip leading `POS|ACH|CHECK|DEBIT|CREDIT|PURCHASE` and trailing `NNNNNN+` refs) before comparing; this is matching hygiene only.
+1. `npm run categorize:prepare` → writes `logs/categorize/judge-input.json` (`{labels, questions, states}`) for every income/expense row without a subcategory, or prints `Nothing needs a category.` (stop). States carry `{name, amount, date, account_name, account_type, parser_kind, paymentish_name_match, examples}`; examples are up to 5 of the user's own labeled rows for similar merchants.
+2. Run the batch in **Python** eval exactly like this (the JS handle's `status()`/`results()` are async and `drain_iter` does not exist there; a hand-rolled JS loop spun for 56 minutes once):
 
-## Transfer guard
+   ```python
+   import json
+   p = json.load(open("logs/categorize/judge-input.json"))
+   b = judge_batch(p["states"], p["questions"], concurrency=32, retries=1, min_ok=1, intent="Categorize")
+   while b.status()["running"]:
+       await b.drain(30)
+   print(b.status(), len(b.failed()))
+   json.dump(b.results(), open("logs/categorize/judge-results.json", "w"))
+   ```
 
-Apply before any model call.
+   Failed keys are simply absent from `results()`; apply sends them to review. If `drain` raises (whole batch died), write `{}` to `judge-results.json` and continue: apply then sends every row to review.
+3. `npm run categorize:apply-judgments -- --dry-run` → review the plan, then run it without `--dry-run`. Rules (`decideJudgment` in `scripts/categorize-judge.ts`, default threshold 0.6, `--threshold` to tune):
+   - model `transfer` at >= threshold → `kind:"transfer"`, `subcategory_id:null`;
+   - kind = model income/expense at >= threshold, else the parser kind;
+   - subcategory accepted when not `Uncertain`, >= threshold, a known label, and its category type equals the kind;
+   - otherwise a payment-like name (`PAYMENTISH_NAME_PATTERN`) becomes a transfer; everything else goes to review.
 
-`PAYMENTISH_NAME_PATTERN = /\b(?:transfer|online transfer|credit card payment|payment thank you|autopay|ach payment|card payment|payment received|payment posted)\b/i`
+   Writes go through `bulkUpdateTransactions` with `ai_suggested:true`, skip rows that were categorized meanwhile ("stale"), log to `logs/jsonl/categorize-<date>.jsonl`, and export only the review rows to `~/Documents/LocalFin/inbox/categorize-review.fods`.
+4. Report counts per label, transfers, and the review list printed by apply (each line shows the model's best guess). The user fills the sheet; then `npm run categorize:apply -- ~/Documents/LocalFin/inbox/categorize-review.fods --dry-run`, then without `--dry-run`. Rows a person labels there get `ai_suggested:false`.
 
-A name matching the pattern with no fitting subcategory becomes `{kind:"transfer", subcategory_id:null}`. When unsure between transfer and income/expense, keep the parser kind from `inferTransactionKindForAccount(amount, accountType)` (`shared/finance/transactionAmounts.ts:27`; `amount===0` yields expense; liability inverts asset sign) rather than forcing transfer. Transfers and adjustments MUST have `subcategory_id:null` per `localfin-finance-invariants`.
+## Invariants
 
-## Choices and few-shot
-
-Fetch `GET /api/subcategories` (or `localfin_list_subcategories`) as `{id, category_id, name, category_name, category_type}`. Build one shared Choice criteria map: label `"category > subcategory"` → rubric `"<category_type>: category > subcategory"`, plus `"Uncertain"` → `"No listed subcategory fits this transaction"`. Keep a local label→id table (never sent to the judge); labels stay verbatim. Never invent ids. Fetch `GET /api/transactions?limit=50` (or `localfin_search_transactions` with `limit:50`), preferring same-account or merchant-substring rows, as `{name, subcategory label, category}` triples for per-state examples (up to 5 per state).
-
-## OMP execution
-
-No external key; uses the eval kernel `judge` role (native TypeSafe Jev when credentialed, else the tiny/smol chat fallback through the same typed interface). Optional native Jev: declare a `judge`-role model in `~/.omp/agent/models.yml` with `api: typesafe` (TypeSafe direct, `TYPESAFE_API_KEY`) or `api: openrouter-decisions` (OpenRouter `typesafe/jev-1.13`, billed to OpenRouter). No sharding, no `workpool`, no JSON-schema parsing: `judge_batch` owns concurrency.
-
-If unknown count after lookup is 0, stop. If 1 unknown, one `eval` `judge(state, questions)` call; if 2+, one batch call — JS `await judgeBatch(states, questions, { concurrency: 32, retries: 1, minOk: 1, intent: "Categorize" })`, Python `judge_batch(states, questions, concurrency=32, retries=1, min_ok=1, intent="Categorize")` — then `drain` in bounded slices until done (JS `await b.drain({ timeout })` yields `[[key, {key, answers, model}], ...]`; Python `await b.drain(timeout)` yields `[(key, item)]`). No custom tool in `.omp/tools` and no new server endpoint; MCP/REST already covers reads and writes.
-
-`states` is `{key: state}` keyed by parsed-row index (or transaction id for already-created rows). Each state is `{name, amount, date, account_name, account_type, parser_kind, paymentish_name_match, examples}` where `paymentish_name_match` is the Transfer-guard regex result for that name and `examples` holds up to 5 `{name, subcategory label}` triples. Per-transaction context lives in the state because `judge_batch` applies identical questions to every state.
-
-`questions` (identical for every state):
-- `txn_kind`: `{type:"choice", instructions:"Classify this bank transaction. Transfer means money moving between the user's own accounts (credit card payment, autopay, account-to-account); when unsure between transfer and income/expense, answer the parser kind given in the state.", criteria:{income:"Money coming in: payroll, refunds, interest", expense:"Money going out: purchases, bills, fees", transfer:"Payment between own accounts; payment-like name"}}`
-- `subcategory`: `{type:"choice", instructions:"Which subcategory best fits this transaction? Answer Uncertain when nothing fits; never answer a subcategory whose category type contradicts the transaction kind.", criteria:<shared map>}`
-
-Decide per key with default threshold 0.6 (tune on a small labeled sample; probabilities make re-tuning free):
-- Transfer-guard regex hit OR `txn_kind.choice==="transfer"` with confidence ≥ 0.6 → `{kind:"transfer", subcategory_id:null}`.
-- `txn_kind.choice` income/expense with confidence ≥ 0.6 → that kind; else keep `parser_kind` (never force transfer on low confidence).
-- Subcategory: accept the label only when it is not `Uncertain`, confidence ≥ 0.6, the label maps to a live id, and its `category_type` matches the final kind; else `null`. Transfer forces `null`.
-
-On per-key `item.error`, mark exactly those inputs `categorizationSource:"none"`, `subcategory_id:null`, and continue. If `drain` raises wholesale (fewer than `min_ok` answered), mark all remaining the same, keep lookup results, and surface leftovers via `needsCategory` / ODS export instead of failing the ingest.
-
-## Validation
-
-Require both `txn_kind` and `subcategory` answers per key; a missing answer marks that input `categorizationSource:"none"`, `subcategory_id:null`. Map labels to ids through the local table only (an unmapped label becomes `null`, never a guess); force `subcategory_id:null` when final kind is `transfer`; null out a subcategory whose `category_type` contradicts the final kind. Leave still-unknown income/expense rows `subcategory_id:null` for `needsCategory` rather than guessing. Tags stay explicit-only (set only on the words `tag` / `tagged` or `tag it as X` per `localfin-finance-invariants`).
-
-## Write
-
-For not-yet-created rows call `POST /api/transactions/bulk` (or `localfin_bulk_create_transactions`, max 500 per call) with `{account_id, date, name, amount, kind, subcategory_id, tag_ids:[], comment?, ai_suggested}` where `ai_suggested:true` only for model-chosen rows and `false` for lookup rows (`ai_suggested` lives on `Transaction` writes only). For already-created rows call `PUT /api/transactions/bulk` (or `localfin_bulk_update_transactions`) with `{ids, updates:{subcategory_id, ai_suggested:true}}` for model-chosen rows only. Handle 409 duplicate-name partial failures per `localfin-workflows` (valid rows persist; report invalid rows with their error; do not retry successes).
-
-## Verify
-
-Re-query `GET /api/transactions?needsCategory=true` (or search) and show remaining `Unassigned` rows; the ODS human loop (`categorize:export` / `categorize:apply`) stays the review surface for leftovers.
+- Transfers and adjustments have `subcategory_id:null` (`localfin-finance-invariants`).
+- Never invent ids; labels map to ids only through the input file's `labels` table.
+- Tags stay explicit-only.
+- `categorize:export` exports only rows needing a category by default (`--all` for everything); always pass an explicit path inside `~/Documents/LocalFin/inbox/`, never `~/Inbox/` (bank CSV staging only).

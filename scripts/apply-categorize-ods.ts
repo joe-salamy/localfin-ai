@@ -280,8 +280,10 @@ export function applyCategorizeUpdates(
   const db = getDb();
   const applyAll = db.transaction(() => {
     for (const [key, ids] of groups) {
+      // A person chose these labels in the review sheet.
       bulkUpdateTransactions(ids, {
         subcategory_id: key === "" ? null : key,
+        ai_suggested: false,
       });
     }
   });
@@ -293,9 +295,6 @@ export function applyCategorizeUpdates(
   console.log(
     `Updated ${pending.length} rows, ${stillNeeding.length} still needing category`,
   );
-  if (stillNeeding.length > 0) {
-    console.log(`needsCategory: ${stillNeeding.join(", ")}`);
-  }
   return { updated: pending.length, stillNeeding };
 }
 

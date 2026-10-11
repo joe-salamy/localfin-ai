@@ -4,11 +4,10 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { getAccounts } from "../server/services/accounts.js";
-import { getSubcategories } from "../server/services/categories.js";
 import { localIsoDate, localTimeCompact } from "../server/services/dates.js";
 import { parseStatement } from "../server/services/parser.js";
 import { bulkCreateTransactions } from "../server/services/transactions/create.js";
-import { getRecentTransactionByNameAndAccount } from "../server/services/transactions/read.js";
+import { createCategoryLookup } from "../server/services/transactions/lookup.js";
 import type { Account, CreateTransactionData, ParsedStatementRow } from "../shared/contracts/index.js";
 import { isIsoDate } from "../shared/validation.js";
 import { exportCategorizeOds } from "./export-categorize-ods.js";
@@ -21,43 +20,49 @@ export function normalizeAccountName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+export interface TransactionPayloads {
+  payloads: CreateTransactionData[];
+  skipped: number;
+  zeroAmount: number;
+  lookup: { exact: number; merchant: number };
+}
+
 export function buildTransactionPayloads(
   transactions: ParsedStatementRow[],
   accountId: string,
-): { payloads: CreateTransactionData[]; skipped: number } {
-  const activeSubcategoryIds = new Set(getSubcategories().map((s) => s.id));
+): TransactionPayloads {
+  const lookupCategory = createCategoryLookup();
   const payloads: CreateTransactionData[] = [];
+  const lookup = { exact: 0, merchant: 0 };
   let skipped = 0;
+  let zeroAmount = 0;
   for (const t of transactions) {
     if (!isIsoDate(t.date)) {
       console.error(`Skipping unparseable date: "${t.originalLine}"`);
       skipped += 1;
       continue;
     }
-    let subcategoryId: string | null = null;
-    const recent = getRecentTransactionByNameAndAccount(t.name, accountId);
-    // Reuse the merchant's usual subcategory only for the same kind: an
-    // income subcategory on an expense row fails validation and would abort
-    // the whole statement.
-    if (
-      recent?.subcategory_id != null &&
-      recent.kind === t.kind &&
-      activeSubcategoryIds.has(recent.subcategory_id)
-    ) {
-      subcategoryId = recent.subcategory_id;
+    // $0.00 rows (waived fees, card verifications) move no money.
+    if (t.amount === 0) {
+      zeroAmount += 1;
+      continue;
     }
+    // Same-kind reuse only: an income subcategory on an expense row fails
+    // validation and would abort the whole statement.
+    const hit = lookupCategory(t.name, accountId, t.kind);
+    if (hit) lookup[hit.source] += 1;
     payloads.push({
       account_id: accountId,
       date: t.date,
       name: t.name,
       amount: t.amount,
       kind: t.kind,
-      subcategory_id: subcategoryId,
+      subcategory_id: hit?.subcategoryId ?? null,
       tag_ids: [],
       ai_suggested: false,
     });
   }
-  return { payloads, skipped };
+  return { payloads, skipped, zeroAmount, lookup };
 }
 
 /**
@@ -135,52 +140,46 @@ export function parseIngestArgs(argv: string[]): {
   return { file, account, out, dryRun };
 }
 
-interface ChunkStats {
+export interface IngestStats {
+  file: string;
   accountName: string;
-  created: number;
-  duplicates: number;
-  skipped: number;
-  needsCategory: string[];
   profile: string | null;
+  dryRun: boolean;
+  /** Rows written, or rows that would be written on a dry run. */
+  created: number;
+  duplicates: ParsedStatementRow[];
+  skipped: number;
+  zeroAmount: number;
+  lookup: { exact: number; merchant: number };
+  /** Income/expense rows left without a subcategory. */
+  needsCategory: number;
+  /** Ids of those rows; empty on a dry run. */
+  needsCategoryIds: string[];
+  archivePath: string | null;
 }
 
-function processChunk(account: Account, body: string): ChunkStats {
-  const parsed = parseStatement(body, account.id);
+/** Parse and plan one statement; throws on an unknown CSV format before any write. */
+function planStatement(account: Account, text: string): {
+  profile: string | null;
+  duplicates: ParsedStatementRow[];
+  built: TransactionPayloads;
+} {
+  const parsed = parseStatement(text, account.id);
   for (const message of parsed.errors) console.error(`[${account.name}] ${message}`);
   const unknownFormat = parsed.errors.find((e) => e.startsWith("Unknown CSV format"));
   if (unknownFormat !== undefined) throw new Error(unknownFormat);
-
   const duplicates = parsed.transactions.filter((t) => t.isDuplicate);
   const candidates = parsed.transactions.filter((t) => !t.isDuplicate);
+  return { profile: parsed.format, duplicates, built: buildTransactionPayloads(candidates, account.id) };
+}
 
-  const { payloads, skipped } = buildTransactionPayloads(candidates, account.id);
-
-  // One transaction for the whole statement: any invalid row rolls back all.
-  const created = payloads.length > 0 ? bulkCreateTransactions(payloads) : [];
-  const needsCategory = created
-    .filter((row) => row.subcategory_id == null && (row.kind === "income" || row.kind === "expense"))
-    .map((row) => row.id);
-
-  console.log(
-    `[${account.name}] created ${created.length}, duplicates ${duplicates.length}, skipped ${skipped}`,
+export function formatIngestStats(stats: IngestStats): string {
+  const created = stats.dryRun ? `would create ${stats.created}` : `created ${stats.created}`;
+  return (
+    `[${stats.accountName}] ${created} (lookup: ${stats.lookup.exact} exact, ${stats.lookup.merchant} merchant; ` +
+    `${stats.needsCategory} need category), duplicates ${stats.duplicates.length}, ` +
+    `skipped ${stats.skipped}, $0 rows ${stats.zeroAmount}`
   );
-  if (duplicates.length > 0) {
-    for (const d of duplicates.slice(0, 20)) {
-      console.log(`[${account.name}] duplicate: ${d.date} "${d.name}" ${d.amount}`);
-    }
-    if (duplicates.length > 20) {
-      console.log(`[${account.name}] ... and ${duplicates.length - 20} more duplicates`);
-    }
-  }
-
-  return {
-    accountName: account.name,
-    created: created.length,
-    duplicates: duplicates.length,
-    skipped,
-    needsCategory,
-    profile: parsed.format,
-  };
 }
 
 /** Move the ingested source CSV into the archive, log to JSONL. Runs only after a successful write. */
@@ -188,7 +187,7 @@ function archiveCsvMove(
   srcPath: string,
   accountName: string,
   profile: string | null,
-  stats: ChunkStats,
+  stats: IngestStats,
 ): string {
   const bytes = readFileSync(srcPath);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -231,8 +230,12 @@ function archiveCsvMove(
     sha256,
     profile,
     created: stats.created,
-    duplicates: stats.duplicates,
+    needs_category: stats.needsCategory,
+    lookup_exact: stats.lookup.exact,
+    lookup_merchant: stats.lookup.merchant,
     skipped: stats.skipped,
+    zero_amount: stats.zeroAmount,
+    duplicates: stats.duplicates.map((d) => ({ date: d.date, name: d.name, amount: d.amount })),
   })}\n`, "utf8");
 
   return archivePath;
@@ -252,49 +255,49 @@ export async function ingestStatementCsv(
   accountName: string,
   out: string | null,
   dryRun: boolean,
-): Promise<ChunkStats> {
+): Promise<IngestStats> {
   const account = resolveAccountName(accountName, getAccounts());
-  const text = readCsvFile(file);
+  const srcPath = path.resolve(file);
+  const { profile, duplicates, built } = planStatement(account, readCsvFile(srcPath));
+  const stats: IngestStats = {
+    file: srcPath,
+    accountName: account.name,
+    profile,
+    dryRun,
+    created: built.payloads.length,
+    duplicates,
+    skipped: built.skipped,
+    zeroAmount: built.zeroAmount,
+    lookup: built.lookup,
+    needsCategory: built.payloads.filter(
+      (p) => p.subcategory_id == null && (p.kind === "income" || p.kind === "expense"),
+    ).length,
+    needsCategoryIds: [],
+    archivePath: null,
+  };
   if (dryRun) {
-    const parsed = parseStatement(text, account.id);
-    for (const message of parsed.errors) console.error(`[${account.name}] ${message}`);
-    const failedFormat = parsed.errors.find((e) => e.startsWith("Unknown CSV format"));
-    if (failedFormat !== undefined) throw new Error(failedFormat);
-    const duplicates = parsed.transactions.filter((t) => t.isDuplicate);
-    const candidates = parsed.transactions.filter((t) => !t.isDuplicate);
-    const payloadBuilt = buildTransactionPayloads(candidates, account.id);
-    console.log(
-      `[${account.name}] created 0 (dry-run), duplicates ${duplicates.length}, skipped ${payloadBuilt.skipped}, would-create ${payloadBuilt.payloads.length}`,
-    );
-    return {
-      accountName: account.name,
-      created: 0,
-      duplicates: duplicates.length,
-      skipped: payloadBuilt.skipped,
-      needsCategory: [],
-      profile: parsed.format,
-    };
+    console.log(formatIngestStats(stats));
+    return stats;
   }
-  const stats = processChunk(account, text);
-  const archivePath = archiveCsvMove(path.resolve(file), account.name, stats.profile, stats);
-  console.log(`Archived source CSV to ${archivePath}`);
-  await maybeExportOds(out, [stats]);
-  return stats;
-}
 
-async function maybeExportOds(out: string | null, stats: ChunkStats[]): Promise<void> {
-  const needsCategory = stats.flatMap((s) => s.needsCategory);
-  if (out != null && needsCategory.length > 0) {
+  // One transaction for the whole statement: any invalid row rolls back all.
+  const created = built.payloads.length > 0 ? bulkCreateTransactions(built.payloads) : [];
+  stats.needsCategoryIds = created
+    .filter((row) => row.subcategory_id == null && (row.kind === "income" || row.kind === "expense"))
+    .map((row) => row.id);
+  stats.archivePath = archiveCsvMove(srcPath, account.name, profile, stats);
+  console.log(formatIngestStats(stats));
+  console.log(`Archived source CSV to ${stats.archivePath}`);
+  if (out != null && stats.needsCategoryIds.length > 0) {
     const result = await exportCategorizeOds({
       out,
-      needsCategoryOnly: false,
+      needsCategoryOnly: true,
       limit: null,
-      ids: needsCategory,
+      ids: stats.needsCategoryIds,
     });
     console.log(`Wrote ${result.path} (${result.exported} rows needing review)`);
-  } else if (needsCategory.length > 0) {
-    console.log(`needsCategory: ${needsCategory.join(", ")}`);
   }
+  return stats;
 }
 
 async function main(): Promise<void> {

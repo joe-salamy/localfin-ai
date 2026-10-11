@@ -1,0 +1,6 @@
+[
+  { "pattern": "^Chase4466_Activity_", "account": "Chase Sapphire Preferred" },
+  { "pattern": "^Checking - 0726_", "account": "U.S. Bank Smartly Checking" },
+  { "pattern": "^Credit Card - 8067_", "account": "U.S. Bank Altitude Connect" },
+  { "pattern": "^Discover-", "account": "Discover it Student Cash Back" }
+]

@@ -157,3 +157,23 @@ void test("ledger rejects registered-name mismatches and version gaps", () => {
   }
 });
 
+
+void test("migration 10 decodes HTML entities in stored transaction names", () => {
+  const database = new Database(":memory:");
+  try {
+    runMigrations(database, MIGRATIONS.slice(0, 9));
+    database.exec(`
+      INSERT INTO accounts (id, name, type, created_at) VALUES ('a', 'Card', 'liability', '2026-01-01');
+      INSERT INTO transactions (id, account_id, date, name, amount, kind, created_at)
+        VALUES ('t1', 'a', '2026-01-01', 'THE VALORIAN LA F&amp;B', 5, 'expense', '2026-01-01'),
+               ('t2', 'a', '2026-01-01', 'AT&T', 5, 'expense', '2026-01-01');
+    `);
+    runMigrations(database);
+    assert.deepEqual(
+      database.prepare("SELECT name FROM transactions ORDER BY id").all(),
+      [{ name: "THE VALORIAN LA F&B" }, { name: "AT&T" }],
+    );
+  } finally {
+    database.close();
+  }
+});

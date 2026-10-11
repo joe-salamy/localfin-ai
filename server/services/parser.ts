@@ -9,6 +9,7 @@ import {
   normalizeTransactionAmount,
   roundCurrencyAmount,
 } from "../../shared/finance/transactionAmounts.js"
+import { decodeHtmlEntities } from "../../shared/finance/merchantNames.js";
 import { isIsoDate } from "../../shared/validation.js";
 import { getDb } from "../db/index.js";
 import { localIsoDate } from "./dates.js";
@@ -144,7 +145,7 @@ const PREFIX_PATTERN = /^(?:POS|ACH|CHECK|DEBIT|CREDIT|PURCHASE)\s+/i;
 const TRAILING_REF_PATTERN = /\s+\d{6,}$/;
 
 function cleanName(raw: string): string {
-  let name = raw.trim();
+  let name = decodeHtmlEntities(raw).trim();
   // Collapse whitespace
   name = name.replace(/\s+/g, " ");
   // Remove common prefixes

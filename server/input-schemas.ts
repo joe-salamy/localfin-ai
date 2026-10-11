@@ -69,6 +69,7 @@ export const bulkTransactionUpdateFields = z.object({
   subcategory_id: nonEmptyString.nullable().optional(),
   add_tag_ids: tagIds.optional(),
   remove_tag_ids: tagIds.optional(),
+  ai_suggested: z.boolean().optional(),
 });
 
 export const parseStatementInput = z.object({

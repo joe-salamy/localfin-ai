@@ -53,7 +53,7 @@ Steps:
 
 1. Search: `GET /api/transactions?searchQuery=` (MCP `localfin_search_transactions`). Grammar from `server/services/transaction-search.ts`: quoted phrases, `(parens)`, `AND/OR/NOT`, `|`, `-term`, fields `name:`, `comment:`, `account:`, `category:`, `subcategory:`, `tag:`/`tags:`, `type:income|expense|transfer|adjustment`, plus `amount>20` (absolute value), `amount<=100`, `date>=2026-01-01`, `date:2026-01-01`. Show matches before write.
 2. Single update: if one match and user intent unambiguous, `PUT /api/transactions/:id` (or `localfin_update_transaction`) with `{subcategory_id, name?, comment?, amount?, kind?, tag_ids?}`.
-3. Bulk update: for `all`/`every` matching, use `PUT /api/transactions/bulk` (`localfin_bulk_update_transactions`) with `{ids, updates:{kind?, subcategory_id?, add_tag_ids?, remove_tag_ids?}}`.
+3. Bulk update: for `all`/`every` matching, use `PUT /api/transactions/bulk` (`localfin_bulk_update_transactions`) with `{ids, updates:{kind?, subcategory_id?, add_tag_ids?, remove_tag_ids?, ai_suggested?}}`. A user-directed recategorization sets `ai_suggested:false`.
 4. Ambiguity: if 0 or >1 matches for a single-update request, report and ask for clarification; do not guess.
 5. Verify: re-run `searchQuery` after write and display changed fields only.
 

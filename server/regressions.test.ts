@@ -53,7 +53,7 @@ void test("parser dates: no-year rows never land in the future, invalid dates ne
   assert.equal(result.transactions[0]?.needsReview, true);
 });
 
-void test("ingest reuses a past subcategory only for the same kind", async (t) => {
+void test("ingest reuses a past subcategory only for the same kind and drops $0 rows", async (t) => {
   await useTempDatabase(t);
   const account = createAccount({ name: "Card", type: "liability" });
   const refunds = createCategory({ name: "Refunds", type: "income" });
@@ -68,13 +68,16 @@ void test("ingest reuses a past subcategory only for the same kind", async (t) =
     needsReview: false,
     isDuplicate: false,
   };
-  const { payloads } = buildTransactionPayloads(
+  const { payloads, zeroAmount } = buildTransactionPayloads(
     [
       { ...row, amount: 20, kind: "expense" },
       { ...row, amount: -5, kind: "income" },
+      { ...row, amount: 0, kind: "expense" },
     ],
     account.id,
   );
+  assert.equal(payloads.length, 2);
+  assert.equal(zeroAmount, 1);
   assert.equal(payloads[0]?.subcategory_id, null);
   assert.equal(payloads[1]?.subcategory_id, returns.id);
 });
