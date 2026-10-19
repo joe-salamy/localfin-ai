@@ -125,3 +125,63 @@ void test("parser: Chase HTML entities are decoded and dedup against stored deco
   createTransaction({ account_id: account.id, date: "2026-10-05", name: "EMILES PASTRY & CAFE LLC", amount: 12.5, kind: "expense" });
   assert.equal(parseStatement(text, account.id).transactions[0]?.isDuplicate, true);
 });
+
+void test("parser: fidelity brokerage and Roth variants map actions to kinds and asset signs", async (t) => {
+  await useTempDatabase(t);
+  const account = createAccount({ name: "Fidelity Brokerage", type: "asset" });
+  const simpleHeader = "Run Date,Action,Symbol,Description,Type,Amount ($)";
+  const simple = parseStatement(
+    [
+      simpleHeader,
+      "09/15/2026,YOU BOUGHT AVANTIS ALL EQUITY MARKETS ETF (AVGE) (Cash),AVGE,AVANTIS ETF,Cash,-7468.50",
+      "09/14/2026,DIVIDEND RECEIVED AVANTIS ALL EQUITY MARKETS ETF (AVGE) (Cash),AVGE,AVANTIS ETF,Cash,111.52",
+      "09/15/2026,CASH CONTRIBUTION CURRENT YEAR (Cash),,No Description,Cash,7500",
+      "08/19/2026,Electronic Funds Transfer Paid (Cash),,No Description,Cash,-5000",
+    ].join("\n"),
+    account.id,
+  );
+  assert.equal(simple.format, "fidelity");
+  assert.equal(simple.transactions.length, 4);
+  const simpleByName = Object.fromEntries(simple.transactions.map((r) => [r.name, r]));
+  assert.equal(simpleByName["YOU BOUGHT AVANTIS ALL EQUITY MARKETS ETF (AVGE) (Cash)"]?.kind, "transfer");
+  assert.equal(simpleByName["YOU BOUGHT AVANTIS ALL EQUITY MARKETS ETF (AVGE) (Cash)"]?.amount, -7468.5);
+  assert.equal(simpleByName["DIVIDEND RECEIVED AVANTIS ALL EQUITY MARKETS ETF (AVGE) (Cash)"]?.kind, "income");
+  assert.equal(simpleByName["DIVIDEND RECEIVED AVANTIS ALL EQUITY MARKETS ETF (AVGE) (Cash)"]?.amount, 111.52);
+  assert.equal(simpleByName["CASH CONTRIBUTION CURRENT YEAR (Cash)"]?.kind, "transfer");
+  assert.equal(simpleByName["Electronic Funds Transfer Paid (Cash)"]?.kind, "transfer");
+  const enrichedHeader =
+    "Run Date,Action,Symbol,Description,Type,Exchange Quantity,Exchange Currency,Currency,Price,Quantity,Exchange Rate,Commission,Fees,Accrued Interest,Amount,Cash Balance,Settlement Date";
+  const enriched = parseStatement(
+    [
+      enrichedHeader,
+      '09/30/2026,YOU SOLD ISHARES TRUST CORE 60/40 BALANCED AL... (AOR) (Cash),AOR,ISHARES TRUST,Cash,0,,USD,68.69,-72,0,,,0.11,4945.58,8786.85,09/16/2026',
+      '09/30/2026,REINVESTMENT FIDELITY GOVERNMENT MONEY MARKET (SPAXX) (Cash),SPAXX,SPAXX,Cash,0,,USD,1,28.11,0,,,,-28.11,8869.23,',
+      '09/15/2026,TRANSFERRED TO VS 261-229059-1 CURRENT CONTRIBUTION (Cash),,No Description,Cash,0,,USD,,0,0,,,,-7500,3841.27,',
+    ].join("\n"),
+    account.id,
+  );
+  assert.equal(enriched.format, "fidelity");
+  assert.equal(enriched.transactions.length, 3);
+  const enrichedByName = Object.fromEntries(enriched.transactions.map((r) => [r.name.slice(0, 8), r]));
+  assert.equal(enrichedByName["YOU SOLD"]?.kind, "transfer");
+  assert.equal(enrichedByName["YOU SOLD"]?.amount, 4945.58);
+  assert.equal(enrichedByName["REINVEST"]?.kind, "transfer");
+  assert.equal(enrichedByName["REINVEST"]?.amount, -28.11);
+  assert.equal(enrichedByName["TRANSFER"]?.kind, "transfer");
+  assert.equal(enrichedByName["TRANSFER"]?.amount, -7500);
+});
+
+void test("parser: fidelity unknown actions abort the line with an error", async (t) => {
+  await useTempDatabase(t);
+  const account = createAccount({ name: "Fidelity Roth IRA", type: "asset" });
+  const result = parseStatement(
+    [
+      "Run Date,Action,Symbol,Description,Type,Amount ($)",
+      "09/15/2026,SOMETHING WEIRD HAPPENED (Cash),,No Description,Cash,10",
+    ].join("\n"),
+    account.id,
+  );
+  assert.equal(result.format, "fidelity");
+  assert.equal(result.transactions.length, 0);
+  assert.match(result.errors.join("\n"), /Unknown Fidelity Action/);
+});

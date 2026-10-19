@@ -15,7 +15,7 @@ import { getDb } from "../db/index.js";
 import { localIsoDate } from "./dates.js";
 import { checkDuplicates } from "./transactions/checks.js";
 
-type BankProfileId = "chase" | "usbank" | "discover";
+type BankProfileId = "chase" | "usbank" | "discover" | "fidelity";
 
 // Sign of a raw CSV amount that adds money to the account holder: Chase and
 // US Bank export payments/deposits as positive, Discover exports them negative.
@@ -23,6 +23,7 @@ const PROFILE_INFLOW_SIGN: Record<BankProfileId, 1 | -1> = {
   chase: 1,
   usbank: 1,
   discover: -1,
+  fidelity: 1,
 };
 
 function detectBankProfile(headers: string[]): BankProfileId | null {
@@ -37,9 +38,11 @@ function detectBankProfile(headers: string[]): BankProfileId | null {
   if (has("trans. date")) {
     return "discover";
   }
+  if (has("run date") && has("action") && (has("amount ($)") || has("amount"))) {
+    return "fidelity";
+  }
   return null;
 }
-
 const TRANSFER_NAME_PATTERN =
   /\b(?:transfer|online transfer|credit card payment|payment thank you|internet payment|mobile payment|web authorized pmt|mobile banking payment|autopay|ach payment|card payment|payment received|payment posted)\b/i;
 
@@ -156,7 +159,7 @@ function cleanName(raw: string): string {
 }
 
 const UNKNOWN_FORMAT_SUFFIX =
-  "Expected one of: Chase (Transaction Date,...,Type,...), US Bank (Date,Transaction,Name,Memo,Amount), Discover (Trans. Date,...,Category).";
+  "Expected one of: Chase (Transaction Date,...,Type,...), US Bank (Date,Transaction,Name,Memo,Amount), Discover (Trans. Date,...,Category), Fidelity (Run Date,Action,...,Amount ($)).";
 
 function emptyResult(format: string | null, error: string): ParseStatementResult {
   return {
@@ -214,6 +217,12 @@ export function parseStatement(
     nameIdx = columnIndex("description");
     amountIdx = columnIndex("amount");
     discriminatorIdx = columnIndex("category");
+  } else if (profile === "fidelity") {
+    dateIdx = columnIndex("run date");
+    nameIdx = columnIndex("action");
+    amountIdx = columnIndex("amount ($)");
+    if (amountIdx === -1) amountIdx = columnIndex("amount");
+    discriminatorIdx = columnIndex("action");
   }
 
   const columnsMissing =
@@ -248,8 +257,9 @@ export function parseStatement(
   let totalDataRows = 0;
   for (const rawLine of dataLines) {
     if (rawLine.trim() === "") continue;
-    totalDataRows += 1;
     const line = rawLine.trim();
+    if (resolvedProfile === "fidelity" && !/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(line)) continue;
+    totalDataRows += 1;
     if (line.length > MAX_LINE_LENGTH) {
       failedLines++;
       if (failedLines <= 5) {
@@ -332,6 +342,37 @@ export function parseStatement(
           }
           continue;
         }
+      }
+    } else if (resolvedProfile === "fidelity") {
+      const actionNorm = discriminatorRaw.trim().toLowerCase();
+      if (actionNorm.startsWith("reinvestment")) {
+        kind = "transfer";
+      } else if (actionNorm.startsWith("dividend received")) {
+        kind = "income";
+      } else if (actionNorm.startsWith("you bought")) {
+        kind = actionNorm.includes("(cash)") ? "transfer" : "expense";
+      } else if (actionNorm.startsWith("you sold")) {
+        kind = actionNorm.includes("(cash)") ? "transfer" : "income";
+      } else if (
+        actionNorm.startsWith("electronic funds transfer paid") ||
+        actionNorm.startsWith("transfer of assets acat") ||
+        actionNorm.startsWith("cash contribution") ||
+        actionNorm.startsWith("journaled") ||
+        actionNorm.startsWith("transferred to")
+      ) {
+        kind = "transfer";
+      } else if (actionNorm.startsWith("electronic funds transfer received")) {
+        kind = "transfer";
+      } else if (actionNorm.includes("margin interest") || actionNorm.includes("transaction costs")) {
+        kind = "expense";
+      } else {
+        failedLines++;
+        if (failedLines <= 5) {
+          errors.push(
+            `Unknown Fidelity Action "${discriminatorRaw.trim().slice(0, 40)}": "${line.slice(0, 80)}"`,
+          );
+        }
+        continue;
       }
     } else {
       const categoryNorm = discriminatorRaw.trim().toLowerCase();

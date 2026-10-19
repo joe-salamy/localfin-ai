@@ -202,7 +202,7 @@ defineTool("localfin_dashboard", { title: "Dashboard", description: "Get dashboa
 
 // Parser
 export const localfinParseStatementInputSchema = parseStatementInput.strict();
-defineTool("localfin_parse_statement", { title: "Parse statement", description: "Parse bank CSV text into transactions (deterministic, no AI categorization; format reports chase|usbank|discover). Rows are signed for the account and uncategorized; apply exact lookup then the OMP categorization skill afterwards." }, localfinParseStatementInputSchema, (input) => parseStatement(input.text, input.accountId));
+defineTool("localfin_parse_statement", { title: "Parse statement", description: "Parse bank CSV text into transactions (deterministic, no AI categorization; format reports chase|usbank|discover|fidelity). Rows are signed for the account and uncategorized; apply exact lookup then the OMP categorization skill afterwards." }, localfinParseStatementInputSchema, (input) => parseStatement(input.text, input.accountId));
 
 async function main(): Promise<void> {
   // Open (and migrate) the DB before accepting requests. stdout carries the
