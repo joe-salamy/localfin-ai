@@ -22,7 +22,7 @@ Example order: checking/savings accounts → Food/Bills categories → Groceries
 
 ### Taxonomy ODS loop
 
-Inbox `~/Documents/LocalFin/inbox/taxonomy-review.fods` (the export default; see `AGENTS.md`). Archive `data/archive/`.
+Review sheet `~/Downloads/taxonomy-review.fods` (the export default; see `AGENTS.md`). Archive `data/archive/`.
 Commands: `npm run taxonomy:export [-- out.fods]` and `npm run taxonomy:apply -- <file.fods> [--dry-run]`.
 Sheets: `_meta(key,value)`; `Categories(__id,name,type,color,__delete)`; `Subcategories(__id,name,category,__category_id,monthly_goal,color,__delete)`.
 Semantics: empty `__id` = create, `__delete=x` = delete; hidden `__` columns authoritative over the `category` display label.
@@ -42,7 +42,7 @@ Steps:
 3. Pick kind & amount sign: use `localfin-finance-invariants` → `inferTransactionKindForAccount` + `normalizeTransactionAmount`. Example: 48.23 expense on asset → delta -48.23; 32.10 reimbursement (income) on asset → +32.10; credit card payment between owned accounts → `kind: transfer`, no subcategory.
 4. Tags: only if user says `tag/tagged` or `tag it as X`; resolve via `GET /api/tags`, default type `custom`.
 5. Write: `POST /api/transactions` single or `POST /api/transactions/bulk` (`localfin_bulk_create_transactions`) with `{account_id, date, name, amount, kind?, subcategory_id?, tag_ids?, comment?}`. Use bulk for multiple.
-6. If given a bank CSV path, use it; if asked to add new transactions with no path, look in `~/Inbox/` for staged CSVs (`csvinbox` staging; `~/Downloads` is jail-hidden). Then `npm run ingest:csv -- --file <path> --account <name>`, the categorization skill for leftovers, then bulk create.
+6. If given a bank CSV path, use it; if asked to add new transactions with no path, look in `~/Downloads/` for bank CSVs (`npm run ingest:downloads`; see `AGENTS.md`). Then `npm run ingest:csv -- --file <path> --account <name>`, the categorization skill for leftovers, then bulk create.
 Acceptance: created rows have expected account, ISO date, signed amount, kind, subcategory, comment; missing refs surface as visible errors.
 
 ## 3. Search / correction

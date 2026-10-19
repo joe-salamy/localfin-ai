@@ -10,7 +10,7 @@ import {
 } from "../server/services/categories.js";
 import { localIsoDate } from "../server/services/dates.js";
 import type { Category, Subcategory } from "../shared/contracts/index.js";
-import { INBOX_DIRECTORY } from "./exchange-paths.js";
+import { DOWNLOADS_DIRECTORY } from "./user-paths.js";
 import { fodsDocument, fodsRow, floatCell, headerRow, stringCell } from "./ods-common.js";
 
 export interface TaxonomyExportOptions {
@@ -121,7 +121,7 @@ export function buildTaxonomyFods(args: {
 }
 
 export function taxonomyExportUsage(): string {
-  return "Usage: taxonomy:export [out.fods] (default out: ~/Documents/LocalFin/inbox/taxonomy-review.fods)";
+  return "Usage: taxonomy:export [out.fods] (default out: ~/Downloads/taxonomy-review.fods)";
 }
 
 export function parseTaxonomyExportArgs(
@@ -134,7 +134,7 @@ export function parseTaxonomyExportArgs(
     else positional.push(arg);
   }
   if (positional.length > 1) return null;
-  const out = positional[0] ?? path.join(INBOX_DIRECTORY, "taxonomy-review.fods");
+  const out = positional[0] ?? path.join(DOWNLOADS_DIRECTORY, "taxonomy-review.fods");
   return { options: { out } };
 }
 

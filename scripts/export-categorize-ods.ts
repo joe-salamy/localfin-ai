@@ -9,7 +9,7 @@ import {
 } from "../server/services/categories.js";
 import { createCategoryLookup } from "../server/services/transactions/lookup.js";
 import { getTransactionsWithDetails } from "../server/services/transactions/read.js";
-import { INBOX_DIRECTORY } from "./exchange-paths.js";
+import { DOWNLOADS_DIRECTORY } from "./user-paths.js";
 import { escapeXml, fodsDocument, fodsRow, floatCell, headerRow, stringCell } from "./ods-common.js";
 
 export interface CategorizeChoice {
@@ -183,7 +183,7 @@ export async function exportCategorizeOds(
 }
 
 export function exportUsage(): string {
-  return "Usage: categorize:export [out.fods] [--all] [--limit N] (default: rows needing a category; out: ~/Documents/LocalFin/inbox/categorize-review.fods)";
+  return "Usage: categorize:export [out.fods] [--all] [--limit N] (default: rows needing a category; out: ~/Downloads/categorize-review.fods)";
 }
 
 export function parseExportArgs(argv: string[]): {
@@ -208,7 +208,7 @@ export function parseExportArgs(argv: string[]): {
       positional.push(arg);
     }
   }
-  const out = positional[0] ?? path.join(INBOX_DIRECTORY, "categorize-review.fods");
+  const out = positional[0] ?? path.join(DOWNLOADS_DIRECTORY, "categorize-review.fods");
   return { options: { out, needsCategoryOnly, limit } };
 }
 

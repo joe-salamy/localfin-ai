@@ -1,50 +1,54 @@
 import { readdirSync, readFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { getAccounts } from "../server/services/accounts.js";
 import { ingestStatementCsv, resolveAccountName, type IngestStats } from "./ingest-statement-csv.js";
+import { DOWNLOADS_DIRECTORY } from "./user-paths.js";
 
-const DEFAULT_INBOX = path.join(os.homedir(), "Inbox");
-const MAPPING_PATH = fileURLToPath(new URL("./inbox-accounts.json", import.meta.url));
+const MAPPING_PATH = fileURLToPath(new URL("./statement-accounts.json", import.meta.url));
 
 const mappingSchema = z.array(
   z.object({ pattern: z.string().min(1), account: z.string().min(1) }).strict(),
 );
 
-export interface InboxRule {
+export interface StatementRule {
   pattern: RegExp;
   account: string;
 }
 
-export function loadInboxRules(file = MAPPING_PATH): InboxRule[] {
+export function loadStatementRules(file = MAPPING_PATH): StatementRule[] {
   const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
   return mappingSchema.parse(raw).map((r) => ({ pattern: new RegExp(r.pattern, "i"), account: r.account }));
 }
 
-/** Pair each CSV file name with exactly one rule; unmapped or multiply-mapped files are errors. */
-export function mapInboxFiles(
+/**
+ * Pair each CSV file name with a rule. Files with no matching rule are skipped
+ * (the folder is shared with ordinary downloads); a file matching two-plus
+ * rules is an error, because the account is ambiguous.
+ */
+export function mapStatementFiles(
   fileNames: string[],
-  rules: InboxRule[],
-): { mapped: Array<{ fileName: string; account: string }>; errors: string[] } {
+  rules: StatementRule[],
+): { mapped: Array<{ fileName: string; account: string }>; skipped: string[]; errors: string[] } {
   const mapped: Array<{ fileName: string; account: string }> = [];
+  const skipped: string[] = [];
   const errors: string[] = [];
   for (const fileName of fileNames) {
     const hits = rules.filter((r) => r.pattern.test(fileName));
-    if (hits.length === 1) mapped.push({ fileName, account: (hits[0] as InboxRule).account });
-    else if (hits.length === 0) errors.push(`No account rule matches "${fileName}"`);
+    if (hits.length === 1) mapped.push({ fileName, account: (hits[0] as StatementRule).account });
+    else if (hits.length === 0) skipped.push(fileName);
     else errors.push(`"${fileName}" matches ${hits.length} rules: ${hits.map((h) => h.account).join(", ")}`);
   }
-  return { mapped, errors };
+  return { mapped, skipped, errors };
 }
 
-export function ingestInboxUsage(): string {
-  return "Usage: ingest:inbox [--dir <staging dir>] [--dry-run] (default dir: ~/Inbox; rules: scripts/inbox-accounts.json)";
+export function ingestDownloadsUsage(): string {
+  return "Usage: ingest:downloads [--dir <dir>] [--dry-run] (default dir: ~/Downloads; rules: scripts/statement-accounts.json)";
 }
 
-export function parseIngestInboxArgs(argv: string[]): { dir: string; dryRun: boolean } | null {
+export function parseIngestDownloadsArgs(argv: string[]): { dir: string; dryRun: boolean } | null {
   let dir: string | null = null;
   let dryRun = false;
   for (let i = 0; i < argv.length; i += 1) {
@@ -60,28 +64,36 @@ export function parseIngestInboxArgs(argv: string[]): { dir: string; dryRun: boo
       return null;
     }
   }
-  return { dir: path.resolve(dir ?? DEFAULT_INBOX), dryRun };
+  return { dir: path.resolve(dir ?? DOWNLOADS_DIRECTORY), dryRun };
 }
 
 /**
- * Ingest every staged CSV in `dir`. All files are mapped, account-resolved
- * and dry-run first; any failure aborts before the first write.
+ * Ingest every CSV in `dir` that maps to exactly one account. Matched files are
+ * account-resolved and dry-run first; any failure aborts before the first
+ * write. Unmatched files are reported and left untouched.
  */
-export async function ingestInbox(dir: string, dryRun: boolean): Promise<IngestStats[]> {
+export async function ingestDownloads(dir: string, dryRun: boolean): Promise<IngestStats[]> {
   const fileNames = readdirSync(dir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".csv"))
     .map((entry) => entry.name)
     .sort();
   if (fileNames.length === 0) {
-    console.log(`No staged CSVs in ${dir}; run csvinbox first.`);
+    console.log(`No CSVs in ${dir}.`);
     return [];
   }
 
-  const { mapped, errors } = mapInboxFiles(fileNames, loadInboxRules());
+  const { mapped, skipped, errors } = mapStatementFiles(fileNames, loadStatementRules());
+  for (const fileName of skipped) {
+    console.log(`Skipped (no account rule): ${fileName} — use ingest:csv --account <name> to import it.`);
+  }
   if (errors.length > 0) {
     throw new Error(
-      `${errors.join("\n")}\nAdd a rule to scripts/inbox-accounts.json or use ingest:csv --account. Nothing was written.`,
+      `${errors.join("\n")}\nFix scripts/statement-accounts.json. Nothing was written.`,
     );
+  }
+  if (mapped.length === 0) {
+    console.log("No CSVs matched an account rule; nothing to ingest.");
+    return [];
   }
   const accounts = getAccounts();
   const jobs = mapped.map((m) => ({
@@ -102,14 +114,14 @@ export async function ingestInbox(dir: string, dryRun: boolean): Promise<IngestS
 }
 
 async function main(): Promise<void> {
-  const parsed = parseIngestInboxArgs(process.argv.slice(2));
+  const parsed = parseIngestDownloadsArgs(process.argv.slice(2));
   if (!parsed) {
-    console.error(ingestInboxUsage());
+    console.error(ingestDownloadsUsage());
     process.exitCode = 2;
     return;
   }
   try {
-    await ingestInbox(parsed.dir, parsed.dryRun);
+    await ingestDownloads(parsed.dir, parsed.dryRun);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

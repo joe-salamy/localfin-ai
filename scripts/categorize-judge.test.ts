@@ -9,7 +9,7 @@ import { getTransactionById } from "../server/services/transactions/read.js";
 import { updateTransaction } from "../server/services/transactions/update.js";
 import { useTempDatabase } from "../server/tests/helpers.js";
 import { applyJudgments, buildJudgeInput, decideJudgment, type JudgeState } from "./categorize-judge.js";
-import { mapInboxFiles } from "./ingest-inbox.js";
+import { mapStatementFiles } from "./ingest-downloads.js";
 
 const answer = (choice: string, confidence: number) => ({ choice, confidence });
 
@@ -113,18 +113,18 @@ void test("applyJudgments writes model choices with ai_suggested, skips stale ro
   assert.ok(existsSync(out));
 });
 
-void test("inbox mapping requires exactly one rule per staged CSV", () => {
+void test("downloads mapping pairs each CSV with exactly one account rule", () => {
   const rules = [
     { pattern: /^Chase4466_/i, account: "Chase" },
     { pattern: /^Checking - 0726_/i, account: "Checking" },
     { pattern: /checking/i, account: "Overlap" },
   ];
-  const { mapped, errors } = mapInboxFiles(
+  const { mapped, skipped, errors } = mapStatementFiles(
     ["Chase4466_Activity_20261009.csv", "Checking - 0726_07-09-2026.csv", "Unknown.csv"],
     rules,
   );
   assert.deepEqual(mapped, [{ fileName: "Chase4466_Activity_20261009.csv", account: "Chase" }]);
-  assert.equal(errors.length, 2);
+  assert.deepEqual(skipped, ["Unknown.csv"]);
+  assert.equal(errors.length, 1);
   assert.match(errors[0] ?? "", /matches 2 rules/);
-  assert.match(errors[1] ?? "", /No account rule matches "Unknown.csv"/);
 });

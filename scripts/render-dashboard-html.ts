@@ -11,7 +11,7 @@ import {
   parseReportArgs,
   reportUsage,
 } from "./report-html-common.js";
-import { REPORTS_DIRECTORY } from "./exchange-paths.js";
+import { DOWNLOADS_DIRECTORY } from "./user-paths.js";
 
 interface DashboardAccountRow {
   id: string;
@@ -844,7 +844,7 @@ export async function renderDashboardHtmlFile(
   const outputPath =
     out != null
       ? path.resolve(out)
-      : path.join(REPORTS_DIRECTORY, `dashboard-${start}-${end}.html`);
+      : path.join(DOWNLOADS_DIRECTORY, `dashboard-${start}-${end}.html`);
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, html, "utf8");
   return outputPath;

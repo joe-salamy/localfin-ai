@@ -19,7 +19,7 @@
     "taxonomy:export": "tsx scripts/export-taxonomy-ods.ts",
     "taxonomy:apply": "tsx scripts/apply-taxonomy-ods.ts",
     "ingest:csv": "tsx scripts/ingest-statement-csv.ts",
-    "ingest:inbox": "tsx scripts/ingest-inbox.ts",
+    "ingest:downloads": "tsx scripts/ingest-downloads.ts",
     "typecheck": "tsc -b --pretty false",
     "build": "tsc -b",
     "lint": "eslint .",

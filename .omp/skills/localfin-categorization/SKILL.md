@@ -9,11 +9,11 @@ Scripts stay keyless and deterministic; the only model step is one eval `judge_b
 
 ## Trigger
 
-Run when the user asks to categorize new/uncategorized transactions, or right after `ingest:inbox` / `ingest:csv` when they asked to "add and categorize". Never run silently on ingest alone.
+Run when the user asks to categorize new/uncategorized transactions, or right after `ingest:downloads` / `ingest:csv` when they asked to "add and categorize". Never run silently on ingest alone.
 
 ## What ingest already did
 
-`ingest:csv` / `ingest:inbox` reuse past subcategories deterministically (`createCategoryLookup`, `server/services/transactions/lookup.ts`):
+`ingest:csv` / `ingest:downloads` reuse past subcategories deterministically (`createCategoryLookup`, `server/services/transactions/lookup.ts`):
 
 1. exact name on the same account, majority >= 0.6 of the last 20 (fewer than 3 rows: most recent);
 2. merchant key across all accounts (`merchantKey`, `shared/finance/merchantNames.ts`: bank boilerplate, wallet suffixes, digits stripped; first 8-16 letters compared), majority >= 0.8 of the last 20, at least 3 rows.
@@ -42,12 +42,12 @@ Only same-kind income/expense hits are reused. Do not repeat this lookup; whatev
    - subcategory accepted when not `Uncertain`, >= threshold, a known label, and its category type equals the kind;
    - otherwise a payment-like name (`PAYMENTISH_NAME_PATTERN`) becomes a transfer; everything else goes to review.
 
-   Writes go through `bulkUpdateTransactions` with `ai_suggested:true`, skip rows that were categorized meanwhile ("stale"), log to `logs/jsonl/categorize-<date>.jsonl`, and export only the review rows to `~/Documents/LocalFin/inbox/categorize-review.fods`.
-4. Report counts per label, transfers, and the review list printed by apply (each line shows the model's best guess). The user fills the sheet; then `npm run categorize:apply -- ~/Documents/LocalFin/inbox/categorize-review.fods --dry-run`, then without `--dry-run`. Rows a person labels there get `ai_suggested:false`.
+   Writes go through `bulkUpdateTransactions` with `ai_suggested:true`, skip rows that were categorized meanwhile ("stale"), log to `logs/jsonl/categorize-<date>.jsonl`, and export only the review rows to `~/Downloads/categorize-review.fods`.
+4. Report counts per label, transfers, and the review list printed by apply (each line shows the model's best guess). The user fills the sheet; then `npm run categorize:apply -- ~/Downloads/categorize-review.fods --dry-run`, then without `--dry-run`. Rows a person labels there get `ai_suggested:false`.
 
 ## Invariants
 
 - Transfers and adjustments have `subcategory_id:null` (`localfin-finance-invariants`).
 - Never invent ids; labels map to ids only through the input file's `labels` table.
 - Tags stay explicit-only.
-- `categorize:export` exports only rows needing a category by default (`--all` for everything); always pass an explicit path inside `~/Documents/LocalFin/inbox/`, never `~/Inbox/` (bank CSV staging only).
+- `categorize:export` exports only rows needing a category by default (`--all` for everything); both bank CSVs and review sheets live in `~/Downloads/`.

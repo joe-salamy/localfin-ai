@@ -11,7 +11,7 @@ import {
   parseReportArgs,
   reportUsage,
 } from "./report-html-common.js";
-import { REPORTS_DIRECTORY } from "./exchange-paths.js";
+import { DOWNLOADS_DIRECTORY } from "./user-paths.js";
 
 export const MAX_HISTORY_ROWS = 50_000;
 
@@ -85,7 +85,7 @@ export async function renderHistoryHtmlFile(
   const outputPath =
     out != null
       ? path.resolve(out)
-      : path.join(REPORTS_DIRECTORY, `history-${start}-${end}.html`);
+      : path.join(DOWNLOADS_DIRECTORY, `history-${start}-${end}.html`);
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, html, "utf8");
   return outputPath;

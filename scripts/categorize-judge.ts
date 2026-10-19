@@ -15,7 +15,7 @@ import { bulkUpdateTransactions } from "../server/services/transactions/bulk.js"
 import { getTransactionsWithDetails } from "../server/services/transactions/read.js";
 import type { TransactionKind } from "../shared/contracts/index.js";
 import { merchantKey, merchantKeysMatch } from "../shared/finance/merchantNames.js";
-import { INBOX_DIRECTORY } from "./exchange-paths.js";
+import { DOWNLOADS_DIRECTORY } from "./user-paths.js";
 import { exportCategorizeOds } from "./export-categorize-ods.js";
 
 const WORK_DIR = path.resolve("logs", "categorize");
@@ -327,7 +327,7 @@ export function judgeUsage(): string {
   return [
     "Usage: categorize:prepare [--out judge-input.json]",
     "       categorize:apply-judgments [--input judge-input.json] [--results judge-results.json] [--threshold 0.6] [--out review.fods] [--dry-run]",
-    `Defaults: ${path.relative(process.cwd(), DEFAULT_INPUT)}, ${path.relative(process.cwd(), DEFAULT_RESULTS)}, ~/Documents/LocalFin/inbox/categorize-review.fods`,
+    `Defaults: ${path.relative(process.cwd(), DEFAULT_INPUT)}, ${path.relative(process.cwd(), DEFAULT_RESULTS)}, ~/Downloads/categorize-review.fods`,
   ].join("\n");
 }
 
@@ -360,7 +360,7 @@ export function parseJudgeArgs(argv: string[]): JudgeCommand | null {
     input: path.resolve(values.get("--input") ?? DEFAULT_INPUT),
     results: path.resolve(values.get("--results") ?? DEFAULT_RESULTS),
     threshold,
-    out: path.resolve(values.get("--out") ?? path.join(INBOX_DIRECTORY, "categorize-review.fods")),
+    out: path.resolve(values.get("--out") ?? path.join(DOWNLOADS_DIRECTORY, "categorize-review.fods")),
     dryRun,
   };
 }
